@@ -80,7 +80,7 @@ chooses (e.g. `literature/`), and `config.toml` carries the real PDF path.
 | Id | Form | Source |
 |---|---|---|
 | **citekey** | `<Family><Year><Venue>` CamelCase, e.g. `Ruppel2023eLife`; `a/b/c` suffix to disambiguate same-DOI collisions. `Venue` = ISO-4 journal abbreviation (+ override map for brand names like `eLife`). Also names the PDF, its `.md`, and the `pdf` field | filename stem of a `curated/` file, **or** a key in `stubs.yaml` |
-| **affirmation / question / method-use (local)** | `a1`, `a2` … / `q1`, `q2` … / `m1`, `m2` … — unique within its paper file | hand-assigned |
+| **affirmation / question / method-use (local)** | `a1`, `a2` … (evidence-bearing) **or** `ca1`, `ca2` … (context / `evidence: none`) / `q1`, `q2` … / `m1`, `m2` … — unique within its paper file. The `a` vs `ca` split is a curator mnemonic only: type comes from the list, and nothing cross-references these ids, so an `a↔ca` reclassification is a safe rename | hand-assigned |
 | **affirmation / question (global)** | `<citekey>:<local>` e.g. `Ruppel2023NatPhys:a1` | composed by the generator |
 | **claim / broader-question / method** | kebab-case `<slug>`, globally unique | filename stem in `claims/`, `questions/`, or `methods/` |
 
@@ -222,7 +222,7 @@ decision is made — so there is no two-sided bookkeeping to keep in sync.
    every question `rollup` to a `questions/` file; every method-use `uses` and method
    `rollup` to a `methods/` file; every method `introduced_by` to a `curated/` file or
    `stubs.yaml` key; every affirmation `via[]` entry to a local method-use id in the same file.
-2. **Local ids unique** within each paper file (across `a*` / `q*` / `m*`).
+2. **Local ids unique** within each paper file (across `a*` / `ca*` / `q*` / `m*`).
 3. **Slugs / citekeys globally unique**; a citekey is never both curated and a stub.
 4. **Evidence ↔ citation-role coherence** (checked when both are set): a `source` cite ⇒
    `evidence: none` (the claim is borrowed); a `corroborates` / `contradicts` / `extends`

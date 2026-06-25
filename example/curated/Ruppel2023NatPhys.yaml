@@ -30,15 +30,6 @@ affirmations:
       - {to: junctions-bear-load, polarity: concordant}
 
   - id: a3
-    text:  "Keratin networks set baseline cortical tension."
-    quote: "consistent with Ramms et al., keratin-rich cells showed elevated cortical tension"
-    evidence: none                   # borrowed wholesale → carried by a source citation
-    cites:
-      - {paper: Ramms2013Pnas, role: source}
-    rollups:
-      - {to: cytoskeleton-sets-tension, polarity: concordant}
-
-  - id: a4
     text:  "Traction does not scale without bound — a poroelastic model predicts a plateau above a critical stiffness."
     quote: "our continuum model yields saturating traction for moduli beyond ~40 kPa"
     evidence: novel-theory           # the paper's own model…
@@ -47,6 +38,15 @@ affirmations:
     rollups:
       # discordant with the SAME claim a1 supports → the emergent evidence meter (CONCEPT §9)
       - {to: traction-scales-with-stiffness, polarity: discordant}
+
+  - id: ca1                          # context affirmation → `ca*` not `a*` (SCHEMA §3): evidence: none
+    text:  "Keratin networks set baseline cortical tension."
+    quote: "consistent with Ramms et al., keratin-rich cells showed elevated cortical tension"
+    evidence: none                   # borrowed wholesale → carried by a source citation
+    cites:
+      - {paper: Ramms2013Pnas, role: source}
+    rollups:
+      - {to: cytoskeleton-sets-tension, polarity: concordant}
 
 questions:
   - id: q1

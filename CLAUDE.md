@@ -11,7 +11,7 @@ the rate limiter; never flood. A half-finished graph is a normal, valid state.**
    how), the curated/stub frontier, the rollup DAG. *What* the graph is and *why*.
 2. [SCHEMA.md](SCHEMA.md) — the on-disk data model: one diffable YAML per curated paper,
    thin files for abstractions, a stub registry. *How* it's written to disk.
-3. [CURATION.md](CURATION.md) — the reading protocol: the five-pass sweep that turns a
+3. [CURATION.md](CURATION.md) — the reading protocol: the four-pass sweep that turns a
    paper's full text into its proposed local subgraph. *How* a paper is read in.
 4. [tools/lit/](tools/lit/) — the `lit` CLI, self-contained (package, tests, spec).
    Design spec: [tools/lit/docs/2026-06-25-litgraph-ingest-design.md](tools/lit/docs/2026-06-25-litgraph-ingest-design.md).
@@ -50,6 +50,18 @@ the rate limiter; never flood. A half-finished graph is a normal, valid state.**
   the (renamed) PDF. **Non-interactive**: an agent runs it, then agent + human review the
   written YAML together. Use `--dry-run` to preview without writing/renaming. It does *not*
   extract affirmations/questions — that's the future curation step (CONCEPT §12).
+
+## Curating a paper
+
+When the human asks to **curate a paper**, **read [CURATION.md](CURATION.md) first** and
+follow its protocol. Curation is **interactive and discussion-first**, never a one-shot file
+dump:
+
+- Work **one pass at a time** (the four passes in CURATION.md).
+- Each pass is a loop: **explain your reading** of the paper at that pass's granularity in
+  prose → **discuss with the human until you agree** → *only then* **tokenize** (write the
+  agreed nodes into `curated/<citekey>.yaml`).
+- **Realign after every pass** before starting the next. Never tokenize ahead of agreement.
 
 ## Working with this project
 

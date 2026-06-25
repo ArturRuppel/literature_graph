@@ -171,11 +171,11 @@ never made in a vacuum; it is positioned against prior work:
 
 | role | meaning |
 |---|---|
-| `source` | the claim is borrowed wholesale from the cited paper (provenance) |
+| `source` | the cited paper stands *behind a claim the paper asserts* — the support the authors marshal for it. **Every** citation behind an asserted claim is a `source`; the role is read from the *citing* text, never by re-checking what the cited paper contains (we trust the authors; that audit is out of scope) |
 | `corroborates` | this (novel) finding *supports* the cited paper |
 | `contradicts` | this (novel) finding *refutes* the cited paper |
 | `extends` | builds on / generalizes the cited paper |
-| `mentions` | neutral reference |
+| `mentions` | a neutral pointer that does *not* back an asserted claim — "there's a tool/method that does X *(cite)*," or a catalogue of "other labs have done X *(cite)*" |
 
 The two axes are independent. A borrowed claim is `evidence: none` + a `source` citation.
 A novel data point that contradicts Smith is `evidence: novel-data` + a `contradicts`
@@ -269,14 +269,31 @@ Because first-class papers are human-curated and **the human supplies the PDF**,
 ## 10. Guiding principles
 
 1. **Curation is the rate limiter** — propose / accept / edit / reject; never flood.
-   A partial graph is valid.
-2. **Generalize, don't merge** — never equate two claims (lossy). Co-parent them under a
-   broader claim; the paper-specific phrasing and quote are never destroyed.
+   A partial graph is valid — and so is a partial *paper*. Curation has **depth tiers**
+   orthogonal to the curated/stub breadth tier (§5): some papers stop at Pass 0 (abstract
+   skeleton), some at Pass 1, some run all the way through Pass 3 (CURATION.md). Like the
+   breadth tier, depth is **emergent from what's present** — no `depth:` field — and
+   stopping early is a normal resting state, not an unfinished task.
+2. **Generalize, don't merge — but don't duplicate for nesting either.** Never equate two
+   claims (lossy); co-parent them under a broader claim, and the paper-specific phrasing and
+   quote are never destroyed. Conversely, a broader `claims/` node **earns its existence only
+   when ≥2 children actually share it** (or it is genuinely broader than any single child) —
+   never mint a thin claim that merely echoes one affirmation to populate a hierarchy. And one
+   claim is **one node, refined across passes**, never re-extracted per section: the rollup
+   structure lives in *edges between distinct nodes*, never in a node copied to two altitudes.
 3. **Keep authoring cheap** — the moat the formal academic efforts (nanopublications,
    ORKG) never had: they died on the cost of hand-authoring rigid RDF triples. Here an AI
    drafts claims in natural language; the human only curates.
-4. **Lazy, human-paced frontiers** — citation walking and question capture are selective,
-   never exhaustive. You record only what is live for *your* research.
+4. **Lazy, human-paced frontiers** — citation walking and question capture are selective.
+   **Exhaustive citation coverage (every cited paper given an edge) is an *ambition, not a
+   requirement*.** Because the model has no bare paper→paper edge — `cites` always rides an
+   affirmation or method-use — every edge costs a mediating atom. So spend cheaply where
+   it's cheap: *anchor the citation walls* (one borrowed-consensus affirmation carries the
+   whole wall — every paper cited behind the claim is a `source`), let methods cites fall
+   out of Pass 3 for free, reserve rich roles
+   (`corroborates`/`contradicts`/`extends`) for findings that earn them, and leave
+   genuinely incidental references as bare stubs. You record what is live for *your*
+   research.
 
 ---
 
