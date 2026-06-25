@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>litgraph · containers</title>
+<style>
+  :root{
+    --bg:#0e1116; --ink:#e6edf3; --dim:#9aa7b4; --faint:#6b7785; --line:#30363d; --panel:#1c2430;
+    --grounded:#4cc38a; --borrowed:#58a6ff; --floor:#e3b341; --model:#d2a8ff;
+    --question:#e3863d; --broad:#7a5cff; --paper:#5b86c4;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);
+    font:13px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;overflow:hidden}
+  #stage{position:absolute;inset:0;cursor:grab}#stage.pan{cursor:grabbing}
+  svg#edges{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+  #world{position:absolute;inset:0;transform-origin:0 0}
+  .node{position:absolute;transform:translate(-50%,-50%)}
+
+  /* container P boundary (computed hull) */
+  #pbox{position:absolute;border:1.5px dashed var(--paper);border-radius:16px;background:#5b86c40d;
+    pointer-events:none}
+  #plabel{position:absolute;font-size:11px;font-weight:700;color:var(--paper);letter-spacing:.3px;
+    pointer-events:none;background:var(--bg);padding:0 6px}
+
+  /* a container node (Methods/Findings/Context/Question) */
+  .cont{border:1.5px solid var(--line);border-radius:11px;background:var(--panel);min-width:210px;
+    box-shadow:0 6px 20px #0007;cursor:grab;overflow:hidden}
+  .cont .hd{display:flex;align-items:center;gap:8px;padding:9px 11px}
+  .cont .hd .chev{transition:transform .15s;font-size:10px;color:var(--faint)}
+  .cont.open .hd .chev{transform:rotate(90deg)}
+  .cont .ttl{font-weight:700;font-size:12px}
+  .cont .cnt{margin-left:auto;font-size:10px;color:var(--faint)}
+  .cont .bd{padding:0 9px 9px;display:none}
+  .cont.open .bd{display:block}
+  .cont.methods{border-color:var(--floor)} .cont.methods .ttl{color:var(--floor)}
+  .cont.findings{border-color:var(--grounded)} .cont.findings .ttl{color:var(--grounded)}
+  .cont.context{border-color:var(--borrowed)} .cont.context .ttl{color:var(--borrowed)}
+  .cont.qcont{border-color:var(--question)} .cont.qcont .ttl{color:var(--question)}
+
+  .row{display:flex;gap:7px;align-items:flex-start;padding:5px 7px;margin:3px 0;border-radius:7px;
+    background:#ffffff08;font-size:11px}
+  .row .rid{flex:none;font-weight:700;font-size:9.5px;padding:1px 5px;border-radius:4px;color:#0b0e13;margin-top:1px}
+  .rid.fl{background:var(--floor)} .rid.md{background:var(--model);color:#1a1030}
+  .rid.gr{background:var(--grounded)} .rid.bo{background:var(--borrowed)}
+  .row .rtx{color:#dbe5ef} .row .rsrc{margin-left:auto;flex:none;font-size:9px;color:var(--faint);margin-top:2px}
+  /* nested container (q2 inside q1) */
+  .nest{border:1px dashed #e3863d66;border-radius:8px;padding:5px 7px;margin:5px 0 2px;background:#e3863d0d}
+  .nest .nl{font-size:8.5px;letter-spacing:.8px;text-transform:uppercase;color:var(--question);opacity:.8;margin-bottom:2px}
+
+  .slice.broad{border:2px solid var(--broad);border-radius:18px;background:linear-gradient(180deg,#2a2150,#1c1838);
+    width:205px;text-align:center;padding:9px 13px;cursor:grab;box-shadow:0 6px 20px #0008}
+  .slice.broad.qb{border-color:var(--question);background:linear-gradient(180deg,#3f2a16,#241a10)}
+  .slice.broad .kd{font-size:8.5px;letter-spacing:1.4px;text-transform:uppercase;color:#cbb8ff}
+  .slice.broad.qb .kd{color:#f0c08a} .slice.broad .bt{font-size:11.5px;margin-top:3px}
+
+  .tag{font-size:8px;padding:1px 5px;border-radius:6px;font-weight:700;margin-left:6px}
+  .tag.ans{background:var(--grounded);color:#0b0e13} .tag.open{border:1px solid var(--question);color:var(--question)}
+
+  #hud{position:fixed;top:12px;left:14px;z-index:40;max-width:310px}
+  #hud h1{font-size:14px;margin:0 0 3px}#hud p{margin:0 0 9px;color:var(--dim);font-size:11px}
+  .legend{background:#0b0f15cc;border:1px solid var(--line);border-radius:9px;padding:8px 10px;font-size:10px}
+  .legend div{display:flex;align-items:center;gap:6px;margin:2.5px 0;color:var(--dim);flex-wrap:wrap}
+  .sw{width:11px;height:11px;border-radius:3px;border:1.5px solid;flex:none}
+  #hint{position:fixed;bottom:10px;left:50%;transform:translateX(-50%);z-index:40;color:var(--faint);
+    font-size:11px;background:#0b0f15aa;padding:4px 12px;border-radius:20px;border:1px solid var(--line)}
+  #zc{position:fixed;bottom:10px;right:14px;z-index:40;display:flex;gap:6px}
+  #zc button{background:var(--panel);color:var(--ink);border:1px solid var(--line);width:28px;height:28px;border-radius:7px;cursor:pointer}
+  #exp{position:fixed;top:14px;right:14px;z-index:40;background:var(--panel);color:var(--ink);
+    border:1px solid var(--line);border-radius:8px;padding:6px 11px;font-size:11px;cursor:pointer}
+</style>
+</head>
+<body>
+<div id="hud">
+  <h1>litgraph · container view</h1>
+  <p>The top level: the paper <b>P</b> as a container of cohesive sub-graphs — <b>Methods</b>,
+     <b>Findings</b>, <b>Context</b>, <b>Questions</b> — collapsed by default. Click a container
+     to drill in. Broad claims/questions live above P. Edges are aggregate <b>leads-to</b>.</p>
+  <div class="legend">
+    <div><span class="sw" style="border-color:var(--floor)"></span>methods (floors)
+         <span class="sw" style="border-color:var(--grounded)"></span>findings (grounded)</div>
+    <div><span class="sw" style="border-color:var(--borrowed)"></span>context (borrowed)
+         <span class="sw" style="border-color:var(--question)"></span>questions</div>
+    <div><span class="sw" style="border-color:var(--broad)"></span>broad (leads-to target)
+         <span class="sw" style="border-color:var(--paper);border-style:dashed"></span>container P</div>
+  </div>
+</div>
+<button id="exp">expand all ▾</button>
+<div id="stage"><svg id="edges"></svg><div id="world"><div id="pbox"></div><div id="plabel"></div></div></div>
+<div id="hint">click a container to drill in · drag to move · scroll to zoom</div>
+<div id="zc"><button id="zo">–</button><button id="zi">+</button><button id="zf">⊙</button></div>
+
+<script>
+const world=document.getElementById('world'),svg=document.getElementById('edges'),stage=document.getElementById('stage'),
+  pbox=document.getElementById('pbox'),plabel=document.getElementById('plabel');
+const nodes={}, edges=[];
+function el(c,h){const d=document.createElement('div');d.className=c;if(h!=null)d.innerHTML=h;return d;}
+function place(id,n,x,y,inP){n.style.left=x+'px';n.style.top=y+'px';world.appendChild(n);nodes[id]={el:n,x,y,inP:!!inP};drag(id);}
+
+// ---- the four sub-containers of P (collapsed by default) ----
+const METHODS=[
+ ['m1','optogenetic RhoA activation','fl','2 src'],['m2','traction force microscopy','fl','2 src'],
+ ['m4','H-pattern micropatterning','fl','2 src'],['m3','monolayer stress microscopy','md','m2 +2'],
+ ['m6','contour / tension model','md','m2 +2'],['m5','continuum (active-gel) model','md','m3 +1'],
+];
+const FINDINGS=[
+ ['c1','Receiver responds actively → doublet is one coherent unit','gr','m1·m3·m5'],
+ ['c2','Propagation amplified ⊥ to polarization axis (Poisson-like)','gr','m3·m5'],
+ ['c3','Active response → effective, emergent elasticity','gr','c1·m5'],
+];
+const CONTEXT=[
+ ['c4','Force lets cells probe environment mechanics/geometry','bo','12 src'],
+ ['c5','Contractile force universal via non-muscle myosin II','bo','1 src'],
+ ['c6','Long-ranged propagation essential for morphogenesis','bo','4 src'],
+ ['c7','Passive medium attenuates; active processes restore signal','bo','1 src'],
+ ['c8','Epithelial waves require active cellular behaviors','bo','5 src'],
+ ['c9','Stress fibers nematic → anisotropic stress propagation','bo','1 src'],
+];
+
+function container(id,cls,title,count,rows,nested){
+  const n=el('node');
+  const c=el('cont '+cls);
+  c.innerHTML='<div class="hd"><span class="chev">▸</span><span class="ttl">'+title+'</span><span class="cnt">'+count+'</span></div><div class="bd"></div>';
+  const bd=c.querySelector('.bd');
+  rows.forEach(r=>{
+    bd.appendChild(el('row','<span class="rid '+r[2]+'">'+r[0]+'</span><span class="rtx">'+r[1]+'</span><span class="rsrc">'+r[3]+'</span>'));
+  });
+  if(nested) bd.insertAdjacentHTML('beforeend',nested);
+  c.querySelector('.hd').addEventListener('click',ev=>{ev.stopPropagation();c.classList.toggle('open');drawEdges();});
+  n.appendChild(c);return n;
+}
+function broad(id,cls,kd,t,x,y){
+  const n=el('node');n.appendChild(el('slice broad '+cls,'<div class="kd">'+kd+'</div><div class="bt">'+t+'</div>'));
+  place(id,n,x,y);
+}
+
+function layout(){
+  // broad row (above P)
+  broad('FPA','','claim','Force propagation across tissues is active',360,70);
+  broad('STA','','claim','Stress transmits ⊥ to the polarization axis',640,70);
+  broad('FPT','qb','question','Passive or actively sustained — how far?',915,70);
+  // sub-containers, inside P
+  place('methods', container('methods','methods','Methods','6 · floors + models',METHODS), 300,560,true);
+  place('findings',container('findings','findings','Findings','3 · grounded',FINDINGS), 300,360,true);
+  place('context', container('context','context','Context','6 · borrowed',CONTEXT), 640,360,true);
+  const q2nest='<div class="nest"><div class="nl">q2 · nested (open)</div>What is E-cadherin\'s role in the active coupling? (molecular machinery)</div>';
+  place('qcont', container('qcont','qcont','q1 — force propagation route','answered · q2 nested',
+        [['q1','How does force propagate sender → junction → receiver?','gr','']], q2nest), 915,330,true);
+  // aggregate leads-to edges (container level)
+  edges.push({f:'methods',t:'findings',k:'g'});
+  edges.push({f:'findings',t:'FPA',k:'g'},{f:'findings',t:'STA',k:'g'});
+  edges.push({f:'context',t:'FPA',k:'g'},{f:'context',t:'STA',k:'g'});
+  edges.push({f:'qcont',t:'FPT',k:'g'});
+  edges.push({f:'findings',t:'qcont',k:'a'});   // answers
+  fit();
+}
+
+// ---- P boundary = hull of its child containers ----
+function updateP(){
+  const kids=Object.values(nodes).filter(n=>n.inP);
+  if(!kids.length)return;
+  let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
+  kids.forEach(n=>{const w=n.el.offsetWidth,h=n.el.offsetHeight;
+    x0=Math.min(x0,n.x-w/2);y0=Math.min(y0,n.y-h/2);x1=Math.max(x1,n.x+w/2);y1=Math.max(y1,n.y+h/2);});
+  const pad=26;
+  pbox.style.left=(x0-pad)+'px';pbox.style.top=(y0-pad)+'px';
+  pbox.style.width=(x1-x0+2*pad)+'px';pbox.style.height=(y1-y0+2*pad)+'px';
+  plabel.style.left=(x0-pad+14)+'px';plabel.style.top=(y0-pad-9)+'px';
+  plabel.textContent='P · Ruppel2023eLife';
+}
+
+// ---- edges ----
+const COL={g:'#5b6b82',a:'#9aa7b4'};
+function drawEdges(){
+  updateP();
+  const W=stage.clientWidth,H=stage.clientHeight;svg.setAttribute('viewBox',`0 0 ${W} ${H}`);
+  let defs='<defs>';for(const k in COL)defs+=`<marker id="m-${k}" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="${COL[k]}"/></marker>`;defs+='</defs>';
+  let s='';
+  edges.forEach(e=>{const a=nodes[e.f],b=nodes[e.t];if(!a||!b)return;
+    const A=box(a),B=box(b);
+    // connect from top-center of lower node to bottom-center of upper node
+    const p1={x:A.cx,y:A.t}, p2={x:B.cx,y:B.b}, my=(p1.y+p2.y)/2;
+    const dash=e.k==='a'?'stroke-dasharray="1 4"':'';
+    s+=`<path d="M${p1.x},${p1.y} C${p1.x},${my} ${p2.x},${my} ${p2.x},${p2.y}" fill="none" stroke="${COL[e.k]}" stroke-width="1.6" opacity="0.6" ${dash} marker-end="url(#m-${e.k})"/>`;
+  });
+  svg.innerHTML=defs+s;
+}
+function box(n){const r=n.el.getBoundingClientRect();return{cx:r.left+r.width/2,t:r.top,b:r.bottom};}
+
+// ---- pan/zoom/drag ----
+let tx=0,ty=0,sc=1;
+function applyT(){world.style.transform=`translate(${tx}px,${ty}px) scale(${sc})`;drawEdges();}
+stage.addEventListener('mousedown',e=>{if(e.target.closest('.node'))return;stage.classList.add('pan');
+  const sx=e.clientX-tx,sy=e.clientY-ty;function mv(ev){tx=ev.clientX-sx;ty=ev.clientY-sy;applyT();}
+  function up(){stage.classList.remove('pan');removeEventListener('mousemove',mv);removeEventListener('mouseup',up);}
+  addEventListener('mousemove',mv);addEventListener('mouseup',up);});
+stage.addEventListener('wheel',e=>{e.preventDefault();const f=e.deltaY<0?1.1:.9,ns=Math.min(2,Math.max(.3,sc*f));
+  const rx=e.clientX-tx,ry=e.clientY-ty;tx=e.clientX-rx*ns/sc;ty=e.clientY-ry*ns/sc;sc=ns;applyT();},{passive:false});
+zi.onclick=()=>{sc=Math.min(2,sc*1.15);applyT()};zo.onclick=()=>{sc=Math.max(.3,sc*.87);applyT()};zf.onclick=fit;
+function drag(id){const n=nodes[id];const h=n.el.querySelector('.hd')||n.el.firstChild;
+  h.addEventListener('mousedown',e=>{e.stopPropagation();const sx=e.clientX,sy=e.clientY,ox=n.x,oy=n.y;
+    let moved=false;
+    function mv(ev){moved=true;n.x=ox+(ev.clientX-sx)/sc;n.y=oy+(ev.clientY-sy)/sc;n.el.style.left=n.x+'px';n.el.style.top=n.y+'px';drawEdges();}
+    function up(){removeEventListener('mousemove',mv);removeEventListener('mouseup',up);}
+    addEventListener('mousemove',mv);addEventListener('mouseup',up);});}
+function fit(){tx=stage.clientWidth/2-620;ty=30;sc=.82;applyT();}
+
+let allOpen=false;
+document.getElementById('exp').onclick=function(){allOpen=!allOpen;
+  document.querySelectorAll('.cont').forEach(c=>c.classList.toggle('open',allOpen));
+  this.textContent=allOpen?'collapse all ▴':'expand all ▾';drawEdges();};
+
+layout();addEventListener('resize',drawEdges);setTimeout(drawEdges,60);
+</script>
+</body>
+</html>

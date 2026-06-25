@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>litgraph · lean slice model</title>
+<style>
+  :root{
+    --bg:#0e1116; --ink:#e6edf3; --dim:#9aa7b4; --faint:#6b7785; --line:#30363d; --panel:#1c2430;
+    --grounded:#4cc38a;   /* original, reaches a floor */
+    --borrowed:#58a6ff;   /* grounded in a citation (restatement) */
+    --floor:#e3b341;      /* measurement floor (bedrock) */
+    --model:#d2a8ff;      /* a method that layers (not a floor) */
+    --question:#e3863d;
+    --broad:#7a5cff;
+    --leadsto:#5b6b82; --lateral:#f0883e;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);
+    font:13px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;overflow:hidden}
+  #stage{position:absolute;inset:0;cursor:grab} #stage.pan{cursor:grabbing}
+  svg#edges{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+  #world{position:absolute;inset:0;transform-origin:0 0}
+  .node{position:absolute;transform:translate(-50%,-50%);user-select:none;cursor:grab}
+
+  .slice{border:1.5px solid var(--line);border-radius:9px;background:var(--panel);
+    padding:7px 9px;width:190px;box-shadow:0 5px 18px #0007}
+  .slice .id{font-weight:700;font-size:11px;letter-spacing:.3px;opacity:.85}
+  .slice .tx{font-size:11px;color:#dbe5ef;margin-top:2px}
+  .slice .chips{margin-top:6px;display:flex;flex-wrap:wrap;gap:4px}
+
+  .slice.grounded{border-color:var(--grounded)} .slice.grounded .id{color:var(--grounded)}
+  .slice.borrowed{border-color:var(--borrowed)} .slice.borrowed .id{color:var(--borrowed)}
+  .slice.floor{border-color:var(--floor);background:#2a2410} .slice.floor .id{color:var(--floor)}
+  .slice.model{border-color:var(--model)} .slice.model .id{color:var(--model)}
+  .slice.q{border-color:var(--question);width:180px} .slice.q .id{color:var(--question)}
+  .slice.broad{border-radius:18px;border-width:2px;border-color:var(--broad);
+    background:linear-gradient(180deg,#2a2150,#1c1838);width:200px;text-align:center}
+  .slice.broad.qb{border-color:var(--question);background:linear-gradient(180deg,#3f2a16,#241a10)}
+  .slice.broad .kd{font-size:8.5px;letter-spacing:1.4px;text-transform:uppercase;color:#cbb8ff}
+  .slice.broad.qb .kd{color:#f0c08a}
+
+  .badge{font-size:9px;padding:1px 6px;border-radius:9px;border:1px solid #ffffff22;color:var(--dim);
+    cursor:pointer;background:#ffffff0c}
+  .badge:hover{border-color:#6f9bd6;color:#cfe2ff}
+  .badge.float{font-size:8px;letter-spacing:.5px}
+  .stub{width:150px;font-size:9.5px;padding:5px 7px;border:1px dashed #46506180;border-radius:8px;
+    background:#161b22;cursor:pointer}
+  .stub:hover{border-color:#6f9bd6}
+  .stub .sk{font-weight:700;font-size:10px} .stub .sd{display:flex;gap:4px;margin-top:2px}
+  .stub .sd i{width:5px;height:5px;border-radius:50%;background:#39414c}
+  .tag{position:absolute;top:-8px;right:8px;font-size:8px;padding:1px 5px;border-radius:6px;color:#0b0e13;font-weight:700}
+  .tag.ans{background:var(--grounded)} .tag.open{background:transparent;border:1px solid var(--question);color:var(--question)}
+  .tag.fl{background:var(--floor)}
+
+  #pop{position:fixed;z-index:50;pointer-events:none;background:#0b0f15f5;border:1px solid #3a4658;
+    border-radius:10px;padding:10px 12px;width:300px;box-shadow:0 12px 34px #000c;display:none}
+  #pop .l{font-size:8.5px;letter-spacing:1px;text-transform:uppercase;color:#e3863d;margin-bottom:4px}
+  #pop .k{font-weight:700;font-size:12px} #pop .t{color:var(--ink);font-size:11px;margin:2px 0 6px}
+  #pop .a{font-size:10.5px;line-height:1.45;color:var(--dim);border-top:1px solid #ffffff14;padding-top:6px}
+  #pop .a.none{font-style:italic;color:var(--faint)}
+
+  #hud{position:fixed;top:12px;left:14px;z-index:40;max-width:300px}
+  #hud h1{font-size:14px;margin:0 0 3px} #hud p{margin:0 0 9px;color:var(--dim);font-size:11px}
+  .legend{background:#0b0f15cc;border:1px solid var(--line);border-radius:9px;padding:8px 10px;font-size:10px}
+  .legend div{display:flex;align-items:center;gap:6px;margin:2.5px 0;color:var(--dim);flex-wrap:wrap}
+  .sw{width:11px;height:11px;border-radius:3px;border:1.5px solid;flex:none}
+  .axis{position:fixed;right:16px;top:50%;transform:translateY(-50%);z-index:30;text-align:center;
+    color:var(--faint);font-size:10px;writing-mode:vertical-rl}
+  #hint{position:fixed;bottom:10px;left:50%;transform:translateX(-50%);z-index:40;color:var(--faint);
+    font-size:11px;background:#0b0f15aa;padding:4px 12px;border-radius:20px;border:1px solid var(--line)}
+  #zc{position:fixed;bottom:10px;right:14px;z-index:40;display:flex;gap:6px}
+  #zc button{background:var(--panel);color:var(--ink);border:1px solid var(--line);width:28px;height:28px;border-radius:7px;cursor:pointer}
+</style>
+</head>
+<body>
+<div id="hud">
+  <h1>litgraph · lean slice model</h1>
+  <p>One graph of <b>slices</b> wired by <b>leads-to</b> (↑ ground→derived). Vertical = generality:
+     <b>method floors</b> at the bottom, claims grounding up into <b>broad claims</b> at the top.
+     Color = emergent. Hover a source → abstract · click a ▸ chip to expand its citations.</p>
+  <div class="legend">
+    <div><span class="sw" style="border-color:var(--grounded)"></span>grounded claim (reaches a floor)
+         <span class="sw" style="border-color:var(--borrowed)"></span>borrowed (restatement)</div>
+    <div><span class="sw" style="border-color:var(--floor);background:#2a2410"></span>measurement = floor
+         <span class="sw" style="border-color:var(--model)"></span>model (layers, not a floor)</div>
+    <div><span class="sw" style="border-color:var(--question)"></span>question
+         <span class="sw" style="border-color:var(--broad)"></span>broad (leads-to target)</div>
+    <div><b style="color:var(--leadsto)">↑ leads-to</b> &nbsp; <b style="color:var(--lateral)">– – corroborate</b> &nbsp; ··· answers</div>
+  </div>
+</div>
+<div class="axis">▲ derived · general &nbsp;&nbsp;&nbsp;&nbsp; ground · floor ▼</div>
+<div id="stage"><svg id="edges"></svg><div id="world"></div></div>
+<div id="pop"></div>
+<div id="hint">drag nodes · drag background to pan · scroll to zoom</div>
+<div id="zc"><button id="zo">–</button><button id="zi">+</button><button id="zf">⊙</button></div>
+
+<script>
+const STUBS={
+ Liu2010Pnas:{t:"Mechanical tugging force regulates the size of cell–cell junctions",y:2010},
+ Hino2020DevCell:{t:"ERK-Mediated Mechanochemical Waves Direct Collective Cell Polarization",y:2020},
+ Valon2017NatCommun:{t:"Optogenetic control of cellular forces and mechanotransduction",y:2017},
+ Oakes2017NatCommun:{t:"Optogenetic control of RhoA reveals zyxin-mediated elasticity of stress fibres",y:2017},
+ Sabass2007BiophysJ:{t:"High Resolution Traction Force Microscopy…",y:2007},
+ Bauer2021PloComputBiology:{t:"pyTFM: A tool for traction force and monolayer stress microscopy",y:2021},
+ Tambe2011NatMater:{t:"Collective cell guidance by cooperative intercellular forces",y:2011},
+ Tseng2012Pnas:{t:"Spatial organization of the ECM regulates cell–cell junction positioning",y:2012},
+ Vignaud2014Methodcellbiology:{t:"Polyacrylamide Hydrogel Micropatterning",y:2014},
+ Prost2015NatPhys:{t:"Active gel physics",y:2015},
+ Bischofs2008BiophysJ:{t:"Filamentous Network Mechanics and Active Contractility Determine Cell and Tissue Shape",y:2008},
+ Giomi2019Advexpmedbiology:{t:"Contour Models of Cellular Adhesion",y:2019},
+ Discher2005Science:{t:"Tissue Cells Feel and Respond to the Stiffness of Their Substrate",y:2005},
+ Luciano2021NatPhys:{t:"Cell monolayers sense curvature by exploiting active mechanics…",y:2021},
+ Engler2006Cell:{t:"Matrix Elasticity Directs Stem Cell Lineage Specification",y:2006},
+ McBeath2004DevCell:{t:"Cell Shape, Cytoskeletal Tension, and RhoA Regulate Stem Cell Lineage Commitment",y:2004},
+ Wen2014NatMater:{t:"Interplay of matrix stiffness and protein tethering in stem cell differentiation",y:2014},
+ Kilian2010Pnas:{t:"Geometric cues for directing the differentiation of mesenchymal stem cells",y:2010},
+ Chen1997Science:{t:"Geometric Control of Cell Life and Death",y:1997},
+ Thery2005NatCellBiology:{t:"The extracellular matrix guides the orientation of the cell division axis",y:2005},
+ Nelson2005Pnas:{t:"Emergent patterns of growth controlled by multicellular form and mechanics",y:2005},
+ Pathak2012Pnas:{t:"Independent regulation of tumor cell migration by matrix stiffness and confinement",y:2012},
+ Sunyer2020CurrBiology:{t:"Durotaxis",y:2020},
+ Shellard2021Nature:{t:"Collective durotaxis along a self-generated stiffness gradient in vivo",y:2021},
+ VicenteManzanares2009NatRevMolCellBiology:{t:"Non-muscle myosin II takes centre stage in cell adhesion and migration",y:2009},
+ Ho2019PloBiology:{t:"Feather arrays are patterned by interacting signalling and cell density waves",y:2019},
+ Desprat2008DevCell:{t:"Tissue Deformation Modulates Twist Expression… in Drosophila Embryos",y:2008},
+ Barriga2018Nature:{t:"Tissue stiffening coordinates morphogenesis by triggering collective cell migration in vivo",y:2018},
+ McGinn2021NatCellBiology:{t:"A biomechanical switch regulates the transition towards homeostasis…",y:2021},
+ Kholodenko2010NatRevMolCellBiology:{t:"Signalling ballet in space and time",y:2010},
+ DiTalia2022AnnuRevBiophys:{t:"Waves in Embryonic Development",y:2022},
+ SerraPicamal2012NatPhys:{t:"Mechanical waves during tissue expansion",y:2012},
+ Peyret2019BiophysJ:{t:"Sustained Oscillations of Epithelial Cell Sheets",y:2019},
+ Petrolli2019PhysRevLett:{t:"Confinement-Induced Transition between Wavelike Collective Cell Migration Modes",y:2019},
+ Ng2014eLife:{t:"Mapping the dynamics of force transduction at cell–cell junctions of epithelial clusters",y:2014},
+ MaroudasSacks2020NatPhys:{t:"Topological defects in the nematic order of actin fibres…",y:2020},
+};
+const AB={
+ Liu2010Pnas:"Actomyosin contractility affects cellular organization within tissues in part through the generation of mechanical forces at sites of cell-matrix and cell-cell contact… direct application of mechanical tugging force was sufficient to trigger AJ growth.",
+ Sabass2007BiophysJ:"", Bauer2021PloComputBiology:"",
+ Ng2014eLife:"Force transduction at cell–cell adhesions regulates tissue development… basal force fluctuations were coupled to E-cadherin localization at the level of individual cell–cell junctions.",
+ DiTalia2022AnnuRevBiophys:"Embryonic development hinges on effective coordination of molecular events across space and time. Waves have recently emerged as an ubiquitous mechanism that ensures rapid spreading of regulatory signals across embryos…",
+ Discher2005Science:"Normal tissue cells are anchorage dependent… an understanding of how tissue cells sense matrix stiffness is just emerging with quantitative studies of cells adhering to gels with tunable elasticity.",
+ Petrolli2019PhysRevLett:"…long-range mechanical excitations (waves) at the supracellular level. We confine epithelial monolayers to quasi-1D geometries to force tissue-level waves of well-defined wavelength and period.",
+};
+// slices of the focus paper (Ruppel2023eLife)
+const METHODS=[
+ {id:'m1',t:'optogenetic RhoA activation',cls:'floor',g:['Valon2017NatCommun','Oakes2017NatCommun']},
+ {id:'m2',t:'traction force microscopy',cls:'floor',g:['Sabass2007BiophysJ','Bauer2021PloComputBiology']},
+ {id:'m4',t:'H-pattern micropatterning',cls:'floor',g:['Tseng2012Pnas','Vignaud2014Methodcellbiology']},
+ {id:'m3',t:'monolayer stress microscopy',cls:'model',g:['m2','Tambe2011NatMater','Bauer2021PloComputBiology']},
+ {id:'m6',t:'contour / tension model',cls:'model',g:['m2','Bischofs2008BiophysJ','Giomi2019Advexpmedbiology']},
+ {id:'m5',t:'continuum (active-gel) model',cls:'model',g:['m3','Prost2015NatPhys']},
+];
+const CLAIMS=[
+ {id:'c1',cls:'grounded',t:'Receiver responds actively → doublet is one coherent unit',g:['m1','m3','m5'],up:['force-propagation-is-active'],ans:['q1'],corr:['Liu2010Pnas','Hino2020DevCell']},
+ {id:'c2',cls:'grounded',t:'Propagation amplified ⊥ to polarization axis (Poisson-like)',g:['m3','m5'],up:['stress-transmission-anisotropic']},
+ {id:'c3',cls:'grounded',t:'Active response → effective, emergent elasticity',g:['c1','m5'],up:[]},
+ {id:'c4',cls:'borrowed',t:'Force lets cells probe environment mechanics/geometry',g:['Discher2005Science','Luciano2021NatPhys','Engler2006Cell','McBeath2004DevCell','Wen2014NatMater','Kilian2010Pnas','Chen1997Science','Thery2005NatCellBiology','Nelson2005Pnas','Pathak2012Pnas','Sunyer2020CurrBiology','Shellard2021Nature']},
+ {id:'c5',cls:'borrowed',t:'Contractile force universal via non-muscle myosin II',g:['VicenteManzanares2009NatRevMolCellBiology']},
+ {id:'c6',cls:'borrowed',t:'Long-ranged propagation essential for morphogenesis',g:['Ho2019PloBiology','Desprat2008DevCell','Barriga2018Nature','McGinn2021NatCellBiology']},
+ {id:'c7',cls:'borrowed',t:'Passive medium attenuates; active processes restore signal',g:['Kholodenko2010NatRevMolCellBiology'],up:['force-propagation-is-active']},
+ {id:'c8',cls:'borrowed',t:'Epithelial waves require active cellular behaviors',g:['DiTalia2022AnnuRevBiophys','SerraPicamal2012NatPhys','Peyret2019BiophysJ','Petrolli2019PhysRevLett','Ng2014eLife'],up:['force-propagation-is-active']},
+ {id:'c9',cls:'borrowed',t:'Stress fibers nematic → anisotropic stress propagation',g:['MaroudasSacks2020NatPhys'],up:['stress-transmission-anisotropic']},
+];
+const QS=[
+ {id:'q1',t:'How does force propagate sender → junction → receiver?',up:['force-propagation-in-tissues'],ans:true},
+ {id:'q2',t:"What is E-cadherin's role in the active coupling? (molecular)",up:['force-propagation-in-tissues'],ans:false},
+];
+const BROAD={
+ 'force-propagation-is-active':{kd:'claim',t:'Force propagation across tissues is active'},
+ 'stress-transmission-anisotropic':{kd:'claim',t:'Stress transmits ⊥ to the polarization axis'},
+ 'force-propagation-in-tissues':{kd:'question',t:'Passive or actively sustained — and how far?'},
+};
+
+const world=document.getElementById('world'),svg=document.getElementById('edges'),
+  pop=document.getElementById('pop'),stage=document.getElementById('stage');
+const nodes={}, edges=[];
+function el(c,h){const d=document.createElement('div');d.className=c;if(h!=null)d.innerHTML=h;return d;}
+function place(id,n,x,y){n.style.left=x+'px';n.style.top=y+'px';world.appendChild(n);nodes[id]={el:n,x,y};drag(id);}
+function dots(){return '<span class="sd">'+'<i></i>'.repeat(4)+'</span>';}
+
+// build a slice node
+function slice(id,cls,inner,x,y,extraTag){
+  const n=el('node');
+  const s=el('slice '+cls, inner);
+  if(extraTag) s.appendChild(el('tag '+extraTag.c, extraTag.t));
+  n.appendChild(s); place(id,n,x,y); return s;
+}
+function stubChip(parentId,refs,x,y){
+  // collapsed citation chip; expands to stub nodes
+  const chip=el('badge float','▸ '+refs.length+' source'+(refs.length>1?'s':''));
+  let open=false, spawned=[];
+  chip.onclick=ev=>{ev.stopPropagation();
+    if(open){spawned.forEach(sid=>{nodes[sid].el.remove();delete nodes[sid];});spawned=[];open=false;chip.textContent='▸ '+refs.length+' source'+(refs.length>1?'s':'');drawEdges();return;}
+    open=true; chip.textContent='▾ '+refs.length+' source'+(refs.length>1?'s':'');
+    const p=nodes[parentId]; const n=refs.length;
+    refs.forEach((r,i)=>{
+      const s=STUBS[r]||{t:r,y:''}; const sid=parentId+'__'+r;
+      const node=el('node'); const box=el('stub','<div class="sk">'+r+'</div>'+
+        '<div style="color:var(--faint)">'+(s.y||'')+'</div>'+dots());
+      box.addEventListener('mouseenter',e=>showPop(e,r,s)); box.addEventListener('mousemove',movePop); box.addEventListener('mouseleave',hidePop);
+      node.appendChild(box);
+      const sx=p.x+(i-(n-1)/2)*165, sy=p.y+150;
+      place(sid,node,sx,sy); spawned.push(sid);
+      edges.push({f:sid,t:parentId,k:'leadsto',_tmp:true});
+    });
+    drawEdges();
+  };
+  return chip;
+}
+
+function showPop(e,k,s){const a=AB[k];
+  pop.innerHTML='<div class="l">stub · not yet curated</div><div class="k">'+k+'</div>'+
+    '<div class="t">'+s.t+'</div>'+
+    (a&&a.trim()?'<div class="a">'+a+'</div>':'<div class="a none">no abstract on record — lit ingest leaves this empty</div>');
+  pop.style.display='block';movePop(e);}
+function movePop(e){let x=e.clientX+15,y=e.clientY+12;if(x+300>innerWidth)x=e.clientX-315;pop.style.left=x+'px';pop.style.top=y+'px';}
+function hidePop(){pop.style.display='none';}
+
+// ---- layout (tiers; y = altitude, smaller = more derived) ----
+function spread(n,gap,cx){return i=>cx+(i-(n-1)/2)*gap;}
+function layout(){
+  const CX=520;
+  // broad (top)
+  const bx=spread(2,360,CX);
+  Object.keys(BROAD).forEach((k,i)=>{
+    if(BROAD[k].kd==='question') return;
+  });
+  slice('force-propagation-is-active','broad','<div class="kd">claim</div>'+BROAD['force-propagation-is-active'].t,bx(0),60);
+  slice('stress-transmission-anisotropic','broad','<div class="kd">claim</div>'+BROAD['stress-transmission-anisotropic'].t,bx(1),60);
+  slice('force-propagation-in-tissues','broad qb','<div class="kd">question</div>'+BROAD['force-propagation-in-tissues'].t,CX+560,60);
+  // questions (upper right)
+  const qx=CX+560;
+  QS.forEach((q,i)=>{
+    const s=slice(q.id,'q','<div class="id">'+q.id+'</div><div class="tx">'+q.t+'</div>',qx,220+i*90,
+      q.ans?{c:'ans',t:'answered'}:{c:'open',t:'open'});
+    (q.up||[]).forEach(u=>edges.push({f:q.id,t:u,k:'leadsto'}));
+  });
+  // claims (tier 1)  — originals left, borrowed right
+  const orig=CLAIMS.filter(c=>c.cls==='grounded'), borr=CLAIMS.filter(c=>c.cls==='borrowed');
+  orig.forEach((c,i)=>buildClaim(c, 230, 250+i*92));
+  borr.forEach((c,i)=>buildClaim(c, 720+(i%2)*215, 250+Math.floor(i/2)*150));
+  // methods (tier 2/3): floors low, models above
+  const floors=METHODS.filter(m=>m.cls==='floor'), models=METHODS.filter(m=>m.cls==='model');
+  models.forEach((m,i)=>buildMethod(m, 150+i*200, 560));
+  floors.forEach((m,i)=>buildMethod(m, 180+i*200, 690));
+  fit();
+}
+function buildClaim(c,x,y){
+  const inner='<div class="id">'+c.id+'</div><div class="tx">'+c.t+'</div><div class="chips"></div>';
+  const s=slice(c.id,c.cls,inner,x,y);
+  // leads_to (up) and answers
+  (c.up||[]).forEach(u=>edges.push({f:c.id,t:u,k:'leadsto'}));
+  (c.ans||[]).forEach(q=>edges.push({f:c.id,t:q,k:'answers'}));
+  (c.corr||[]).forEach(p=>edges.push({f:c.id,t:'lat__'+c.id+'__'+p,k:'lateral',label:p}));
+  // grounded_in: slice-refs become edges; citation-refs become a collapsed chip
+  const chips=s.querySelector('.chips'); const cites=[];
+  (c.g||[]).forEach(r=>{ if(nodesPending(r)) edges.push({f:r,t:c.id,k:'leadsto'}); else cites.push(r); });
+  if(cites.length) chips.appendChild(stubChip(c.id,cites));
+  // lateral corroborate targets: tiny stub nodes beside
+  (c.corr||[]).forEach((p,i)=>{
+    const s2=STUBS[p]||{t:p,y:''}; const id='lat__'+c.id+'__'+p; const node=el('node');
+    const box=el('stub','<div class="sk">'+p+'</div>'+dots());
+    box.addEventListener('mouseenter',e=>showPop(e,p,s2));box.addEventListener('mousemove',movePop);box.addEventListener('mouseleave',hidePop);
+    node.appendChild(box); place(id,node,x+250,y-20+i*46);
+  });
+}
+function buildMethod(m,x,y){
+  const inner='<div class="id">'+m.id+'</div><div class="tx">'+m.t+'</div><div class="chips"></div>';
+  const s=slice(m.id,m.cls,inner,x,y, m.cls==='floor'?{c:'fl',t:'floor'}:null);
+  const chips=s.querySelector('.chips'); const cites=[];
+  (m.g||[]).forEach(r=>{ if(nodesPending(r)) edges.push({f:r,t:m.id,k:'leadsto'}); else cites.push(r); });
+  if(cites.length) chips.appendChild(stubChip(m.id,cites));
+}
+// a ref is a slice (resolvable to a node id) if it matches m*/c*; else it's a citation (stub)
+function nodesPending(r){return /^(m\d|c\d)$/.test(r);}
+
+// ---- edges ----
+const COL={leadsto:'#5b6b82',answers:'#9aa7b4',lateral:'#f0883e'};
+function drawEdges(){
+  const W=stage.clientWidth,H=stage.clientHeight;svg.setAttribute('viewBox',`0 0 ${W} ${H}`);
+  let defs='<defs>';
+  for(const k in COL) defs+=`<marker id="a-${k}" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="${COL[k]}"/></marker>`;
+  defs+='</defs>';
+  let s='';
+  edges.forEach(e=>{const a=nodes[e.f],b=nodes[e.t];if(!a||!b)return;
+    const p1=ctr(a),p2=ctr(b),my=(p1.y+p2.y)/2;
+    const dash=e.k==='lateral'?'stroke-dasharray="5 4"':(e.k==='answers'?'stroke-dasharray="1 4"':'');
+    s+=`<path d="M${p1.x},${p1.y} C${p1.x},${my} ${p2.x},${my} ${p2.x},${p2.y}" fill="none" stroke="${COL[e.k]}" stroke-width="1.5" opacity="0.6" ${dash} marker-end="url(#a-${e.k})"/>`;
+  });
+  svg.innerHTML=defs+s;
+}
+function ctr(n){const r=n.el.getBoundingClientRect();return{x:r.left+r.width/2,y:r.top+r.height/2};}
+
+// ---- pan / zoom / drag ----
+let tx=0,ty=0,sc=1;
+function applyT(){world.style.transform=`translate(${tx}px,${ty}px) scale(${sc})`;drawEdges();}
+stage.addEventListener('mousedown',e=>{if(e.target.closest('.node'))return;stage.classList.add('pan');
+  const sx=e.clientX-tx,sy=e.clientY-ty;
+  function mv(ev){tx=ev.clientX-sx;ty=ev.clientY-sy;applyT();}
+  function up(){stage.classList.remove('pan');removeEventListener('mousemove',mv);removeEventListener('mouseup',up);}
+  addEventListener('mousemove',mv);addEventListener('mouseup',up);});
+stage.addEventListener('wheel',e=>{e.preventDefault();const f=e.deltaY<0?1.1:.9,ns=Math.min(2,Math.max(.3,sc*f));
+  const rx=e.clientX-tx,ry=e.clientY-ty;tx=e.clientX-rx*ns/sc;ty=e.clientY-ry*ns/sc;sc=ns;applyT();},{passive:false});
+zi.onclick=()=>{sc=Math.min(2,sc*1.15);applyT()};zo.onclick=()=>{sc=Math.max(.3,sc*.87);applyT()};zf.onclick=fit;
+function drag(id){const n=nodes[id];n.el.addEventListener('mousedown',e=>{
+  if(e.target.closest('.badge'))return; e.stopPropagation();
+  const sx=e.clientX,sy=e.clientY,ox=n.x,oy=n.y;
+  function mv(ev){n.x=ox+(ev.clientX-sx)/sc;n.y=oy+(ev.clientY-sy)/sc;n.el.style.left=n.x+'px';n.el.style.top=n.y+'px';drawEdges();}
+  function up(){removeEventListener('mousemove',mv);removeEventListener('mouseup',up);}
+  addEventListener('mousemove',mv);addEventListener('mouseup',up);});}
+function fit(){tx=stage.clientWidth/2-560;ty=40;sc=.72;applyT();}
+
+layout(); addEventListener('resize',drawEdges); setTimeout(drawEdges,60);
+</script>
+</body>
+</html>
