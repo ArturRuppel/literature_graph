@@ -1,0 +1,2 @@
+text: "Cell–cell junctions bear a substantial fraction of intercellular force."
+depends_on: [cytoskeleton-sets-tension]

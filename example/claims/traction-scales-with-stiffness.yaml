@@ -1,0 +1,4 @@
+text: "Cell traction force scales with substrate stiffness."
+relates_to: [junctions-bear-load]
+# incoming rollups (Ruppel2023NatPhys:a1 concordant, Ruppel2023NatPhys:a4 discordant) are stored on
+# the affirmations and inverted by the generator → evidence meter: 1 support / 1 contradict.

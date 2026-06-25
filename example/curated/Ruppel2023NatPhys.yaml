@@ -1,0 +1,59 @@
+# A curated paper = its whole local subgraph (CONCEPT §5).
+# Filename stem `Ruppel2023NatPhys` IS the citekey: <Family><Year><Venue> (SCHEMA §3).
+# Tier=curated because this file exists.
+# This example is illustrative — the paper and its DOI are fictional.
+title: "Force propagation in epithelial monolayers depends on substrate stiffness"
+type: original                       # original | review | methods | perspective | commentary
+year: 2023
+doi: 10.1038/s41567-023-01234
+authors:
+  - {name: "Ruppel, Artur",   position: first}
+  - {name: "Doe, Jane"}              # unmarked → middle
+  - {name: "Balland, Martial", position: last, corresponding: true}
+
+affirmations:
+  - id: a1
+    text:  "Traction forces in epithelial monolayers rise with substrate stiffness."
+    quote: "average traction stress increased monotonically as substrate modulus went from 5 to 50 kPa"
+    evidence: novel-data             # the paper's own measurement…
+    cites:
+      - {paper: Jones2018BiophysJ, role: corroborates}   # …positioned: it supports Jones' single-cell result
+    rollups:
+      - {to: traction-scales-with-stiffness, polarity: concordant}
+
+  - id: a2
+    text:  "A substantial fraction of intercellular force is borne by cell–cell junctions."
+    quote: "~40% of total contractile force was balanced across junctions rather than the substrate"
+    evidence: novel-data             # a standalone novel finding — no prior work to position against
+    rollups:
+      - {to: junctions-bear-load, polarity: concordant}
+
+  - id: a3
+    text:  "Keratin networks set baseline cortical tension."
+    quote: "consistent with Ramms et al., keratin-rich cells showed elevated cortical tension"
+    evidence: none                   # borrowed wholesale → carried by a source citation
+    cites:
+      - {paper: Ramms2013Pnas, role: source}
+    rollups:
+      - {to: cytoskeleton-sets-tension, polarity: concordant}
+
+  - id: a4
+    text:  "Traction does not scale without bound — a poroelastic model predicts a plateau above a critical stiffness."
+    quote: "our continuum model yields saturating traction for moduli beyond ~40 kPa"
+    evidence: novel-theory           # the paper's own model…
+    cites:
+      - {paper: Smith2010PhysRevLett, role: contradicts}    # …refuting Smith's unbounded-scaling claim
+    rollups:
+      # discordant with the SAME claim a1 supports → the emergent evidence meter (CONCEPT §9)
+      - {to: traction-scales-with-stiffness, polarity: discordant}
+
+questions:
+  - id: q1
+    text:   "Does the force-propagation length scale diverge near a rigidity threshold?"
+    status: open                     # a first-class, unanswered frontier marker
+    rollup: q-rigidity-sensing       # nests under a broader question
+
+  - id: q2
+    text:   "What sets the baseline cortical tension of a cell?"
+    status: answered
+    answered_by: cytoskeleton-sets-tension

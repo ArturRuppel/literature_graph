@@ -1,0 +1,26 @@
+# Build artifacts (regenerated from the YAML source of truth)
+graph.db
+*.sqlite
+
+# Heavy / external data — never committed (CONCEPT §1, SCHEMA §2).
+# PDFs and their <citekey>.md full-text live in the external pdf_dir (outside this repo).
+*.pdf
+
+# Deployment-local, private
+config.toml
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Tooling
+.serena/

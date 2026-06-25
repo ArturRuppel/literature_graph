@@ -1,0 +1,20 @@
+# Uncurated papers: bib-only, reached by some affirmation's `cites`. Machine-fetchable
+# from OpenAlex/Crossref by DOI. Keys follow <Family><Year><Venue> (SCHEMA §3).
+# Promote → move the entry into a new curated/<citekey>.yaml.
+Ramms2013Pnas:                       # cited as `source` by Ruppel2023NatPhys:a3 (borrowed claim)
+  title: "Keratins as the main structural component of the epidermal cornified envelope"
+  year: 2013
+  doi: 10.1073/pnas.1313491110
+  type: original
+
+Jones2018BiophysJ:                   # `corroborated` by Ruppel2023NatPhys:a1
+  title: "Substrate rigidity controls cellular traction in single cells"
+  year: 2018
+  doi: 10.1016/j.bpj.2018.05.012
+  type: original
+
+Smith2010PhysRevLett:                # `contradicted` by Ruppel2023NatPhys:a4
+  title: "Unbounded force transmission in stiffening extracellular matrices"
+  year: 2010
+  doi: 10.1103/PhysRevLett.104.168104
+  type: original
