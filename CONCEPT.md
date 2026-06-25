@@ -53,8 +53,8 @@ human-supplied PDF ─▶ external PDF dir   [outside git, named by config]
 | Layer | Members | Nature |
 |---|---|---|
 | **Sources** | Paper, Author | containers/people that *hold and connect* atoms — not atoms themselves |
-| **Atoms** | Affirmation, Question | irreducible, quote-bound content, **born nested inside a curated paper** |
-| **Abstractions** | broader claims / topics | free-floating generalizations that own no paper; the rollups |
+| **Atoms** | Affirmation, Question, Method-use | irreducible content, **born nested inside a curated paper** (affirmations/questions quote-bound) |
+| **Abstractions** | broader claims / topics / methods | free-floating generalizations that own no paper; the rollups |
 
 "Topic" is **not** a separate node type — a topic is just an affirmation at high
 altitude. The granular end of the ladder is paper-bound with a quote; the broad end is
@@ -62,7 +62,7 @@ the abstraction you'd write in a review's intro. One continuous ladder of genera
 
 ---
 
-## 3. Node types (4)
+## 3. Node types (5)
 
 - **Paper** — carries a `type` (§6) and exists in one of two tiers (§5).
 - **Affirmation** — a knowledge atom. Always born nested in *one* curated paper, with an
@@ -70,6 +70,9 @@ the abstraction you'd write in a review's intro. One continuous ladder of genera
 - **Question** — interrogative, not assertive. No quote, no stance. May be **open**
   (an unanswered question is a first-class object — a marked research frontier) or
   answered. Nests like affirmations.
+- **Method-use** — a *how* atom (§7): born nested in one curated paper, naming the
+  technique it applied and citing the methods paper that introduced it. Rolls up to a
+  shared **Method** the way an affirmation rolls up to a claim.
 - **Author** — a person. Links to papers with a position role.
 
 ---
@@ -94,6 +97,13 @@ Question    → broader Question rollup (nested)
 
 Question → broader Claim       answered-by   (curated edges, not a live query)
 Claim    ⟷ Claim               relates-to | depends-on   (free cross-level links)
+
+Paper  → its Method-use    applies                       (the how axis, §7)
+Method-use → Method        uses    (rolls the application up to the named technique)
+Method-use → methods Paper cites; role: source           (← pulls the methods paper into the frontier)
+Affirmation → Method-use   via     (optional braid: this finding rests on this technique)
+Method → broader Method    rollup (nested)               (the method DAG)
+Method → methods Paper     introduced-by                 (canonical origin; optional)
 ```
 
 Key consequences of this shape:
@@ -128,7 +138,7 @@ D and promote it; it sprouts its own nested atoms and citation-stubs. The stub/c
 boundary *is* the curation frontier, encoded in the data.
 
 Promotion is **type-aware** (§6): promoting a research/review stub extracts its
-affirmations/questions; promoting a methods stub links it to a protocol (future, §7).
+affirmations/questions; promoting a methods stub fleshes out the **Method** it introduced (§7).
 
 **Unit of work — curating one paper = producing its local subgraph:**
 `{ the paper, its nested affirmations, its nested questions, its citation-stubs, and the
@@ -182,27 +192,48 @@ How each paper type lands without any new structure:
 | original research | `novel-data`, citing prior work `corroborates` / `contradicts` | bedrock evidence |
 | perspective / commentary | `novel-theory` | argument; weak evidence |
 | review | `evidence: none`, dense `source` citations | **best bootstrapping seed** — a pre-assembled frontier of stubs |
-| methods | — (parked, §7) | bridges to `protocols/` (future) |
+| methods | — (makes no affirmations) | introduces a **Method** node; cited by method-uses (§7) |
 
 ---
 
-## 7. Methods papers — parked on a reserved "how" axis
+## 7. Methods papers and the "how" axis
 
 A methods paper isn't *weak* knowledge, it's a *different kind*: it doesn't say "X is
 true," it says "here's how to find out." It makes no affirmations and poses no questions,
-so it does **not** sit on the claims/questions DAG. But it isn't excluded either.
+so it does **not** sit on the claims/questions DAG — it sits on a third rail, parallel to
+the two that already work.
 
-The literature carries two axes, braided in every paper — *"we found **X** (a claim)
-using **technique T** (a method)."*
+The literature carries braided axes — *"we found **X** (a claim) using **technique T**
+(a method)."* The **how axis** is built exactly like the *what* axis: an **atom born
+nested in a paper, rolling up to a shared abstraction.**
 
-- **what / why axis** — claims & questions (everything above)
-- **how axis** — methods papers, cited *for a tool*, the literature-facing twin of this
-  repo's `protocols/`
+| axis | atom (nested, in-paper) | abstraction (thin shard, rollup target) | the paper that *owns* it |
+|---|---|---|---|
+| what / why | Affirmation · Question | claim · broader question | original / review |
+| **how** | **Method-use** | **Method** | **methods paper** |
 
-**v1 scope:** a methods paper is just a `Paper` with `type: methods` — it **exists as a
-node** (authors, metadata, citable) but its special structure is dormant. The `uses-method`
-edge (Paper → Methods paper) and the methods-paper ↔ protocol bridge are a **reserved
-future extension** that doesn't disturb the core.
+- **Method-use** — born nested in one curated paper (its `methods:` block), naming the
+  technique the paper applied and `cites`-ing — with role `source` — the methods paper
+  that introduced it. A `quote` is *optional* here: methods prose is boilerplate, and the
+  citation is the payload.
+- **Method** — the shared technique (e.g. *traction force microscopy*): a thin
+  `methods/<slug>.yaml` node, symmetric with `claims/`. Method-uses roll up into it; it may
+  roll up into a broader Method (the **method DAG**: TFM → force microscopy) and may name
+  its canonical origin with `introduced_by: <citekey>`.
+
+**The braid.** An affirmation with `evidence: novel-data` may point — via an optional
+`via:` — at the method-use that produced its evidence. This makes *"we found X **via** T"*
+first-class: `novel-data` finally has a companion naming *how* the data was obtained, so
+the graph can answer "everything established via TFM" or "is this finding method-dependent?"
+
+**No new machinery for the frontier.** Because a method-use `cites` its methods paper
+exactly as an affirmation cites a source paper, **methods papers enter the same stub
+frontier and are promoted the same way.** Promoting a `type: methods` stub → curated is the
+frontier walk on the how axis; it fleshes out the Method node that paper introduced.
+
+**Still reserved:** the bridge from a Method to *this lab's own* `protocols/` (the
+lab-notebook cross-link, §12) — distinct from the literature-internal how axis activated
+here, which is now part of the core model.
 
 ---
 
@@ -270,7 +301,8 @@ Because first-class papers are human-curated and **the human supplies the PDF**,
 - **AI–human curation interface** — the propose/accept rhythm; how a paper's proposed
   local subgraph is surfaced and accepted/edited/rejected. *A separate design challenge,
   next.*
-- **The "how" axis** — `uses-method` edges + methods-paper ↔ `protocols/` bridge (§7).
+- **The `protocols/` bridge** — linking a Method to *this lab's own* `protocols/` (the
+  lab-notebook cross-link). The literature-internal how axis itself is now in the core (§7).
 - **Cross-link to experiments** — a claim → an `experiments.db` experiment that tests it;
   unifies the lab notebook and the literature into one graph.
 - **Additional views** — matrix / comparison (ORKG, Elicit), per-question synthesized answers.
@@ -282,9 +314,9 @@ Because first-class papers are human-curated and **the human supplies the PDF**,
 ## 13. Converged model — one-screen summary
 
 ```
-Layers:   Sources (Paper, Author) · Atoms (Affirmation, Question) · Abstractions (broader claims)
+Layers:   Sources (Paper, Author) · Atoms (Affirmation, Question, Method-use) · Abstractions (claims, methods)
 
-Nodes:    Paper(type; curated | stub) · Affirmation · Question · Author
+Nodes:    Paper(type; curated | stub) · Affirmation · Question · Method-use · Author
 
 Edges:    Author      → Paper        position: first | middle | last (+ corresponding: true)
           Paper        → Affirmation  asserts; evidence: novel-data | novel-theory | none
@@ -294,8 +326,14 @@ Edges:    Author      → Paper        position: first | middle | last (+ corres
           Question     → broader Question rollup
           Question     → broader Claim answered-by      (curated)
           Claim        ⟷ Claim        relates-to | depends-on
+          Paper        → Method-use   applies                          (how axis, §7)
+          Method-use   → Method       uses
+          Method-use   → Paper        cites; role: source              (methods paper → frontier)
+          Affirmation  → Method-use   via                              (optional braid)
+          Method       → Method       rollup
+          Method       → Paper        introduced-by                    (optional)
 
 Principles: curation-paced · generalize-don't-merge · cheap authoring · lazy frontiers
-Methods papers: parked (type=methods), "how" axis reserved
+Methods: type=methods papers own the how axis — Method-use atoms roll up to Method nodes (§7)
 Acquisition: human supplies first-class PDFs; stubs = open metadata only
 ```

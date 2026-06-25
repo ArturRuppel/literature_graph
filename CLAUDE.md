@@ -7,18 +7,22 @@ the rate limiter; never flood. A half-finished graph is a normal, valid state.**
 
 ## Read these first (in order)
 
-1. [CONCEPT.md](CONCEPT.md) — the model: 4 node types, 8 edges, the curated/stub frontier,
-   the rollup DAG. *What* the graph is and *why*.
+1. [CONCEPT.md](CONCEPT.md) — the model: 5 node types, three braided axes (what / why /
+   how), the curated/stub frontier, the rollup DAG. *What* the graph is and *why*.
 2. [SCHEMA.md](SCHEMA.md) — the on-disk data model: one diffable YAML per curated paper,
    thin files for abstractions, a stub registry. *How* it's written to disk.
-3. [tools/lit/](tools/lit/) — the `lit` CLI, self-contained (package, tests, spec).
+3. [CURATION.md](CURATION.md) — the reading protocol: the five-pass sweep that turns a
+   paper's full text into its proposed local subgraph. *How* a paper is read in.
+4. [tools/lit/](tools/lit/) — the `lit` CLI, self-contained (package, tests, spec).
    Design spec: [tools/lit/docs/2026-06-25-litgraph-ingest-design.md](tools/lit/docs/2026-06-25-litgraph-ingest-design.md).
-4. [example/](example/) — a small worked library exercising every node type and edge.
+5. [example/](example/) — a small worked library exercising every node type and edge.
 
 ## Mental model (the 30-second version)
 
-- **Nodes:** Paper · Affirmation · Question · Author. Affirmations/Questions are *born
-  nested inside* a curated paper, each welded to an exact `quote`.
+- **Nodes:** Paper · Affirmation · Question · Method-use · Author. Affirmations/Questions
+  are *born nested inside* a curated paper, each welded to an exact `quote`. Method-uses
+  ride a parallel *how* axis (CONCEPT §7): `methods/` techniques, braided to novel-data
+  affirmations via `via:`.
 - **Two tiers, encoded by file presence:** a paper is **curated** iff
   `curated/<citekey>.yaml` exists; otherwise it's a **stub** (an entry in `stubs.yaml`).
   The set of stubs *is* the citation frontier.

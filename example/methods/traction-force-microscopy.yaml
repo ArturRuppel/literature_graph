@@ -1,0 +1,5 @@
+text: "Traction force microscopy"
+rollup: force-microscopy             # the method DAG: TFM is-a force microscopy (CONCEPT §7)
+introduced_by: Butler2002AmJPhysiol  # canonical origin — the methods paper that defined the technique
+# Used by Ruppel2023NatPhys:m1; the incoming `uses` edge lives on the method-use and is
+# inverted by the generator → "used by N papers" is just a count, never bookkept here.

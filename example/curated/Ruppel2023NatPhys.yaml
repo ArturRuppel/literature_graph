@@ -16,6 +16,7 @@ affirmations:
     text:  "Traction forces in epithelial monolayers rise with substrate stiffness."
     quote: "average traction stress increased monotonically as substrate modulus went from 5 to 50 kPa"
     evidence: novel-data             # the paper's own measurement…
+    via: [m1]                        # …obtained *via* method-use m1 (TFM) — the braid (CONCEPT §7)
     cites:
       - {paper: Jones2018BiophysJ, role: corroborates}   # …positioned: it supports Jones' single-cell result
     rollups:
@@ -57,3 +58,11 @@ questions:
     text:   "What sets the baseline cortical tension of a cell?"
     status: answered
     answered_by: cytoskeleton-sets-tension
+
+methods:                             # the *how* axis (CONCEPT §7) — method-uses, braided to a1 via `via`
+  - id: m1
+    text:  "traction force microscopy"
+    uses:  traction-force-microscopy # rolls up to the shared Method node (methods/<slug>.yaml)
+    cites:
+      - {paper: Butler2002AmJPhysiol, role: source}   # the methods paper that introduced TFM → enters the frontier
+    # no `quote` — optional for a method-use: the citation is the payload, not a quote weld

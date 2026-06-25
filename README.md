@@ -16,12 +16,15 @@ their own knowledge graph.
 
 ## Read these in order
 
-1. **[CONCEPT.md](CONCEPT.md)** — the converged model: 4 node types, 8 edges, the
-   curated/stub frontier, the rollup DAG. *What* the graph is and *why* it has this shape.
+1. **[CONCEPT.md](CONCEPT.md)** — the converged model: 5 node types across three braided
+   axes (what / why / how), the curated/stub frontier, the rollup DAG. *What* the graph is
+   and *why* it has this shape.
 2. **[SCHEMA.md](SCHEMA.md)** — the on-disk data model: one diffable YAML per curated
    paper, thin files for abstractions, a stub registry. *How* it is written to disk.
-3. **[example/](example/)** — a small, fully-resolvable worked library exercising every
-   node type and all eight edges. Start here to see real YAML.
+3. **[CURATION.md](CURATION.md)** — the reading protocol: the five-pass sweep that turns a
+   paper's full text into its proposed local subgraph. *How* a paper is read in.
+4. **[example/](example/)** — a small, fully-resolvable worked library exercising every
+   node type and every edge. Start here to see real YAML.
 
 ## Architecture in one diagram
 
@@ -32,7 +35,7 @@ read + curate, one paper at a time      │
         │                               │
         ▼                               │
 YAML source of truth (git) ◀────────────┘   curated/*.yaml · claims/*.yaml
-        │                                    questions/*.yaml · stubs.yaml
+        │                                    questions/*.yaml · methods/*.yaml · stubs.yaml
         │  generator (this tool)
         ▼
    graph.db (SQLite, gitignored build artifact)  ──▶  bibliography + knowledge-graph views

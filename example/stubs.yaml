@@ -18,3 +18,9 @@ Smith2010PhysRevLett:                # `contradicted` by Ruppel2023NatPhys:a4
   year: 2010
   doi: 10.1103/PhysRevLett.104.168104
   type: original
+
+Butler2002AmJPhysiol:                # methods paper: introduced TFM; cited `source` by method-use Ruppel2023NatPhys:m1
+  title: "Traction fields, moments, and strain energy that cells exert on their surroundings"
+  year: 2002
+  doi: 10.1152/ajpcell.00270.2001
+  type: methods                      # a methods-paper stub — promoted, it fleshes out methods/traction-force-microscopy
