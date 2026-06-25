@@ -7,27 +7,35 @@ the rate limiter; never flood. A half-finished graph is a normal, valid state.**
 
 ## Read these first (in order)
 
-1. [CONCEPT.md](CONCEPT.md) — the model: 5 node types, three braided axes (what / why /
-   how), the curated/stub frontier, the rollup DAG. *What* the graph is and *why*.
+1. [CONCEPT.md](CONCEPT.md) — the model: **one primitive (the slice) in a container
+   (the paper), three edges**, everything else emergent. *What* the graph is and *why*.
 2. [SCHEMA.md](SCHEMA.md) — the on-disk data model: one diffable YAML per curated paper,
-   thin files for abstractions, a stub registry. *How* it's written to disk.
+   thin files for broad slices, a stub registry. *How* it's written to disk.
 3. [CURATION.md](CURATION.md) — the reading protocol: the four-pass sweep that turns a
    paper's full text into its proposed local subgraph. *How* a paper is read in.
 4. [tools/lit/](tools/lit/) — the `lit` CLI, self-contained (package, tests, spec).
    Design spec: [tools/lit/docs/2026-06-25-litgraph-ingest-design.md](tools/lit/docs/2026-06-25-litgraph-ingest-design.md).
-5. [example/](example/) — a small worked library exercising every node type and edge.
+5. [example/](example/) — a small worked library on the lean slice model (SCHEMA v2).
+6. [docs/2026-06-25-visualization-design.md](docs/2026-06-25-visualization-design.md) —
+   *future* direction for showing the graph: the **recursive container view** (+ reference
+   mockups in `docs/mockups/`). Not yet built.
 
 ## Mental model (the 30-second version)
 
-- **Nodes:** Paper · Affirmation · Question · Method-use · Author. Affirmations/Questions
-  are *born nested inside* a curated paper, each welded to an exact `quote`. Method-uses
-  ride a parallel *how* axis (CONCEPT §7): `methods/` techniques, braided to novel-data
-  affirmations via `via:`.
-- **Two tiers, encoded by file presence:** a paper is **curated** iff
-  `curated/<citekey>.yaml` exists; otherwise it's a **stub** (an entry in `stubs.yaml`).
-  The set of stubs *is* the citation frontier.
+- **One primitive — the slice**, inside a **container `P`** (the paper). Three slice kinds:
+  **Claim · Question · Method**, each welded to an exact `quote` (methods optional),
+  recursively sliceable. A paper *is* its slices.
+- **Three edges:** `leads-to` (the support skeleton — grounding · derivation ·
+  generalization · citation; authored as `grounded_in` ⟂ `leads_to`), `answers` (claim →
+  question), `corroborate` / `contradict` (lateral stance). A **measurement** Method is a
+  *floor* where grounding bottoms out; a *model* is a Method that layers on measurements.
+- **Everything else is emergent — no node fields:** open/answered, original/borrowed,
+  grounded/plausible, evidence balance (CONCEPT §13). Don't author `evidence`/`status`/`role`.
+- **Two tiers, by file presence:** *curated* iff `curated/<citekey>.yaml` exists; else a
+  **stub** — an un-sliced container in `stubs.yaml`. The set of stubs *is* the frontier; an
+  edge targets the container `P` until curation slices it (the wildcard sharpens).
 - **Generalize, don't merge:** never equate two claims; co-parent them under a broader
-  `claims/` node. Paper-specific phrasing and quotes are never destroyed.
+  `claims/` node via `leads_to` (≥2 children). Paper-specific phrasing and quotes survive.
 
 ## Conventions this repo enforces
 
@@ -49,7 +57,7 @@ the rate limiter; never flood. A half-finished graph is a normal, valid state.**
   citation (DOI-anchored via OpenAlex), and an AI-parsable `<citekey>.md` full text beside
   the (renamed) PDF. **Non-interactive**: an agent runs it, then agent + human review the
   written YAML together. Use `--dry-run` to preview without writing/renaming. It does *not*
-  extract affirmations/questions — that's the future curation step (CONCEPT §12).
+  extract the claim/question/method slices — that's the curation step (CURATION.md).
 
 ## Curating a paper
 

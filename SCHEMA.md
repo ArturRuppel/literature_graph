@@ -1,12 +1,13 @@
 # SCHEMA — the on-disk data model
 
-**Status:** v1 draft · **Date:** 2026-06-25 · companion to [CONCEPT.md](CONCEPT.md)
+**Status:** v2 (lean / slice model) · **Date:** 2026-06-25 · companion to [CONCEPT.md](CONCEPT.md)
 
-The concept doc converged the *graph* (5 node types, three braided axes — CONCEPT §13). This doc fixes the
-*files*: how that graph is written to disk so it is **diffable, hand-editable, and
-machine-buildable** — the same philosophy this ecosystem already uses for its
-experiment database (a diffable text dump is the source of truth in git; the binary
-DB is a gitignored build artifact a generator produces from it).
+CONCEPT converged the *graph* to **one primitive** (the slice), in a **container** (the
+paper), wired by **three edges** (`leads-to` · `answers` · `corroborate`/`contradict`), with
+everything else emergent (CONCEPT §13). This doc fixes the *files*: how that graph is written
+to disk so it stays **diffable, hand-editable, and machine-buildable** — the same philosophy
+the experiment database already uses (a diffable text dump is the source of truth in git; the
+binary DB is a gitignored build artifact a generator produces from it).
 
 ```
 YAML source of truth (git)  ──generator──▶  graph.db (SQLite, gitignored)  ──▶  catalog views
@@ -21,31 +22,27 @@ No code is required to *define* the model — this spec plus the worked
 
 ## 1. The cardinal rule: one file per curated paper
 
-A node's home is chosen so that **the unit of storage equals the unit of curation**
-(CONCEPT §5: "curating one paper = producing its local subgraph"). One curation
-session touches one file → one clean commit, one readable diff.
+A node's home is chosen so **the unit of storage equals the unit of curation** (CONCEPT §5:
+"curating one paper = producing its local subgraph"). One session touches one file → one clean
+commit, one readable diff.
 
 | Node | Home | Rationale |
 |---|---|---|
-| **Curated paper** | `curated/<citekey>.yaml` — self-contained: metadata **+** its nested affirmations / questions / **method-uses** / edges | the local subgraph |
-| **Broader claim** | `claims/<slug>.yaml` (thin) | abstractions own no paper → can't nest → their own shard; the rollup targets |
-| **Broader question** | `questions/<slug>.yaml` (thin) | free-floating questions; **see §7 — CONCEPT §12 left this shallow/open** |
-| **Method** | `methods/<slug>.yaml` (thin) | shared techniques on the *how* axis (CONCEPT §7); rollup targets, symmetric with claims |
-| **Stub** (uncurated paper) | one entry in `stubs.yaml` | bib-only, machine-fetched, not hand-curated → a flat registry avoids file-explosion |
-| **Author** | *emergent* — derived from each paper's `authors:` | keeps authoring cheap; no hand-maintained author files in v1 |
-
-Rejected alternatives: **whole graph in one file** (every edit collides; merge hell)
-and **one file per node** (an affirmation has no life outside its paper — CONCEPT §3 —
-so splitting atoms out scatters one paper's subgraph and lets nodes orphan).
+| **Curated paper** (the container `P`) | `curated/<citekey>.yaml` — metadata **+** its `claims` / `questions` / `methods` slices **+** their edges | the local subgraph |
+| **Broad claim** | `claims/<slug>.yaml` (thin) | a `leads_to` target shared across papers; minted only when **≥2** slices share it (CONCEPT §10.2) |
+| **Broad question** | `questions/<slug>.yaml` (thin) | shared `leads_to` target for questions |
+| **Broad Method** | `methods/<slug>.yaml` (thin) | shared technique; minted only when **≥2** papers share it |
+| **Stub** (uncurated paper) | one entry in `stubs.yaml` | an **un-sliced container** — bib-only, machine-fetched, holding only the wildcard |
+| **Author** | *emergent* — derived from each paper's `authors:` | no hand-maintained author files |
 
 ### Two things fall out for free
 
 - **Tier is encoded by file presence.** A paper is *curated* iff `curated/<citekey>.yaml`
-  exists; otherwise it is a *stub* (an entry in `stubs.yaml`). The curation frontier
-  is the set of stubs — no `tier:` field anywhere. A citekey lives in exactly one of
-  the two places; **promotion = move its `stubs.yaml` entry into a new `curated/` file.**
-- **`asserts` / `poses` edges need no syntax.** They are nesting: an affirmation/question
-  inside a paper file *is* that paper asserting/posing it.
+  exists; else it is a *stub* (an entry in `stubs.yaml`). The frontier is the set of stubs —
+  no `tier:` field. **Promotion = move the `stubs.yaml` entry into a new `curated/` file** and
+  slice it; edges that pointed at the container `P` then sharpen to its slices (CONCEPT §2).
+- **A slice's home in a container needs no syntax.** A `claims`/`questions`/`methods` entry
+  *inside* a paper file *is* that paper containing it — the only implicit edge.
 
 ---
 
@@ -54,24 +51,18 @@ so splitting atoms out scatters one paper's subgraph and lets nodes orphan).
 ```
 <root>/
   curated/
-    Ruppel2023NatPhys.yaml   # one curated paper = its whole local subgraph
+    Ruppel2023eLife.yaml     # one curated paper = its whole local subgraph
     ...
-  claims/
-    traction-scales-with-stiffness.yaml
-    ...
-  questions/
-    q-rigidity-sensing.yaml
-    ...
-  methods/
-    traction-force-microscopy.yaml
-    ...
-  stubs.yaml                 # { citekey: bib-metadata } for every uncurated paper
+  claims/      <slug>.yaml   # thin broad claims (≥2 children)
+  questions/   <slug>.yaml   # thin broad questions
+  methods/     <slug>.yaml   # thin broad Methods (≥2 papers)
+  stubs.yaml                 # { citekey: bib-metadata } — un-sliced containers
   config.toml                # deployment-local (private): external PDF dir, etc.
 ```
 
-In the **public repo** this tree lives under [`example/`](example/) as an
-illustration. In a **private data repo** it lives at whatever root the deployment
-chooses (e.g. `literature/`), and `config.toml` carries the real PDF path.
+In the **public repo** this tree lives under [`example/`](example/). In a **private data
+repo** it lives at the deployment's root (e.g. `literature/`), with the real PDF path in
+`config.toml`.
 
 ---
 
@@ -79,171 +70,156 @@ chooses (e.g. `literature/`), and `config.toml` carries the real PDF path.
 
 | Id | Form | Source |
 |---|---|---|
-| **citekey** | `<Family><Year><Venue>` CamelCase, e.g. `Ruppel2023eLife`; `a/b/c` suffix to disambiguate same-DOI collisions. `Venue` = ISO-4 journal abbreviation (+ override map for brand names like `eLife`). Also names the PDF, its `.md`, and the `pdf` field | filename stem of a `curated/` file, **or** a key in `stubs.yaml` |
-| **affirmation / question / method-use (local)** | `a1`, `a2` … (evidence-bearing) **or** `ca1`, `ca2` … (context / `evidence: none`) / `q1`, `q2` … / `m1`, `m2` … — unique within its paper file. The `a` vs `ca` split is a curator mnemonic only: type comes from the list, and nothing cross-references these ids, so an `a↔ca` reclassification is a safe rename | hand-assigned |
-| **affirmation / question (global)** | `<citekey>:<local>` e.g. `Ruppel2023NatPhys:a1` | composed by the generator |
-| **claim / broader-question / method** | kebab-case `<slug>`, globally unique | filename stem in `claims/`, `questions/`, or `methods/` |
+| **citekey** | `<Family><Year><Venue>` CamelCase, e.g. `Ruppel2023eLife`; `a/b/c` suffix for same-DOI collisions. `Venue` = ISO-4 abbreviation (+ override map for brand names like `eLife`). Also names the PDF and its `.md` | filename stem of a `curated/` file, **or** a key in `stubs.yaml` |
+| **slice (local)** | `c1`, `c2` … (claims) / `q1`, `q2` … (questions) / `m1`, `m2` … (methods) — unique within its paper file. **No `a`/`ca` split** — "original vs borrowed" is emergent (§7), not encoded in the id | hand-assigned |
+| **slice (global)** | `<citekey>:<local>`, e.g. `Ruppel2023eLife:c1` | composed by the generator |
+| **broad claim / question / Method** | kebab-case `<slug>`, globally unique | filename stem in `claims/`, `questions/`, `methods/` |
 
-Cross-references are always one of these id strings; the generator resolves them into
-edges and **fails the build on a dangling reference** (§6).
+**Ref syntax** — every edge target is one string, and its *form* says what it points at:
+
+| form | refers to | in an edge, means |
+|---|---|---|
+| `m3`, `c2`, `q1` | a **local slice** in the same file | the precise slice |
+| `force-propagation-is-active` | a **broad** `claims/`·`questions/`·`methods/` slug | the shared node |
+| `Liu2010Pnas` | a **container** (curated or stub) | the wildcard — "some slice in here, not yet resolved" (CONCEPT §2) |
+| `Liu2010Pnas:c3` | a **sharpened** cross-paper slice | the precise slice, once that paper is curated |
+
+The generator resolves every ref into an edge and **fails the build on a dangling reference** (§6).
 
 ---
 
-## 4. Node field reference
+## 4. The slice and its edges
 
 ### Curated paper — `curated/<citekey>.yaml`
 
 | Field | Req | Type | Notes |
 |---|---|---|---|
 | `title` | ✔ | str | |
-| `type` | ✔ | enum | `original \| review \| methods \| perspective \| commentary` (CONCEPT §6) |
+| `type` | ✔ | enum | `original \| review \| methods \| perspective \| commentary` — a **filter only**, no evidential weight (CONCEPT §6) |
 | `year` | ✔ | int | |
-| `doi` | – | str | |
-| `url` | – | str | |
-| `authors` | ✔ | list | each `{name, position?, corresponding?}`; list order = byline order. `position` ∈ `first \| middle \| last` (default `middle`) — an authorship **tier**, so *multiple* `first`s are allowed (co-first / equal-contribution). `corresponding: true` is an **independent** flag (any number of authors). |
-| `pdf` | – | str | defaults to `<citekey>.pdf` under the config PDF dir; set to override |
-| `affirmations` | – | list | see below — absent/empty is valid (partial curation is normal) |
-| `questions` | – | list | see below |
-| `methods` | – | list | see below — the paper's method-uses (CONCEPT §7); absent/empty valid |
-| `note` | – | str | free-text curator orientation (e.g. the paper's *approach*); not a graph element |
+| `doi` / `url` / `pdf` | – | str | `pdf` defaults to `<citekey>.pdf` under the config PDF dir |
+| `authors` | ✔ | list | each `{name, position?, corresponding?}`; list order = byline. `position` ∈ `first \| middle \| last` (default `middle`) — an authorship **tier**, so multiple `first`s = co-first. `corresponding: true` is **independent** (any number) |
+| `note` | – | str | free-text curator orientation (e.g. the experimental setup); not a graph element |
+| `claims` / `questions` / `methods` | – | list | the paper's slices (below) — absent/empty is valid (partial curation is normal) |
 
-**Affirmation** (item of `affirmations`):
+**Claim** (item of `claims`):
 
 | Field | Req | Type | Notes |
 |---|---|---|---|
-| `id` | ✔ | str | unique within file (`a1`…) |
+| `id` | ✔ | str | `c1`… unique within file |
 | `text` | ✔ | str | the natural-language claim — what you'd write in an intro |
-| `quote` | ✔ | str | exact supporting text. For `novel-*`: the evidential sentence. For `evidence: none`: the citing sentence |
-| `evidence` | – | enum | `novel-data \| novel-theory \| none` (CONCEPT §6) — what *original* evidence this affirmation rests on; unset is valid |
-| `cites` | – | list | each `{paper: <citekey>, role: source \| corroborates \| contradicts \| extends \| mentions}`; any affirmation may cite any number of papers; each `paper` enters as a stub if not curated (the citation frontier) |
-| `rollups` | – | list | each `{to: <claim-slug>, polarity: concordant \| discordant \| neutral}` — the edge lives **here**, on the child, authored at curation time |
-| `via` | – | list | local method-use ids (`m1`…) — the **braid** (CONCEPT §7): the technique(s) this finding's data rests on. Typically set when `evidence: novel-data` |
-| `note` | – | str | free-text curator judgement — **not** quote-bound, never rolled up, ignored by edge-building. The same optional `note` is allowed on questions and method-uses |
+| `quote` | ✔ | str | exact supporting text, a verbatim substring of the paper's `.md` |
+| `grounded_in` | – | ref list | **`leads-to` edges *into* this claim** — what it rests on. Heterogeneous; the target's *kind* is the meaning: a **method** ref → empirical floor; a **claim** ref → premise / derivation; a **container/citation** ref → a borrowed (restated) claim (CONCEPT §6.1) |
+| `leads_to` | – | slug list | **`leads-to` edges *out* of this claim** — the broader claim(s) it generalizes into (the old "rollup", unsigned) |
+| `corroborates` / `contradicts` | – | ref list | **lateral** stance toward an independently-grounded claim/paper — the only *signed* edges (CONCEPT §4) |
+| `answers` | – | ref list | the question(s) this claim answers (CONCEPT §4) |
+| `floor` | – | `true` | declares this claim an **axiom** (a self-grounding formal floor); the only deliberate marker in the model (CONCEPT §3) |
+| `note` | – | str | free-text curator judgement; not quote-bound, never an edge |
 
 **Question** (item of `questions`):
 
 | Field | Req | Type | Notes |
 |---|---|---|---|
-| `id` | ✔ | str | unique within file (`q1`…) |
-| `text` | ✔ | str | interrogative; no quote, no stance |
-| `status` | ✔ | enum | `open \| answered` — an **open** question is a first-class frontier marker |
-| `rollup` | – | question-slug | nests under a broader question (§7) |
-| `answered_by` | – | claim-slug | curated edge, typically when `status: answered` |
+| `id` | ✔ | str | `q1`… |
+| `text` | ✔ | str | interrogative; no stance, no quote |
+| `leads_to` | – | slug list | the broader question(s) it generalizes into |
 
-**Method-use** (item of `methods`):
+> **open vs answered is emergent** — a question is *answered* iff some claim `answers` it
+> (§7). No `status` field.
 
-| Field | Req | Type | Notes |
-|---|---|---|---|
-| `id` | ✔ | str | unique within file (`m1`…) |
-| `text` | ✔ | str | the technique as applied, in natural language (e.g. "traction force microscopy") |
-| `uses` | ✔ | method-slug | the shared `methods/<slug>` node this application rolls up to |
-| `quote` | – | str | exact methods-section sentence; **optional** (methods prose is boilerplate; verified only when present) |
-| `cites` | – | list | each `{paper: <citekey>, role: source}` — the methods paper that introduced the technique; enters as a stub if not curated (the how-axis frontier) |
-
-### Broader claim — `claims/<slug>.yaml`
-
-Thin by design — it is a *target*; its incoming `rollup` edges are stored on the
-affirmations and inverted by the generator (so the "5 support / 2 contradict"
-evidence meter of CONCEPT §9 is just a count, never bookkept here).
+**Method** (item of `methods`):
 
 | Field | Req | Type | Notes |
 |---|---|---|---|
-| `text` | ✔ | str | the broad statement |
-| `relates_to` | – | list | claim-slugs — symmetric free link |
-| `depends_on` | – | list | claim-slugs — directed link |
+| `id` | ✔ | str | `m1`… |
+| `text` | ✔ | str | the technique (e.g. "traction force microscopy") |
+| `grounded_in` | – | ref list | what this method rests on: the paper(s) that introduced it, **and/or other methods it layers on** (a model `grounded_in` the measurements it consumes — CONCEPT §7). A measurement method grounding only in its source paper is a **floor** |
+| `leads_to` | – | slug list | a broader Method it generalizes into (the method ladder: TFM → force microscopy) |
+| `quote` | – | str | exact methods-section sentence; **optional** (methods prose is boilerplate) |
 
-### Broader question — `questions/<slug>.yaml`
+### Thin broad slice — `claims/<slug>.yaml`, `questions/<slug>.yaml`, `methods/<slug>.yaml`
 
-| Field | Req | Type | Notes |
-|---|---|---|---|
-| `text` | ✔ | str | |
-| `rollup` | – | question-slug | questions nest into broader questions |
-
-### Method — `methods/<slug>.yaml`
-
-Thin, symmetric with `claims/` — a *target* on the how axis (CONCEPT §7). Its incoming
-`uses` edges live on the method-uses and are inverted by the generator (so "used by 9
-papers" is just a count, never bookkept here).
+Thin by design — a `leads_to` *target*. Its incoming edges live on the children and are
+inverted by the generator (so the "5 support / 2 contradict" meter of CONCEPT §9 is just a
+count, never bookkept here).
 
 | Field | Req | Type | Notes |
 |---|---|---|---|
-| `text` | ✔ | str | the technique name |
-| `rollup` | – | method-slug | nests under a broader Method (the method DAG, e.g. TFM → force microscopy) |
-| `introduced_by` | – | citekey | the methods paper that is this technique's canonical source; optional (generalize-don't-merge — a broad Method may have no single origin) |
+| `text` | ✔ | str | the broad statement / question / technique name |
+| `leads_to` | – | slug list | generalizes further up the ladder (a broad claim into a broader one; TFM → force microscopy) |
 
 ### Stub — entry in `stubs.yaml`, keyed by citekey
 
 ```yaml
-Ramms2013Pnas:
-  title: "…"
-  year: 2013
-  doi: 10.1073/pnas.1313491110
+Liu2010Pnas:
+  title: "Mechanical tugging force regulates the size of cell–cell junctions"
+  year: 2010
+  doi: 10.1073/pnas.0914547107
   type: original        # optional
 ```
 
-Bib-only. Reached only by some affirmation's `cites`. Carries no atoms (not read yet).
+An **un-sliced container**: bib-only, reached by some slice's `grounded_in` / `corroborates`
+/ `contradicts`. Carries no slices (not read yet).
 
 ### Author — emergent
 
-Not a file. The generator collects distinct `name`s across all `authors:` lists and
-attaches their `position` per paper, yielding the Author nodes and the
-`Author → Paper {position}` edges of CONCEPT §4 — for free, no hand authoring.
+Not a file. The generator collects distinct `name`s across all `authors:` lists and attaches
+their `position` per paper, yielding the Author nodes and `Author → Paper {position}` edges —
+for free, no hand authoring.
 
 ---
 
-## 5. Edge encoding — where each is authored
+## 5. Edge encoding — one authoring site each
 
-| CONCEPT §4 edge | Authored in | As |
-|---|---|---|
-| `Author → Paper` (position) | curated file `authors[]` | `{name, position}` |
-| `Paper → Affirmation` (asserts) | curated file | **nesting** (implicit) + `evidence` tag |
-| `Affirmation → Paper` (cites) | affirmation `cites[]` | `{paper, role}` — any affirmation, any number |
-| `Paper → Question` (poses) | curated file | **nesting** (implicit) |
-| `Affirmation → Claim` (rollup) | affirmation `rollups[]` | `{to, polarity}` |
-| `Question → Question` (rollup) | question `rollup` | question-slug |
-| `Question → Claim` (answered-by) | question `answered_by` | claim-slug |
-| `Claim ⟷ Claim` (relates-to / depends-on) | claim `relates_to[]` / `depends_on[]` | claim-slug |
-| `Paper → Method-use` (applies) | curated file | **nesting** (implicit) |
-| `Method-use → Method` (uses) | method-use `uses` | method-slug |
-| `Method-use → Paper` (cites) | method-use `cites[]` | `{paper, role: source}` |
-| `Affirmation → Method-use` (via) | affirmation `via[]` | local method-use id |
-| `Method → Method` (rollup) | method `rollup` | method-slug |
-| `Method → Paper` (introduced-by) | method `introduced_by` | citekey |
+| CONCEPT §4 edge | Authored on | As | Direction |
+|---|---|---|---|
+| **`leads-to`** (grounding / derivation / generalization / citation) | the curated slice | `grounded_in` (arrow **in**) *or* `leads_to` (arrow **out**) | ground → derived |
+| **`answers`** | the answering claim | `answers` | claim → question |
+| **`corroborate` / `contradict`** | the asserting claim | `corroborates` / `contradicts` | lateral (signed) |
+| `Author → Paper` (position) | the paper `authors[]` | `{name, position}` | — |
 
-Every edge has **exactly one authoring site**, always the place where the curation
-decision is made — so there is no two-sided bookkeeping to keep in sync.
+`leads-to` is **one edge type**; `grounded_in` and `leads_to` are inverse *views* of it, so
+every edge is authored exactly once on the curated slice — never by editing a shared `claims/`
+file or an upstream stub. Author downward edges (to floors / premises / citations) as
+`grounded_in`; upward edges (to broader claims) as `leads_to`.
 
 ---
 
 ## 6. Validation rules (the generator enforces; build fails otherwise)
 
-1. **No dangling references.** Every `cites[].paper` resolves to a `curated/` file or a
-   `stubs.yaml` key; every `rollups[].to` and `answered_by` to a `claims/` file;
-   every question `rollup` to a `questions/` file; every method-use `uses` and method
-   `rollup` to a `methods/` file; every method `introduced_by` to a `curated/` file or
-   `stubs.yaml` key; every affirmation `via[]` entry to a local method-use id in the same file.
-2. **Local ids unique** within each paper file (across `a*` / `ca*` / `q*` / `m*`).
+1. **No dangling refs.** Every `grounded_in` / `leads_to` / `corroborates` / `contradicts` /
+   `answers` ref resolves to a local slice id, a `claims/`·`questions/`·`methods/` slug, a
+   `curated/` file or `stubs.yaml` key (a container), or a `<citekey>:<id>` slice.
+2. **Local ids unique** within each paper file (across `c*` / `q*` / `m*`).
 3. **Slugs / citekeys globally unique**; a citekey is never both curated and a stub.
-4. **Evidence ↔ citation-role coherence** (checked when both are set): a `source` cite ⇒
-   `evidence: none` (the claim is borrowed); a `corroborates` / `contradicts` / `extends`
-   cite ⇒ `evidence: novel-*` (you position your own finding); and `evidence: none` ⇒ at
-   least one `source` cite (something must carry the claim).
-5. **Rollup DAGs are acyclic** (CONCEPT §4) — both the claim and the method rollup DAGs;
-   DAGs, not trees, but no cycles.
-6. **Enums valid** (`type`, `evidence`, citation `role`, `polarity`, `position` ∈
-   `first|middle|last`, `corresponding` ∈ `true`/absent, `status`).
-7. **Method-use cites are `source`.** A method-use `cites` only with role `source` (it
-   borrows the technique); any other role there is an error.
-8. **Quote is verbatim.** Every affirmation `quote` — and every method-use `quote` when
-   present — is an exact substring of the paper's `.md` full text.
+4. **Quote is verbatim.** Every claim `quote` — and every method `quote` when present — is an
+   exact substring of the paper's `.md` full text.
+5. **`leads-to` is acyclic** (the support DAG; many-to-many, no cycles).
+6. **Kind coherence.** `leads_to` targets a same-kind broad slug (claim→claim, question→
+   question, method→method). `answers` targets a question. `corroborates`/`contradicts`
+   target a claim or a container. `floor: true` only on a claim.
+7. **No emergent fields authored.** `status`, `evidence`, citation `role`, rollup `polarity`
+   are **not** valid keys — they are derived (§7), and their presence is an error.
+8. **Enums valid** (`type`, `position` ∈ `first|middle|last`, `corresponding` ∈ `true`/absent).
 
 ---
 
-## 7. Open point — broader-question nesting (CONCEPT §12)
+## 7. Emergent properties (computed by the generator, never authored)
 
-CONCEPT §12 left it undecided "whether the question DAG stands alone or anchors onto
-claim altitudes (lean: anchored, shallow)." v1 takes the minimal, retractable stance:
-broader questions get their own thin `questions/` files, symmetric with claims, and
-`answered_by` is the only bridge from a question to a claim. If §12 later resolves to
-"anchored," the `questions/` dir collapses into claim altitudes with no change to the
-paper files.
+| property | rule |
+|---|---|
+| **open vs answered** (question) | answered iff some claim `answers` it |
+| **original vs borrowed** (claim) | borrowed iff its `grounded_in` reaches a **container/citation** (cross-paper) rather than a floor — a restatement (CONCEPT §6.1) |
+| **grounded vs plausible** (claim) | grounded iff its `leads-to` chain reaches a **floor** (a measurement method, or an axiom); else it dangles on reasoning |
+| **evidence balance** (claim) | count incoming `corroborates` vs `contradicts` |
+| **floor** (slice) | a slice whose own grounding bottoms out — a measurement method (grounding only in its source paper), or an `floor: true` axiom. *Models are methods that are **not** floors* — they `grounded_in` the methods below them (CONCEPT §7) |
+
+---
+
+## 8. Open point — broader-question nesting (CONCEPT §12)
+
+CONCEPT §12 left undecided "whether the question DAG stands alone or anchors onto claim
+altitudes (lean: anchored, shallow)." v1 takes the minimal, retractable stance: broad
+questions get their own thin `questions/` files, and a claim's `answers` is the only bridge
+from a question to a claim. If §12 later resolves to "anchored," `questions/` collapses into
+claim altitudes with no change to the paper files.

@@ -5,7 +5,7 @@
 
 A knowledge graph over the scientific literature, built *into* an electronic lab
 notebook. You read a
-paper, and the affirmations and questions inside it become curated, linkable nodes —
+paper, and the claims, questions and methods inside it become curated, linkable nodes —
 each welded to its source with an exact quote. Claims roll up from paper-specific and
 granular toward broad and general, so the graph doubles as a living, evidence-backed
 map of "what is known" on the topics you care about. Every node is something you could
@@ -27,7 +27,7 @@ never to flood. A half-finished graph is a normal, valid state.
   much overhead, a sandbox/API to fight, for virtually no gain once the semantic layer
   lives in our own YAML.)*
 - **The source of truth is plain-text YAML in git** — one diffable file per curated
-  paper, holding its affirmations, questions and edges. This mirrors the repo's
+  paper, holding its claim / question / method slices and edges. This mirrors the repo's
   philosophy (`experiments.sql` is the diffable form of the DB; derived/heavy artifacts
   are gitignored). See [SCHEMA.md](SCHEMA.md) for the on-disk layout.
 - **A generator builds a SQLite graph index + the catalog views** from that YAML. The
@@ -39,7 +39,7 @@ never to flood. A half-finished graph is a normal, valid state.
 human-supplied PDF ─▶ external PDF dir   [outside git, named by config]
                           │  read + curate, one paper at a time
                           ▼
-   per-paper YAML: affirmations / questions + edges   [git-tracked, diffable]  ◀ source of truth
+   per-paper YAML: claim / question / method slices + edges  [git-tracked, diffable]  ◀ source of truth
    broader claims / questions (free-floating)         [git-tracked]
                           │  generator
                           ▼
@@ -48,192 +48,205 @@ human-supplied PDF ─▶ external PDF dir   [outside git, named by config]
 
 ---
 
-## 2. Three layers
+## 2. One primitive — the slice, in a container
 
-| Layer | Members | Nature |
+The whole model is **slices** and **containers**.
+
+- A **slice** is an irreducible piece of a paper — the only kind of node. Three kinds:
+  **Claim · Question · Method** (§3). A slice is **recursively sliceable**: a claim
+  decomposes into sub-claims, which are themselves slices.
+- A **paper is a container `P`** — nothing but the grouping of its slices. A paper *is*
+  its slices; "the paper as a whole" is just `P`.
+- **Generality is not a separate layer.** A broad claim is simply a slice high in the
+  `leads-to` chain (§4): the granular end is paper-bound with a quote, the broad end is what
+  you'd write in a review's intro. **One continuous ladder** — no separate "abstraction"
+  node type, no "topic" type (a topic is just a claim at high altitude).
+- A **stub** is a container with no resolved slices yet — a single **wildcard** standing for
+  *"some slice in here, not yet cut."* **Curation = slicing the container** (§5).
+- **`P` is a valid endpoint for any edge whose target-kind it can host.** Aiming an edge at
+  `P` says *"the real target is some slice inside — not yet resolved."* As the container is
+  sliced, the edge **sharpens** from `P` to the specific slice — never forced; resting at
+  `P` is valid (the lazy frontier, §10).
+
+Authors sit **outside** this — a person attached to a container (provenance about who wrote
+it), not a slice.
+
+---
+
+## 3. Slice kinds (3) — and everything else emergent
+
+| Slice | is | terminates a chain? |
 |---|---|---|
-| **Sources** | Paper, Author | containers/people that *hold and connect* atoms — not atoms themselves |
-| **Atoms** | Affirmation, Question, Method-use | irreducible content, **born nested inside a curated paper** (affirmations/questions quote-bound) |
-| **Abstractions** | broader claims / topics / methods | free-floating generalizations that own no paper; the rollups |
+| **Claim** | an assertion — what you'd write in an intro; quote-bound when paper-local | only if it is an **axiom** (a claim declared self-grounding: a definition / postulate) |
+| **Question** | an interrogative — no stance, no quote | n/a |
+| **Method** | a technique — a *measurement* or a *model* | a **measurement** is a floor; a **model** is not (§7) |
 
-"Topic" is **not** a separate node type — a topic is just an affirmation at high
-altitude. The granular end of the ladder is paper-bound with a quote; the broad end is
-the abstraction you'd write in a review's intro. One continuous ladder of generality.
+A `leads-to` chain (§4) bottoms out at a **floor** — the two ways knowledge is grounded:
+
+- a **measurement Method** → *empirical* (data + reasoning); the data alone asserts nothing — reasoning
+  reads the claim out of it;
+- an **axiom** → *formal* (reasoning from a declared starting point; maths lives here).
+
+A floor is **wherever the curator stops decomposing**, not a metaphysically pure bottom: a
+measurement like traction-force microscopy already embeds theory, but we cite its source and
+stop — pragmatic, emergent. A **model** is a Method that does *not* stop: it `grounds in` the
+measurements it consumes and the theory it assumes, layering between data and the claims it
+feeds (§7) — so floor-ness is itself emergent (does *this* slice's grounding bottom out?).
+
+Everything above a floor is reasoning. **No `status` / `evidence` / `role` fields on any
+node** — every property we used to tag is read straight off the graph:
+
+| property | read from |
+|---|---|
+| question **open vs answered** | does it have an incoming `answers` edge? |
+| claim **original vs borrowed** | does its `leads-to` ground cross into another paper (a citation, §6.1)? |
+| claim **grounded vs merely plausible** | does its `leads-to` chain reach a **floor** (method or axiom), or dangle on reasoning? |
+| **evidence balance** of a claim | count `corroborate` vs `contradict` |
+
+The **only** deliberate marker left in the model is *"this slice is a floor"* — emergent for
+measurement Methods, a one-off declaration for an axiom. Strength is left emergent too (a proof and
+a hand-wave differ by what corroborates them, not by a label). **Authors** are still
+derived, not authored (§5).
 
 ---
 
-## 3. Node types (5)
-
-- **Paper** — carries a `type` (§6) and exists in one of two tiers (§5).
-- **Affirmation** — a knowledge atom. Always born nested in *one* curated paper, with an
-  exact supporting quote. Lives at some **altitude** in the rollup DAG.
-- **Question** — interrogative, not assertive. No quote, no stance. May be **open**
-  (an unanswered question is a first-class object — a marked research frontier) or
-  answered. Nests like affirmations.
-- **Method-use** — a *how* atom (§7): born nested in one curated paper, naming the
-  technique it applied and citing the methods paper that introduced it. Rolls up to a
-  shared **Method** the way an affirmation rolls up to a claim.
-- **Author** — a person. Links to papers with a position role.
-
----
-
-## 4. Edges
+## 4. Three edges
 
 ```
-Author → Paper            position: first | middle | last  (tier; co-first allowed)
-                          corresponding: true               (independent flag)
-
-Paper  → its Affirmation   asserts
-                           evidence: novel-data | novel-theory | none
-Affirmation → cited Paper  cites
-                           role: source | corroborates | contradicts | extends | mentions
-                           (the cited paper enters as a stub  ← the citation frontier)
-
-Paper  → its Question      poses
-
-Affirmation → broader Claim   rollup
-                              polarity: concordant | discordant | neutral
-Question    → broader Question rollup (nested)
-
-Question → broader Claim       answered-by   (curated edges, not a live query)
-Claim    ⟷ Claim               relates-to | depends-on   (free cross-level links)
-
-Paper  → its Method-use    applies                       (the how axis, §7)
-Method-use → Method        uses    (rolls the application up to the named technique)
-Method-use → methods Paper cites; role: source           (← pulls the methods paper into the frontier)
-Affirmation → Method-use   via     (optional braid: this finding rests on this technique)
-Method → broader Method    rollup (nested)               (the method DAG)
-Method → methods Paper     introduced-by                 (canonical origin; optional)
+leads-to              Claim ← Claim,  or  Claim ← Method / axiom (the floor)
+                      the entire support skeleton: grounding · derivation · generalization · citation
+answers               Claim → Question
+corroborate /         Claim ⟷ Claim   (lateral: two independently-grounded claims agree / clash)
+  contradict
 ```
 
-Key consequences of this shape:
+- **`leads-to` is one edge doing four jobs**, all the same orientation **ground → derived**:
+  - a method/axiom **leads to** a claim → *grounding* (reaching a floor, §3);
+  - one claim **leads to** another → *derivation* (the maths chain);
+  - specific claims **lead to** a broader one → *generalization* (the old "rollup" — same
+    edge, read upward; many-to-many, so the support DAG is not a tree);
+  - a source's claim **leads to** your restatement of it → *citation* (the speaker grounds
+    the listener, §6.1) — **cross-paper, and the citation lives on the *edge*, never as a
+    node attribute.**
+- **`corroborate` / `contradict` are *not* support** — neither claim grounds the other; they
+  are independently grounded and happen to agree or collide. This is the only place stance
+  lives, and the only **signed** edge. (The old "are these two claims the same?" merge is
+  still never forced: agreement is an *edge between distinct slices*, never a node-collapse.)
+- **`answers`** resolves a Question with a Claim — usually **intra-paper**, the self-
+  referential spine *"we asked Q, we found A"*; a question's answeredness is then just the
+  presence of this edge (§3).
+- **Container wildcard (§2):** any edge may land on a container `P` when its precise slice
+  isn't resolved (cite an un-sliced stub; park a method at the paper) and sharpens on
+  curation. **Authors** attach to the container, outside the slice graph (§5).
 
-- **A paper only ever *asserts* its own affirmations.** An affirmation *may* cite another
-  paper with a stance (`corroborates` / `contradicts`), but it points at the **paper**,
-  never at that paper's affirmation — so the lossy "are these two claims *the same*?"
-  merge judgment is never forced. (This is "Model 2", chosen over a shared-node model.)
-  Agreement at the level of *abstractions* is expressed at the shared rollup.
-- **Citations ground the cross-paper edges, and stance lives in two complementary places.**
-  A *citation* carries stance toward a specific prior **paper** (`corroborates` /
-  `contradicts` — "I argue with this paper"); a *rollup* carries stance toward a broader
-  **claim** (`concordant` / `discordant` — "I support / undermine this generalization").
-  Novelty does **not** mean uncited: a novel data point is usually born *positioned*
-  against prior work, and carries exactly those citations (§6).
-- **The rollup DAG is many-to-many** (not a tree): one granular atom can roll up under
-  several broad claims; a broad claim can reach down to atoms under *other* broad claims.
+This retires the old shape: 5 node-types → **one** (slice); ~15 edges → **three**; and the
+`evidence` / citation-`role` / `status` axes dissolve into structure (§3).
 
 ---
 
 ## 5. Two tiers of paper — the curation frontier, made explicit
 
-- **Curated (first-class):** actually read. *Rich* — carries its nested affirmations and
-  questions, each with quotes. Produced one paper at a time, human-paced. **The human
+- **Curated (first-class):** actually read. *Rich* — **sliced** into its claims, questions
+  and methods, each quote-welded. Produced one paper at a time, human-paced. **The human
   supplies the PDF.**
-- **Stub (second-class):** exists *only* because a curated paper points at it. Just bib
-  metadata + the incoming edge. Not yet read.
+- **Stub (second-class):** exists *only* because a curated paper grounds in it. An un-sliced
+  container — just bib metadata + the incoming edge (the wildcard, §2). Not yet read.
 
-**Promoting a stub → curated *is* the frontier walk.** When affirmation B in paper A
-cites D, D enters as a stub. The day B matters enough to chase its root, you read
-D and promote it; it sprouts its own nested atoms and citation-stubs. The stub/curated
+**Promoting a stub → curated *is* the frontier walk.** When claim B in paper A grounds in D
+(a `leads-to` citation, §4), D enters as a stub. The day B matters enough to chase its root,
+you read D and **slice it**; it sprouts its own claim/question/method slices and further
+stubs, and B's grounding sharpens from `P` to D's specific slice (§2). The stub/curated
 boundary *is* the curation frontier, encoded in the data.
 
-Promotion is **type-aware** (§6): promoting a research/review stub extracts its
-affirmations/questions; promoting a methods stub fleshes out the **Method** it introduced (§7).
-
 **Unit of work — curating one paper = producing its local subgraph:**
-`{ the paper, its nested affirmations, its nested questions, its citation-stubs, and the
-edges among them }` — e.g. *"A asserts B (evidence: novel-data) which `corroborates`
-cited paper D; A poses question C; B rolls up to broad claim E."*
-The whole graph is these local subgraphs stitched together where they share rollups or
-point at the same papers.
+`{ the container, its claim / question / method slices, the stubs it grounds in, and the
+edges among them }` — e.g. *"P contains claim B (grounded in a method) that `contradict`s
+cited paper D; question C, answered by B; B `leads-to` broad claim E."*
+The whole graph is these local subgraphs stitched where they share `leads-to` targets or
+ground in the same papers.
 
 ---
 
-## 6. Paper types, the evidence axis, and the citation axis
+## 6. Paper types — a cheap filter
 
-A cheap `type` label per paper, used for filtering:
-`original | review | methods | perspective | commentary`.
+A `type` label per paper, for filtering only: `original | review | methods | perspective |
+commentary`. It carries **no** evidential weight — grounding and strength are read off the
+graph (§3), never from the label.
 
-Evidential strength is **not** carried by `type`. It splits into **two orthogonal,
-per-affirmation axes** — this is where "citations ground the edges" lands. The old
-single `backing` field conflated them; separating them is the key refinement.
+The two extra axes an earlier draft carried are gone, dissolved into the slice model:
 
-**Evidence axis** — what *original* evidence the affirmation rests on:
+- the old **evidence** axis (`novel-data | novel-theory | none`) → *does a claim's
+  `leads-to` chain reach a floor, and which kind?* (§3) — emergent, not a field;
+- the old citation **role** enum (`source | corroborates | contradicts | extends |
+  mentions`) → the **edges themselves**: `leads-to` already carries grounding, citation and
+  extension (`source`/`extends` were only ever "this grounds that"); `corroborate` /
+  `contradict` carry lateral stance; and `mentions` is **dropped** (a bare "see also" earns
+  no edge).
 
-| evidence | meaning | typical source |
-|---|---|---|
-| `novel-data` | the paper's own experiment/measurement (experimental) | original research |
-| `novel-theory` | the paper's own model/argument (theoretical) | perspectives, theory papers |
-| `none` | no original evidence — the affirmation is carried entirely by what it cites | reviews live here |
+How each type still lands, with no special structure:
 
-**Citation axis** — every `cites` edge carries a **role**, because a claim is almost
-never made in a vacuum; it is positioned against prior work:
-
-| role | meaning |
+| type | its slices are mostly… |
 |---|---|
-| `source` | the cited paper stands *behind a claim the paper asserts* — the support the authors marshal for it. **Every** citation behind an asserted claim is a `source`; the role is read from the *citing* text, never by re-checking what the cited paper contains (we trust the authors; that audit is out of scope) |
-| `corroborates` | this (novel) finding *supports* the cited paper |
-| `contradicts` | this (novel) finding *refutes* the cited paper |
-| `extends` | builds on / generalizes the cited paper |
-| `mentions` | a neutral pointer that does *not* back an asserted claim — "there's a tool/method that does X *(cite)*," or a catalogue of "other labs have done X *(cite)*" |
+| original research | claims grounded in a **Method** floor; positioned against prior work by `corroborate` / `contradict` |
+| perspective / commentary | claims grounded only in **reasoning** — no floor reached, so visibly *plausible*, not established |
+| review | claims whose `leads-to` grounds in **other papers' claims** (citations): a chorus of restatements (§6.1) — the **best bootstrapping seed**, a pre-assembled frontier of stubs |
+| methods | a **Method** slice (a floor); pulled in by the `leads-to` grounding of the claims that use it |
 
-The two axes are independent. A borrowed claim is `evidence: none` + a `source` citation.
-A novel data point that contradicts Smith is `evidence: novel-data` + a `contradicts`
-citation of `smith`. **Novelty does not mean uncited** — most novel contributions
-corroborate or contradict existing claims and carry exactly those citations. Both axes
-are *optional to populate* (unset is valid) and are structurally just edge tags — no new
-node type. Together they power filters like "only the theoretical claims under topic X"
-or "which novel results contradict this broad claim."
+### 6.1 State and restate — the speaker/listener provenance
 
-How each paper type lands without any new structure:
+Citation — a cross-paper `leads-to` (§4) — hides a deeper structure: a claim is *stated*
+once and *restated* many times. **One speaker, many listeners.**
 
-| type | affirmations mostly… | role |
-|---|---|---|
-| original research | `novel-data`, citing prior work `corroborates` / `contradicts` | bedrock evidence |
-| perspective / commentary | `novel-theory` | argument; weak evidence |
-| review | `evidence: none`, dense `source` citations | **best bootstrapping seed** — a pre-assembled frontier of stubs |
-| methods | — (makes no affirmations) | introduces a **Method** node; cited by method-uses (§7) |
+- **The speaker (original statement).** A claim grounded in a **floor** (a method, or an
+  axiom — §3) is its own root: the paper that first established it. Usually one root; a claim
+  **co-discovered** by independent labs just has *several* speakers (several floor-grounded
+  statements) converging on the one general claim — many-to-many `leads-to` (§4) permits this
+  with no special case.
+- **The listener (restatement).** A paper that **borrows** a claim grounds it not in a floor
+  but in a cross-paper `leads-to` to the source — restating it *in its own words, welded to
+  its own quote*. A review is a chorus of restatements. **Original vs borrowed is therefore
+  emergent** (§3): does this claim's grounding reach a floor, or point at another paper?
+- **Provenance has a direction.** The `leads-to` flows **speaker → listener**: the claim
+  propagates from its root to everyone who restates it. Follow it *against the flow* and you
+  reach the floor — this is the §9 root-walk. (An interface draws the arrowhead so: a
+  restatement's grounding arrives *from* its source; an original's, from a floor.)
+- **Restatements sharpen when their source is curated.** While the source is an un-sliced
+  stub, the borrowed claim grounds at the **container** `P` (the wildcard, §2). Promote that
+  stub and the grounding **sharpens** to the source's specific claim-slice — provenance made
+  explicit, nothing lost (the restatement always carried its own quote).
+
+Not to be confused with **`corroborate` / `contradict`** (§4): those are *lateral* — two
+independently floor-grounded claims that agree or collide, neither one restating the other.
 
 ---
 
-## 7. Methods papers and the "how" axis
+## 7. Methods — the "how" axis (measurements are floors, models layer)
 
-A methods paper isn't *weak* knowledge, it's a *different kind*: it doesn't say "X is
-true," it says "here's how to find out." It makes no affirmations and poses no questions,
-so it does **not** sit on the claims/questions DAG — it sits on a third rail, parallel to
-the two that already work.
+A methods paper isn't *weak* knowledge, it's a *different kind*: it doesn't assert "X is
+true," it says "here's how to find out." Its slices are **Methods** — and a *measurement*
+Method is a **floor** (§3), where an empirical claim's `leads-to` chain bottoms out.
 
-The literature carries braided axes — *"we found **X** (a claim) using **technique T**
-(a method)."* The **how axis** is built exactly like the *what* axis: an **atom born
-nested in a paper, rolling up to a shared abstraction.**
+The literature braids *"we found **X** (a claim) **via** technique **T** (a method)."* In
+the slice model that braid is **not a new edge** — it's just `leads-to`: a data-grounded
+claim **grounds in** the Method that produced its data. The grounding *is* the how-axis, so
+the graph still answers "everything established via TFM" or "is this finding method-dependent?"
 
-| axis | atom (nested, in-paper) | abstraction (thin shard, rollup target) | the paper that *owns* it |
-|---|---|---|---|
-| what / why | Affirmation · Question | claim · broader question | original / review |
-| **how** | **Method-use** | **Method** | **methods paper** |
-
-- **Method-use** — born nested in one curated paper (its `methods:` block), naming the
-  technique the paper applied and `cites`-ing — with role `source` — the methods paper
-  that introduced it. A `quote` is *optional* here: methods prose is boilerplate, and the
-  citation is the payload.
-- **Method** — the shared technique (e.g. *traction force microscopy*): a thin
-  `methods/<slug>.yaml` node, symmetric with `claims/`. Method-uses roll up into it; it may
-  roll up into a broader Method (the **method DAG**: TFM → force microscopy) and may name
-  its canonical origin with `introduced_by: <citekey>`.
-
-**The braid.** An affirmation with `evidence: novel-data` may point — via an optional
-`via:` — at the method-use that produced its evidence. This makes *"we found X **via** T"*
-first-class: `novel-data` finally has a companion naming *how* the data was obtained, so
-the graph can answer "everything established via TFM" or "is this finding method-dependent?"
-
-**No new machinery for the frontier.** Because a method-use `cites` its methods paper
-exactly as an affirmation cites a source paper, **methods papers enter the same stub
-frontier and are promoted the same way.** Promoting a `type: methods` stub → curated is the
-frontier walk on the how axis; it fleshes out the Method node that paper introduced.
+- **A model is a Method that grounds in other Methods.** Measurements are floors; a
+  mathematical model is *not* — it `grounds in` the measurements it consumes *and* the theory
+  it assumes, layering between data and the claims it feeds. "Layers on top" is literal:
+  `m_model grounded_in [m_measurement, …]`. A claim made by *comparing data with a model* just
+  grounds in **both branches** — their agreement is the claim, no "comparison" edge needed.
+- **A Method is a slice like any other** — recursively generalizable up the `leads-to`
+  ladder (a use of TFM → *traction force microscopy* → *force microscopy*), exactly as a
+  narrow claim generalizes to a broad one. No separate "method-use vs Method" machinery:
+  same kind, different altitude.
+- **Methods enter the frontier the same way.** A claim grounding in a Method whose
+  introducing paper isn't curated points at that paper's **container** `P` (the wildcard,
+  §2). Promote the methods stub and the grounding sharpens to the Method slice it
+  introduced — the frontier walk on the how-axis, identical machinery to the what-axis.
 
 **Still reserved:** the bridge from a Method to *this lab's own* `protocols/` (the
-lab-notebook cross-link, §12) — distinct from the literature-internal how axis activated
-here, which is now part of the core model.
+lab-notebook cross-link, §12) — distinct from the literature-internal how-axis here.
 
 ---
 
@@ -253,16 +266,18 @@ Because first-class papers are human-curated and **the human supplies the PDF**,
 
 ## 9. Properties that fall out for free (how we know the model is right)
 
-- **Evidence meter is emergent.** A broader claim's `concordant` vs `discordant`
-  child-count *is* its state-of-knowledge balance ("5 support, 2 contradict") — just
-  counting rollup edges, not a built feature.
-- **"Walk to root" is finite and deterministic:** follow a `source` citation → its stub
-  → promote it → that paper's own affirmation (which carries `novel-*` evidence, or its
-  own `source` citations) → repeat until you hit `novel-*` evidence. The provenance chain
-  terminates; `corroborates` / `contradicts` citations are *lateral* (positioning), not
-  part of the root walk.
+- **Evidence meter is emergent.** A claim's `corroborate` vs `contradict` count *is* its
+  state-of-knowledge balance ("5 support, 2 contradict") — just counting lateral edges (§4),
+  not a built feature.
+- **"Walk to root" is finite and deterministic:** follow a claim's `leads-to` grounding
+  down — into another paper (a citation → promote the stub → that paper's own claim) or
+  toward a floor — and repeat until you hit a **floor** (a method or axiom). The chain
+  terminates by construction; `corroborate` / `contradict` are *lateral*, never part of the
+  walk. This walk *is* the speaker/listener chain (§6.1) traversed against the flow.
+- **Grounded vs plausible is emergent** (§3): a claim whose walk reaches a floor is
+  established; one whose chain dangles in reasoning is visibly *plausible*.
 - **Author queries are free:** "everything where X is corresponding author," "which
-  claims does this group keep contradicting" — once position is an edge attribute.
+  claims does this group keep contradicting" — once position is an edge attribute on the container.
 
 ---
 
@@ -275,35 +290,34 @@ Because first-class papers are human-curated and **the human supplies the PDF**,
    breadth tier, depth is **emergent from what's present** — no `depth:` field — and
    stopping early is a normal resting state, not an unfinished task.
 2. **Generalize, don't merge — but don't duplicate for nesting either.** Never equate two
-   claims (lossy); co-parent them under a broader claim, and the paper-specific phrasing and
-   quote are never destroyed. Conversely, a broader `claims/` node **earns its existence only
-   when ≥2 children actually share it** (or it is genuinely broader than any single child) —
-   never mint a thin claim that merely echoes one affirmation to populate a hierarchy. And one
-   claim is **one node, refined across passes**, never re-extracted per section: the rollup
-   structure lives in *edges between distinct nodes*, never in a node copied to two altitudes.
+   claims (lossy); co-parent them under a broader claim via `leads-to` (§4), and the
+   paper-specific phrasing and quote are never destroyed. Conversely, a broader claim **earns
+   its existence only when ≥2 children actually share it** (or it is genuinely broader than
+   any single child) — never mint a thin claim that merely echoes one. And one claim is **one
+   slice, refined across passes**, never re-extracted per section: generality lives in
+   `leads-to` *edges between distinct slices*, never in a slice copied to two altitudes.
 3. **Keep authoring cheap** — the moat the formal academic efforts (nanopublications,
    ORKG) never had: they died on the cost of hand-authoring rigid RDF triples. Here an AI
    drafts claims in natural language; the human only curates.
 4. **Lazy, human-paced frontiers** — citation walking and question capture are selective.
    **Exhaustive citation coverage (every cited paper given an edge) is an *ambition, not a
-   requirement*.** Because the model has no bare paper→paper edge — `cites` always rides an
-   affirmation or method-use — every edge costs a mediating atom. So spend cheaply where
-   it's cheap: *anchor the citation walls* (one borrowed-consensus affirmation carries the
-   whole wall — every paper cited behind the claim is a `source`), let methods cites fall
-   out of Pass 3 for free, reserve rich roles
-   (`corroborates`/`contradicts`/`extends`) for findings that earn them, and leave
-   genuinely incidental references as bare stubs. You record what is live for *your*
+   requirement*.** Because the model has no bare paper→paper edge — every edge rides a slice
+   (or the container wildcard, §2) — each one costs a mediating slice. So spend cheaply where
+   it's cheap: *anchor the citation walls* (one borrowed claim grounds the whole wall, a
+   single `leads-to` into all the papers cited behind it), let methods grounding fall out of
+   Pass 3 for free, reserve `corroborate` / `contradict` for findings that earn them, and
+   leave genuinely incidental references as bare stubs. You record what is live for *your*
    research.
 
 ---
 
 ## 11. Prior art (ideas borrowed)
 
-- **Nanopublications** — atomic assertion + provenance; the model is almost exactly an
-  "affirmation." *Lesson: adoption died on RDF authoring cost → keep authoring cheap.*
+- **Nanopublications** — atomic assertion + provenance; the model is almost exactly a
+  **slice**. *Lesson: adoption died on RDF authoring cost → keep authoring cheap.*
 - **Open Research Knowledge Graph** — comparison tables across papers (a future matrix view).
-- **scite** — citations as support / contrast / mention; adopted directly as our
-  **citation role** (`corroborates` / `contradicts` / `mentions`).
+- **scite** — citations as support / contrast; adopted as our lateral `corroborate` /
+  `contradict` edges (§4). *(Their "mention" we drop.)*
 - **Consensus** — the agreement "meter" (our emergent evidence balance).
 - **Elicit** — the literature matrix (a future view).
 - **PaperQA2** — `search → gather_evidence → answer` RAG; the engine that turns full text
@@ -317,7 +331,10 @@ Because first-class papers are human-curated and **the human supplies the PDF**,
 
 - **AI–human curation interface** — the propose/accept rhythm; how a paper's proposed
   local subgraph is surfaced and accepted/edited/rejected. *A separate design challenge,
-  next.*
+  next.* Direction captured in
+  [docs/2026-06-25-visualization-design.md](docs/2026-06-25-visualization-design.md): a
+  **recursive container view** — collapse cohesive sub-graphs into container nodes, nest
+  containers, drill in; the full slice DAG is the earned *deep* view, not the landing page.
 - **The `protocols/` bridge** — linking a Method to *this lab's own* `protocols/` (the
   lab-notebook cross-link). The literature-internal how axis itself is now in the core (§7).
 - **Cross-link to experiments** — a claim → an `experiments.db` experiment that tests it;
@@ -331,26 +348,25 @@ Because first-class papers are human-curated and **the human supplies the PDF**,
 ## 13. Converged model — one-screen summary
 
 ```
-Layers:   Sources (Paper, Author) · Atoms (Affirmation, Question, Method-use) · Abstractions (claims, methods)
+Primitive: the SLICE — one node kind, recursively sliceable, inside a CONTAINER P (paper)
+Slice kinds: Claim · Question · Method        (Method, and any declared axiom = a FLOOR)
 
-Nodes:    Paper(type; curated | stub) · Affirmation · Question · Method-use · Author
+Edges (3):
+   leads-to            Claim ← Claim,  or  Claim ← Method/axiom (the floor)
+                       = grounding · derivation · generalization · citation   (orient: ground → derived)
+   answers             Claim → Question
+   corroborate /       Claim ⟷ Claim   (lateral stance; the only signed edge)
+     contradict
 
-Edges:    Author      → Paper        position: first | middle | last (+ corresponding: true)
-          Paper        → Affirmation  asserts; evidence: novel-data | novel-theory | none
-          Affirmation  → Paper        cites; role: source | corroborates | contradicts | extends | mentions
-          Paper        → Question     poses
-          Affirmation  → broader Claim rollup; polarity: concordant | discordant | neutral
-          Question     → broader Question rollup
-          Question     → broader Claim answered-by      (curated)
-          Claim        ⟷ Claim        relates-to | depends-on
-          Paper        → Method-use   applies                          (how axis, §7)
-          Method-use   → Method       uses
-          Method-use   → Paper        cites; role: source              (methods paper → frontier)
-          Affirmation  → Method-use   via                              (optional braid)
-          Method       → Method       rollup
-          Method       → Paper        introduced-by                    (optional)
+Container wildcard: any edge may target P when its slice isn't resolved; sharpens on curation.
+A stub = a container holding only the wildcard.   Author = attached to P, outside the slice graph.
+
+Emergent — no node fields:
+   open vs answered      = has an incoming `answers` edge?
+   original vs borrowed  = does `leads-to` grounding cross papers (a citation)?
+   grounded vs plausible = does the `leads-to` chain reach a floor (method / axiom)?
+   evidence balance      = count corroborate vs contradict
 
 Principles: curation-paced · generalize-don't-merge · cheap authoring · lazy frontiers
-Methods: type=methods papers own the how axis — Method-use atoms roll up to Method nodes (§7)
 Acquisition: human supplies first-class PDFs; stubs = open metadata only
 ```

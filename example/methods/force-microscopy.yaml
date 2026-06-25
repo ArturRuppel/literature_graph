@@ -1,3 +1,4 @@
 text: "Force microscopy"
-# A broad Method at higher altitude — no single origin, so no `introduced_by`
-# (generalize-don't-merge: abstractions own no paper, CONCEPT §10).
+# A broad Method at the top of the ladder — a thin `leads_to` target with no parent of its own.
+# No origin paper: an abstraction owns no paper (generalize-don't-merge, CONCEPT §10); any
+# origin lives on a concrete method slice's grounded_in, never here.
