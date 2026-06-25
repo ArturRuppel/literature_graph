@@ -11,8 +11,8 @@ the rate limiter; never flood. A half-finished graph is a normal, valid state.**
    the rollup DAG. *What* the graph is and *why*.
 2. [SCHEMA.md](SCHEMA.md) — the on-disk data model: one diffable YAML per curated paper,
    thin files for abstractions, a stub registry. *How* it's written to disk.
-3. [docs/superpowers/specs/](docs/superpowers/specs/) — design specs for each tool. Current:
-   `2026-06-25-litgraph-ingest-design.md` (the `lit ingest` CLI).
+3. [tools/lit/](tools/lit/) — the `lit` CLI, self-contained (package, tests, spec).
+   Design spec: [tools/lit/docs/2026-06-25-litgraph-ingest-design.md](tools/lit/docs/2026-06-25-litgraph-ingest-design.md).
 4. [example/](example/) — a small worked library exercising every node type and edge.
 
 ## Mental model (the 30-second version)
