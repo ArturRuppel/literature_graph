@@ -1,0 +1,75 @@
+Ruppel, Wörthmüller et al. eLife 2023;12:e83588. DOI: https://doi.org/10.7554/eLife.83588
+
+1 of 42
+Force propagation between epithelial 
+cells depends on active coupling and 
+mechano-­structural polarization
+Artur Ruppel1†‡, Dennis Wörthmüller2,3†, Vladimir Misiak1, Manasi Kelkar4, 
+Irène Wang1, Philippe Moreau1, Adrien Méry1, Jean Révilloud1, 
+Guillaume Charras4,5,6, Giovanni Cappello1, Thomas Boudou1, Ulrich S Schwarz2,3*, 
+Martial Balland1*
+1Université Grenoble Alpes, CNRS, LIPhy, Grenoble, France; 2Institute for Theoretical 
+Physics, Heidelberg University, Heidelberg, Germany; 3BioQuant–Center for 
+Quantitative Biology, Heidelberg University, Heidelberg, Germany; 4London 
+Centre for Nanotechnology, University College London, London, United Kingdom; 
+5Department of Cell and Developmental Biology, University College London, London, 
+United Kingdom; 6Institute for the Physics of Living Systems, University College 
+London, London, United Kingdom
+Abstract Cell-­generated forces play a major role in coordinating the large-­scale behavior of cell 
+assemblies, in particular during development, wound healing, and cancer. Mechanical signals prop-
+agate faster than biochemical signals, but can have similar effects, especially in epithelial tissues 
+with strong cell–cell adhesion. However, a quantitative description of the transmission chain from 
+force generation in a sender cell, force propagation across cell–cell boundaries, and the concomitant 
+response of receiver cells is missing. For a quantitative analysis of this important situation, here we 
+propose a minimal model system of two epithelial cells on an H-­pattern (‘cell doublet’). After opto-
+genetically activating RhoA, a major regulator of cell contractility, in the sender cell, we measure 
+the mechanical response of the receiver cell by traction force and monolayer stress microscopies. 
+In general, we find that the receiver cells show an active response so that the cell doublet forms a 
+coherent unit. However, force propagation and response of the receiver cell also strongly depend 
+on the mechano-­structural polarization in the cell assembly, which is controlled by cell–matrix adhe-
+sion to the adhesive micropattern. We find that the response of the receiver cell is stronger when 
+the mechano-­structural polarization axis is oriented perpendicular to the direction of force propa-
+gation, reminiscent of the Poisson effect in passive materials. We finally show that the same effects 
+are at work in small tissues. Our work demonstrates that cellular organization and active mechanical 
+response of a tissue are key to maintain signal strength and lead to the emergence of elasticity, 
+which means that signals are not dissipated like in a viscous system, but can propagate over large 
+distances.
+Editor's evaluation
+Using surface micropatterning, optical activation, and theoretical analysis, the authors provide 
+compelling evidence that adjacent cells actively propagate mechanical stress in epithelial tissues. 
+The response of the receiver cell is active and enhanced when the principal stress direction is 
+perpendicular to the orientation of actin fibers. This work is important and a must read for every-
+body wanting to understand tissue mechanics.
+Research Article
+*For correspondence: 
+schwarz@thphys.uni-heidelberg.​
+de (USS); 
+martial.balland@univ-grenoble-​
+alpes.fr (MB)
+†These authors contributed 
+equally to this work
+Present address: ‡Centre de 
+Recherche en Biologie Cellulaire 
+de Montpellier, Centre National 
+de la Recherche Scientifique, 
+Montpellier, France
+Competing interest: The authors 
+declare that no competing 
+interests exist.
+Funding: See page 20
+Preprinted: 03 June 2022
+Received: 20 September 2022
+Accepted: 07 August 2023
+Published: 07 August 2023
+Reviewing Editor: Karsten 
+Kruse, University of Geneva, 
+Switzerland
+‍ ‍ Copyright Ruppel, 
+Wörthmüller et al. This article 
+is distributed under the terms 
+of the Creative Commons 
+Attribution License, which 
+permits unrestricted use and 
+redistribution provided that the 
+original author and source are 
+credited.
