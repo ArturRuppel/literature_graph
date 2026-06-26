@@ -47,8 +47,9 @@ the rate limiter; never flood. A half-finished graph is a normal, valid state.**
   *tier* — multiple `first`s = co-first/equal-contribution) and an independent
   `corresponding: true` flag. List order = byline order.
 - **Source of truth is git-tracked YAML.** The SQLite `graph.db` is a disposable build
-  artifact (gitignored). **PDFs and their `.md` full-text live outside git**, in the
-  external dir named by `config.toml` (`pdf_dir`). Never commit PDFs or paper full text.
+  artifact (gitignored). **Curated PDFs and their `.md` full-text live in `pdfs/`
+  inside the data repo** (`pdf_dir` in `config.toml`), committed one-per-paper.
+  Uncurated/staging PDFs live outside git in `~/Literature/`.
 
 ## Tools
 

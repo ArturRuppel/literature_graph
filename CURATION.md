@@ -23,9 +23,11 @@ edits/accepts. Nothing is "curated" until the human commits it.
 - **Propose, never flood** (CONCEPT §10). A handful of well-welded slices beats a wall of
   shallow ones. **Curation has depth tiers** — a paper may stop at Pass 0, Pass 1, or run all
   the way to Pass 3; stopping early is a normal resting state, not an unfinished task.
-- **The quote is the integrity anchor.** Every claim is welded to an *exact* quote — a
-  verbatim substring of the paper's `.md` full text (SCHEMA §6 rule 4). Never paraphrase into
-  a quote. If you can't find the verbatim sentence, the claim isn't ready.
+- **The quote is the integrity anchor.** Every claim is welded to a quote grounded in the
+  paper's `.md` full text (SCHEMA §6 rule 4). Verbatim substrings are the default; non-
+  contiguous passages may be shortened with `[...]` when the curator explicitly accepts the
+  flag. Never paraphrase into a quote. If you can't find the grounded sentence, the claim
+  isn't ready.
 - **Generalize, don't merge — and don't duplicate for nesting.** Before creating a broad
   `claims/`, `questions/`, or `methods/` node, **look** for an existing one to `leads_to`;
   co-parent, never equate two claims. A broad target earns its existence only when **≥2
@@ -141,5 +143,6 @@ Threaded through [`curated/Ruppel2023eLife.yaml`](example/) — see the data roo
 
 The agent writes the proposal into `curated/<citekey>.yaml`; the human reviews the diff and
 edits/accepts. A future deterministic check (`lit verify`, the offline twin of `lit ingest`)
-will gate it on SCHEMA §6: every quote verbatim, every ref resolves, ids unique, no emergent
-fields authored, enums valid. Until then, SCHEMA §6 is the manual checklist.
+will gate it on SCHEMA §6: every quote grounded (verbatim by default; `[...]` flagged),
+every ref resolves, ids unique, no emergent fields authored, enums valid. Until then,
+SCHEMA §6 is the manual checklist.

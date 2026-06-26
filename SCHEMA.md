@@ -108,7 +108,7 @@ The generator resolves every ref into an edge and **fails the build on a danglin
 |---|---|---|---|
 | `id` | ✔ | str | `c1`… unique within file |
 | `text` | ✔ | str | the natural-language claim — what you'd write in an intro |
-| `quote` | ✔ | str | exact supporting text, a verbatim substring of the paper's `.md` |
+| `quote` | ✔ | str | supporting text from the paper's `.md`. Normally a verbatim substring; non-contiguous passages may be joined with `[...]` but must be flagged for curator review |
 | `grounded_in` | – | ref list | **`leads-to` edges *into* this claim** — what it rests on. Heterogeneous; the target's *kind* is the meaning: a **method** ref → empirical floor; a **claim** ref → premise / derivation; a **container/citation** ref → a borrowed (restated) claim (CONCEPT §6.1) |
 | `leads_to` | – | slug list | **`leads-to` edges *out* of this claim** — the broader claim(s) it generalizes into (the old "rollup", unsigned) |
 | `corroborates` / `contradicts` | – | ref list | **lateral** stance toward an independently-grounded claim/paper — the only *signed* edges (CONCEPT §4) |
@@ -135,7 +135,7 @@ The generator resolves every ref into an edge and **fails the build on a danglin
 | `text` | ✔ | str | the technique (e.g. "traction force microscopy") |
 | `grounded_in` | – | ref list | what this method rests on: the paper(s) that introduced it, **and/or other methods it layers on** (a model `grounded_in` the measurements it consumes — CONCEPT §7). A measurement method grounding only in its source paper is a **floor** |
 | `leads_to` | – | slug list | a broader Method it generalizes into (the method ladder: TFM → force microscopy) |
-| `quote` | – | str | exact methods-section sentence; **optional** (methods prose is boilerplate) |
+| `quote` | – | str | methods-section sentence; **optional** (methods prose is boilerplate). Shortening with `[...]` is allowed but must be flagged for curator review |
 
 ### Thin broad slice — `claims/<slug>.yaml`, `questions/<slug>.yaml`, `methods/<slug>.yaml`
 
@@ -192,8 +192,11 @@ file or an upstream stub. Author downward edges (to floors / premises / citation
    `curated/` file or `stubs.yaml` key (a container), or a `<citekey>:<id>` slice.
 2. **Local ids unique** within each paper file (across `c*` / `q*` / `m*`).
 3. **Slugs / citekeys globally unique**; a citekey is never both curated and a stub.
-4. **Quote is verbatim.** Every claim `quote` — and every method `quote` when present — is an
-   exact substring of the paper's `.md` full text.
+4. **Quote integrity.** Every claim `quote` — and every method `quote` when present — must
+   be grounded in the paper's `.md` full text. Verbatim substrings are the default. A quote
+   containing `[...]` is accepted when non-contiguous passages are intentionally shortened,
+   but the generator **flags** such quotes for curator review; it never silently treats them
+   as verbatim.
 5. **`leads-to` is acyclic** (the support DAG; many-to-many, no cycles).
 6. **Kind coherence.** `leads_to` targets a same-kind broad slug (claim→claim, question→
    question, method→method). `answers` targets a question. `corroborates`/`contradicts`
