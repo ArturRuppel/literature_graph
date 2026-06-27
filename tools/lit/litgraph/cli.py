@@ -8,6 +8,8 @@ from pathlib import Path
 
 from .config import load_config
 from .ingest import IngestError, Report, ingest
+from .graph import build_graph, BuildError
+from .build import emit
 
 
 def _print_report(r: Report) -> None:
@@ -62,6 +64,11 @@ def main(argv: list[str] | None = None) -> int:
     p_ing.add_argument("--dry-run", action="store_true", help="print the plan; write/rename nothing")
     p_ing.add_argument("--force", action="store_true", help="overwrite an existing curated/<citekey>.yaml")
 
+    p_build = sub.add_parser("build", help="build the static graph viewer from a data repo")
+    p_build.add_argument("--root", default=".", help="data root (curated/, stubs.yaml, ...)")
+    p_build.add_argument("--out", default=None,
+                         help="output dir (default: <root>/dist)")
+
     args = parser.parse_args(argv)
 
     if args.command == "ingest":
@@ -86,6 +93,19 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         _print_report(report)
         return 0
+
+    if args.command == "build":
+        cfg = load_config(args.root)
+        out = Path(args.out) if args.out else cfg.root / "dist"
+        try:
+            graph = build_graph(cfg.root)
+        except BuildError as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 1
+        emit(graph, out)
+        print(f"built {len(graph.papers)} papers -> {out}/index.html")
+        return 0
+
     return 2
 
 

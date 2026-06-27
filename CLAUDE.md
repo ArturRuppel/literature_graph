@@ -59,6 +59,10 @@ the rate limiter; never flood. A half-finished graph is a normal, valid state.**
   the (renamed) PDF. **Non-interactive**: an agent runs it, then agent + human review the
   written YAML together. Use `--dry-run` to preview without writing/renaming. It does *not*
   extract the claim/question/method slices — that's the curation step (CURATION.md).
+- **`lit build`** — build the static graph viewer: reads the data repo's YAML, computes the
+  graph + emergent properties (SCHEMA §7), and emits a self-contained `dist/index.html`
+  (the paper-centric column view) plus `graph.json`. Open the HTML directly; no server.
+  Validation fails the build on a dangling ref or a curated/stub citekey collision (SCHEMA §6).
 
 ## Curating a paper
 
