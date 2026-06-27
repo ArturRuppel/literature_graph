@@ -1,6 +1,6 @@
 # `lit build` — static graph build + paper-centric viewer (design)
 
-**Status:** design (approved 2026-06-27, not yet implemented) · companion to
+**Status:** implemented 2026-06-27 · companion to
 [CONCEPT.md](../CONCEPT.md), [SCHEMA.md](../SCHEMA.md), and
 [docs/2026-06-25-visualization-design.md](2026-06-25-visualization-design.md) (the view this
 realizes). Implements the "generator" SCHEMA.md keeps referring to.
