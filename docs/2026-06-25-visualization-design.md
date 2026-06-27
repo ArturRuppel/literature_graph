@@ -1,93 +1,143 @@
-# VISUALIZATION — design direction (recursive container view)
+# VISUALIZATION — design direction (paper-centric column view)
 
-**Status:** design direction (not yet implemented) · **Date:** 2026-06-25 · companion to
-[CONCEPT.md](../CONCEPT.md) and [SCHEMA.md](../SCHEMA.md)
+**Status:** design direction (not yet implemented) · **Date:** 2026-06-25, revised 2026-06-27 ·
+companion to [CONCEPT.md](../CONCEPT.md) and [SCHEMA.md](../SCHEMA.md)
 
 How the lean slice graph (CONCEPT: one primitive, the slice, in a container P, wired by three
-edges) is *shown* to a human. Captured from a mockup session; the interface itself is future
-work (CONCEPT §12). Reference mockups live in [`mockups/`](mockups/) — open in a browser:
+edges) is *shown* to a human. Reference mockups live in [`mockups/`](mockups/) — open in a
+browser:
 
-- [`mockups/litgraph-containers.html`](mockups/litgraph-containers.html) — **the top level**
-  (this doc's target).
-- [`mockups/litgraph-lean.html`](mockups/litgraph-lean.html) — **the deep view** (fully
-  drilled-in slice DAG; a destination, *not* a default).
+- [`mockups/litgraph-columns.html`](mockups/litgraph-columns.html) — **the default**: the
+  paper list and the lazy column expansion this doc describes.
+- [`mockups/litgraph-containers.html`](mockups/litgraph-containers.html) — an earlier
+  container sketch (the vertical-generality framing this revision rotates; kept for reference).
+- [`mockups/litgraph-lean.html`](mockups/litgraph-lean.html) — the fully drilled-in slice DAG
+  (a *destination*, not a default).
 
-Both run on the real converted `Ruppel2023eLife`.
+> **What changed (2026-06-27).** The first draft put the support skeleton on the **vertical**
+> axis (`leads-to` up = generality). This revision **rotates it onto the horizontal axis**:
+> `leads-to` flows **left → right** (ground → derived), which for citations is **older → newer**.
+> The frontier (the noisy, citation-heavy part) gets the intuitive "history recedes left,
+> synthesis accretes right" reading, and the CONCEPT §9 *walk-to-root* becomes a literal walk
+> **left**. The vertical axis is freed for *within-paper* structure.
 
 ---
 
-## The core principle — recursive containers, progressive disclosure
+## The core principle — one list, lazy columns, drill on demand
 
-The model is **recursively containerized** (a paper is a container of slices; a slice can be
-sliced further), so the *view* must be too. **Collapse cohesive sub-graphs into container
-nodes; nest containers in containers; drill in on demand.**
+The model is **recursively containerized** (a paper is a container of slices; a slice slices
+further) and **frontier-shaped** (every curated paper grounds leftward into older work and
+generalizes rightward into shared claims). The view mirrors both: **start from a flat list of
+papers, and spawn structure only where the human points.** The full graph is never the landing
+page — it is *earned by drilling in* (CONCEPT §12).
 
-The full slice-level `leads-to` DAG is the **deep view** — legible only after a paper is
-thoroughly curated (and even then it's busy). It is *earned by drilling in*, never the
-landing page. (In the mockup we only got the deep Ruppel graph from the abstract because it's
-the author's own paper; a normal Pass-0/1 graph is far sparser.)
+Two orthogonal motions, one per axis:
 
-## The top level (the default)
+- **Horizontal = cross-paper, along `leads-to` (≈ chronology).** Expanding a paper's grounds
+  spawns a **column to its left** (older roots); expanding what builds on it spawns a column to
+  its **right** (newer restatements / synthesis). Columns are **expansion generations, not
+  year-buckets** — chronology falls out because grounding walks toward older papers, so we never
+  impose a time grid (just sort within a column by year).
+- **Vertical = within-paper.** A paper's claim / question / method slices appear by expanding
+  its card **in place**, downward — same year, so never a new column.
 
-The paper **P** is drawn as a container — a boundary that is the **hull of its children**, so
-it resizes as you expand things. Inside it, the paper's slices are grouped into a handful of
-**collapsed** sub-containers; the broad (shared) slices sit **above** P:
+## The landing list (the default view)
+
+**All papers in one column**, collapsed cards, **no edges drawn**. Ranked by **curation
+level** — the authored `pass` field (SCHEMA §4): stubs (no `pass`) at the bottom, Pass-3 papers
+at the top, ties broken by year. The list *is* the curation frontier, sorted by how deep we've
+gone.
+
+### The card
 
 ```
-        [ broad claim ]   [ broad claim ]        [ broad question ]      ← shared, outside P
-              ▲                 ▲                        ▲
-   ┌───────────────────── P · Ruppel2023eLife ───────────────────────┐
-   │   ┌ Findings (grounded) ┐   ┌ Context (borrowed) ┐  ┌ q1 ⊃ q2 ┐  │
-   │   └──────────▲──────────┘   └────────────────────┘  └─────────┘  │
-   │   ┌ Methods (floors+models) ┐                                    │
-   │   └──────────────────────────┘                                   │
-   └──────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────┐
+│ ●●●○  Ruppel2023NatPhys      original 2023│   ← progress dots (top-left) · type · year
+│       Force propagation in epithelial …    │   ← title
+│       Ruppel · Doe · Balland               │   ← byline (corresponding starred)
+│       ▸ traction rises with stiffness      │   ← top-altitude claim(s): no outgoing leads_to
+└──────────────────────────────────────────┘
 ```
 
-For Ruppel the cohesive sub-containers are **Methods**, **Findings** (grounded claims),
-**Context** (borrowed claims), and **Questions** (`q1 ⊃ q2`, the open molecular follow-up
-nested in the answered route question). Edges at this level are **aggregate** `leads-to`
-(solid) and `answers` (dotted): *Methods → Findings → broad*, *Context → broad*, *q1 → broad
-question*.
+- **Progress dots — `pass` made visible.** Four small circles in the **top-left corner**, filled
+  progressively: `●●●○` = Pass 0–2 done (filled) and Pass 3 not yet; a **stub** shows four empty
+  circles `○○○○`. This is the one place the [authored `pass` field](../SCHEMA.md) surfaces — the
+  depth tier the list ranks on.
+- **Collapsed body** = title · authors (byline order; `corresponding` starred) · `type` · `year`,
+  plus the paper's **top-altitude claims** (those with no outgoing `leads_to` — its headline
+  findings). Everything else stays folded.
+- **Hover → abstract + metadata, and a PDF preview thumbnail.** Click the preview → open the PDF.
+  **Stubs have no PDF** (uncurated) — their hover shows OpenAlex metadata + abstract only, and the
+  empty progress dots read as "nothing to open yet."
 
-## Reading the picture
+## The abstract view — clicking spawns columns
 
-- **Vertical axis = generality / derivation.** `leads-to` points **up** (ground → derived):
-  method **floors** at the bottom, claims in the middle, **broad claims** at the top. The
-  axis *is* the support skeleton.
-- **Color = emergent property, never a tag** (CONCEPT §3): grounded (reaches a floor) vs
-  borrowed (grounded in a citation); measurement floor vs model (layers); question (answered
-  vs open); broad (a `leads-to` target). The viz computes these from structure.
-- **Citations stay collapsed** — a claim/method shows a `▸ N sources` chip; expand to spawn
-  the stub grounds (hover → abstract). The borrowed `Context` wall is the noisy part and
-  should stay collapsed even under "expand all."
+Click a paper and it becomes the **focus**; its connecting papers fan out into new columns, and
+**the connecting edges are drawn at the same moment**. A column is *only* created when its edge is
+— "no edge, no column."
 
-## What makes a good container boundary?
+```
+        grounds (older, ←)              FOCUS                 builds-on (newer, →)
+   ┌──────────────────────┐   ┌──────────────────────┐   ┌──────────────────────┐
+   │  ○○○○ Butler2002      │──▶│ ●●●● Ruppel2023      │──▶│  traction-scales-…    │   broad
+   │  ○○○○ Ramms2013       │──▶│      (focus)          │   │  junctions-bear-load  │   "now"
+   │  ○○○○ Smith2010 ⚡     │   └──────────────────────┘   └──────────────────────┘
+   └──────────────────────┘
+```
 
-**A sub-graph that connects to the rest through only a few `leads-to` edges — a low-bandwidth
-cut.** Methods are a clean container because they touch everything else through a single
-relation ("grounds the findings"); that narrow interface is what lets them collapse to one
-node without losing legibility. Candidate rule for *auto*-finding containers later: find
-low-cut partitions of the `leads-to` DAG. The human can always draw/override a boundary by
-hand. (Some boundaries are semantic nestings rather than cuts — e.g. `q2` inside `q1` — and
-those are authored, not inferred.)
+- **Symmetric.** Expanding `grounded_in` grows **left** (toward floors/roots); expanding
+  `leads_to` / cited-by grows **right** (toward restatements and the broad "what we know" nodes).
+  `leads-to` points rightward in both directions, so the axis stays honest: **left = evidence/past,
+  right = synthesis/now.**
+- **Accumulate, don't replace.** Expanding a second paper in a column pours *its* grounds into the
+  **same** next column (it is not a single-path Miller-columns replace). When two siblings ground
+  in the **same** paper, the column shows **one card with two incoming edges** — de-duped by
+  citekey, never a duplicate.
+- **Drill all the way.** Click a paper *in a spawned column* and it spawns its own next generation
+  — this recursion **is** the CONCEPT §9 walk-to-root (leftward) and the restatement chain
+  (rightward, CONCEPT §6.1).
+
+### Where the atemporal nodes live
+
+Broad slices (`claims/`, `questions/`, `methods/` — the shared `leads_to` targets) have no year.
+They sit in a **synthesis band at the right edge** — the one direction generalization points,
+keeping "new stuff right" true. A broad claim shows its **emergent evidence meter** in place
+(`corroborate` vs `contradict` count, CONCEPT §9) — e.g. `traction-scales-with-stiffness` reads
+*1 support (c1 via `leads_to`) / 1 contradict (c3)*.
+
+### Lateral edges cross columns
+
+`corroborate` / `contradict` are **not** support (CONCEPT §4) and never part of the left-right
+walk. They draw as a **distinct signed style spanning columns** — e.g. Ruppel2023:c1 ⟷ Jones2018,
+or c3 ⟶∤ Smith2010 — connecting two papers at wherever they already sit.
+
+## Color = emergent property, never a tag (CONCEPT §3)
+
+The viz **computes** every color from structure, never from a field: grounded (chain reaches a
+floor) vs borrowed (grounds in a citation); measurement floor vs model (layers on measurements);
+question open (no incoming `answers`) vs answered; broad (a `leads_to` target). The only colors
+that come from authored data are `type` (a filter chip) and the `pass` dots.
 
 ## Levels of detail (the drill-in ladder)
 
-1. **Collapsed P** — sub-containers as single nodes, aggregate edges. *(landing page)*
-2. **Expand a container** — its slices appear as rows, keeping their emergent color.
-3. **Slice DAG** — fully expanded with **slice-level** edges re-routed (e.g. `methods →
-   findings` becomes `m1 → c1`, `m3 → c1`, `m5 → c1`). This is `litgraph-lean.html`.
+1. **List** — collapsed paper cards, no edges, ranked by `pass`. *(landing page)*
+2. **Focus a paper** — its grounds/consequences fan into columns with aggregate edges.
+3. **Expand a card** — its claim / question / method slices appear as rows (vertical, in place),
+   each in its emergent color; aggregate paper→paper edges **disaggregate** to slice→slice
+   (`Butler2002 → m1`, `m1 → c1`).
+4. **Slice DAG** — fully drilled, slice-level edges everywhere. This is `litgraph-lean.html` — a
+   destination, legible only on a thoroughly curated paper.
 
 ## Known gaps / next fidelity steps
 
-- **Edge re-routing on expand.** Aggregate container edges should disaggregate to the precise
-  slice edges as containers open — the thing that makes drilling in *informative*. Not yet
-  done in the mockup.
-- **Auto-layout.** Both mockups use hand-tiered positions; a real layered-DAG (or
-  constraint/force) layout is needed once there is more than one paper.
-- **Cross-paper view.** With a second curated paper, two container-P boxes share the broad
-  slices above them, and a borrowed claim's citation **sharpens** from `→ P-stub` to `→ a
-  specific slice` once the cited paper is curated (CONCEPT §2 wildcard). The container view
-  should show that sharpening.
-- **Container boundary auto-detection** (the low-cut rule above) — currently hand-picked.
+- **Edge re-routing on expand.** Aggregate paper→paper edges should disaggregate to precise
+  slice edges as cards open — the thing that makes drilling in *informative*.
+- **Column auto-layout & edge bundling.** Accumulating siblings will crowd a shared column;
+  needs ordering (by year) within a column and bundled, de-duped edges.
+- **Citation-wall collapse.** A borrowed claim anchoring a whole wall (CONCEPT §10.4) should
+  spawn its left column as a single collapsed "▸ N sources" stack, expandable on demand — the
+  borrowed-context wall must stay folded even under "expand all."
+- **Sharpening on promotion.** When a stub in a left column is later curated, its incoming edge
+  should visibly **sharpen** from `→ P` to `→ a specific slice` (CONCEPT §2 wildcard).
+- **Stub PDFs.** Promoting a stub to fetch its PDF is an optional manual convenience (CONCEPT §8),
+  surfaced from the hover preview's "no PDF yet" state.

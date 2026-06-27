@@ -41,6 +41,8 @@ commit, one readable diff.
   exists; else it is a *stub* (an entry in `stubs.yaml`). The frontier is the set of stubs —
   no `tier:` field. **Promotion = move the `stubs.yaml` entry into a new `curated/` file** and
   slice it; edges that pointed at the container `P` then sharpen to its slices (CONCEPT §2).
+  This **breadth** tier stays emergent; the orthogonal **depth** tier (how far curation ran,
+  Pass 0–3) is the one thing recorded explicitly — `pass:` on the curated paper (§4, CONCEPT §10.1).
 - **A slice's home in a container needs no syntax.** A `claims`/`questions`/`methods` entry
   *inside* a paper file *is* that paper containing it — the only implicit edge.
 
@@ -97,6 +99,7 @@ The generator resolves every ref into an edge and **fails the build on a danglin
 | `title` | ✔ | str | |
 | `type` | ✔ | enum | `original \| review \| methods \| perspective \| commentary` — a **filter only**, no evidential weight (CONCEPT §6) |
 | `year` | ✔ | int | |
+| `pass` | – | int | curation **depth tier**: the highest completed CURATION pass, `0`–`3` (0 abstract · 1 framing · 2 results · 3 methods). **Absent on a stub** (breadth tier stays emergent via file presence, §1). The *one* authored process-state field — where curation paused isn't reconstructable from the slices (CONCEPT §10.1) |
 | `doi` / `url` / `pdf` | – | str | `pdf` defaults to `<citekey>.pdf` under the config PDF dir |
 | `authors` | ✔ | list | each `{name, position?, corresponding?}`; list order = byline. `position` ∈ `first \| middle \| last` (default `middle`) — an authorship **tier**, so multiple `first`s = co-first. `corresponding: true` is **independent** (any number) |
 | `note` | – | str | free-text curator orientation (e.g. the experimental setup); not a graph element |
@@ -203,7 +206,8 @@ file or an upstream stub. Author downward edges (to floors / premises / citation
    target a claim or a container. `floor: true` only on a claim.
 7. **No emergent fields authored.** `status`, `evidence`, citation `role`, rollup `polarity`
    are **not** valid keys — they are derived (§7), and their presence is an error.
-8. **Enums valid** (`type`, `position` ∈ `first|middle|last`, `corresponding` ∈ `true`/absent).
+8. **Enums valid** (`type`, `position` ∈ `first|middle|last`, `corresponding` ∈ `true`/absent,
+   `pass` ∈ `0|1|2|3` and only on a curated paper).
 
 ---
 

@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>litgraph · paper-centric column view</title>
+<style>
+  :root{
+    --bg:#0e1116;--ink:#e6edf3;--dim:#9aa7b4;--faint:#6b7785;--line:#30363d;--panel:#1c2430;
+    --floor:#e3b341;--model:#d2a8ff;--grounded:#4cc38a;--borrowed:#58a6ff;
+    --question:#e3863d;--broad:#7a5cff;--cross:#ff7b72;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);
+    font:13px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+  #hud{position:fixed;top:0;left:0;right:0;z-index:30;display:flex;align-items:center;gap:12px;
+    padding:8px 16px;background:#0e1116ee;border-bottom:1px solid var(--line);backdrop-filter:blur(6px)}
+  #hud b{font-size:13px}
+  #hud .sub{color:var(--faint);font-size:11px}
+  #hud .legend{margin-left:auto;display:flex;gap:14px;font-size:10.5px;color:var(--dim)}
+  #hud .legend i{display:inline-block;width:10px;height:0;border-top:2px solid;
+    vertical-align:middle;margin-right:4px}
+  .lg-leads i{border-color:var(--grounded)}
+  .lg-corr i{border-top-style:dashed;border-color:var(--grounded)}
+  .lg-contra i{border-top-style:dashed;border-color:var(--cross)}
+
+  #board{position:absolute;inset:46px 0 0 0;overflow:auto;display:flex;align-items:flex-start;
+    gap:54px;padding:34px 40px 80px}
+  svg#edges{position:absolute;top:0;left:0;pointer-events:none;overflow:visible}
+
+  .col{position:relative;z-index:5;display:flex;flex-direction:column;gap:14px;flex:none;width:264px}
+  .col .colhd{font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--faint);
+    padding-left:4px;margin-bottom:-4px}
+
+  /* paper card */
+  .card{position:relative;border:1.5px solid var(--line);border-radius:12px;background:var(--panel);
+    overflow:hidden;cursor:pointer;transition:border-color .15s,box-shadow .15s}
+  .card:hover{border-color:#52606d}
+  .card.curated{border-style:solid}
+  .card.stub{border-style:dashed;opacity:.92}
+  .card.focus{border-color:var(--grounded);box-shadow:0 0 0 1px var(--grounded),0 6px 24px #000a}
+  .chd{display:flex;align-items:center;gap:6px;padding:9px 11px 4px 54px}
+  .dots{position:absolute;top:9px;left:11px;display:flex;gap:3px}
+  .dot{width:7px;height:7px;border-radius:50%;border:1.3px solid var(--faint)}
+  .dot.on{background:var(--grounded);border-color:var(--grounded)}
+  .ckey{font-size:11px;font-weight:700}
+  .ctype{font-size:7px;padding:1px 5px;border-radius:4px;font-weight:700;color:#0c0e14;background:var(--dim)}
+  .ctype.original{background:#7ea8d8}.ctype.methods{background:var(--floor)}
+  .cyr{margin-left:auto;font-size:9px;color:var(--faint)}
+  .ctitle{padding:0 11px;font-size:10px;color:var(--dim);line-height:1.32}
+  .cauth{padding:4px 11px 2px;font-size:9px;color:var(--faint)}
+  .cauth .star{color:var(--floor)}
+  .chead{margin:6px 11px 10px;font-size:9.5px;color:#cfe6da;border-left:2px solid var(--grounded);
+    padding-left:7px;line-height:1.3}
+  .stubnote{margin:2px 11px 10px;font-size:8.5px;color:var(--faint);font-style:italic}
+
+  /* slices (vertical, within-paper) */
+  .slices{display:none;border-top:1px solid var(--line);padding:6px 9px 9px;background:#161c26}
+  .card.open .slices{display:block}
+  .slice{display:flex;gap:5px;align-items:flex-start;padding:3px 5px;margin:2px 0;border-radius:5px;
+    background:#ffffff07;font-size:9px}
+  .sid{flex:none;font-size:7px;font-weight:700;padding:1px 4px;border-radius:3px;color:#0c0e14;margin-top:1px}
+  .sid.fl{background:var(--floor)}.sid.cl{background:var(--grounded)}.sid.bo{background:var(--borrowed)}
+  .sid.q{background:var(--question)}
+  .stx{color:#dbe5ef;line-height:1.28}
+  .sgrp{font-size:7.5px;letter-spacing:1px;text-transform:uppercase;color:var(--faint);margin:5px 2px 1px}
+
+  /* broad / synthesis nodes */
+  .bn{position:relative;border:1.6px solid var(--broad);border-radius:14px;padding:9px 12px;
+    background:linear-gradient(160deg,#2a2150,#1c1838);cursor:default}
+  .bn.q{border-color:var(--question);background:linear-gradient(160deg,#3f2a16,#241a10)}
+  .bn .bkd{font-size:7px;letter-spacing:1.4px;text-transform:uppercase;color:#cbb8ff;margin-bottom:3px}
+  .bn.q .bkd{color:#f0c08a}
+  .bn .btx{font-size:10px;line-height:1.3;color:#efe9ff}
+  .bn .meter{margin-top:6px;display:flex;gap:6px;font-size:8px}
+  .bn .meter .s{color:var(--grounded)}.bn .meter .c{color:var(--cross)}
+
+  /* tooltip */
+  #tip{position:fixed;z-index:50;width:300px;border:1px solid var(--line);border-radius:10px;
+    background:#0c1119f0;box-shadow:0 10px 40px #000b;padding:11px 13px;display:none;backdrop-filter:blur(8px)}
+  #tip h4{margin:0 0 3px;font-size:11px}
+  #tip .meta{font-size:9px;color:var(--faint);margin-bottom:7px}
+  #tip .abs{font-size:10px;color:var(--dim);line-height:1.4;max-height:120px;overflow:hidden}
+  #tip .pdf{margin-top:9px;height:70px;border:1px dashed var(--line);border-radius:6px;
+    display:flex;align-items:center;justify-content:center;font-size:9px;color:var(--faint);
+    background:repeating-linear-gradient(180deg,#11161f,#11161f 6px,#0e131b 6px,#0e131b 12px)}
+  #tip .pdf.live{color:var(--borrowed);border-color:#2a4a6a;cursor:pointer}
+  #tip .nopdf{margin-top:9px;font-size:9px;color:var(--faint);font-style:italic}
+  .hint{position:fixed;bottom:12px;left:16px;font-size:10px;color:var(--faint);z-index:30}
+</style>
+</head>
+<body>
+<div id="hud">
+  <b>litgraph</b><span class="sub">paper-centric column view · <code>example/</code> data</span>
+  <div class="legend">
+    <span class="lg-leads"><i></i>leads-to (ground→derived)</span>
+    <span class="lg-corr"><i></i>corroborate</span>
+    <span class="lg-contra"><i></i>contradict</span>
+  </div>
+</div>
+<div id="board"><svg id="edges"></svg></div>
+<div id="tip"></div>
+<div class="hint">Click a <b>curated</b> paper to fan out its grounds (←) and synthesis (→). Click the title row to slice it open (↓). Hover for abstract + PDF.</div>
+
+<script>
+const NS="http://www.w3.org/2000/svg";
+// ── data: the example/ library (one curated paper, four stubs, the broad band) ──────────
+const PAPERS={
+  Ruppel2023NatPhys:{cur:true,pass:3,type:"original",year:2023,
+    title:"Force propagation in epithelial monolayers depends on substrate stiffness",
+    authors:[["Ruppel, A.",0],["Doe, J.",0],["Balland, M.",1]],
+    abstract:"Optogenetic activation combined with traction- and monolayer-stress microscopy shows that traction stress rises with substrate modulus and saturates above a critical stiffness, consistent with a poroelastic continuum model; ~40% of intercellular force is borne by cell–cell junctions.",
+    head:"Traction in epithelial monolayers rises with substrate stiffness — and plateaus.",
+    slices:[
+      {g:"Methods"},{id:"m1",k:"fl",t:"traction force microscopy (floor; ← Butler2002)"},
+      {g:"Claims"},
+      {id:"c1",k:"cl",t:"Traction rises with substrate stiffness. (grounded in m1)"},
+      {id:"c2",k:"cl",t:"~40% of intercellular force is borne by junctions."},
+      {id:"c3",k:"cl",t:"A poroelastic model predicts a plateau above a critical stiffness."},
+      {id:"c4",k:"bo",t:"Keratin networks set baseline cortical tension. (borrowed ← Ramms2013)"},
+      {g:"Questions"},
+      {id:"q1",k:"q",t:"Does the propagation length diverge near a rigidity threshold? (open)"},
+      {id:"q2",k:"q",t:"What sets baseline cortical tension? (answered by c4)"}],
+    grounds:[{key:"Butler2002AmJPhysiol",via:"m1 · TFM floor"},
+             {key:"Ramms2013Pnas",via:"c4 · borrowed claim"}],
+    lateral:[{key:"Jones2018BiophysJ",sign:"corr",via:"c1"},
+             {key:"Smith2010PhysRevLett",sign:"contra",via:"c3"}],
+    cons:[{slug:"traction-scales-with-stiffness",via:"c1"},
+          {slug:"junctions-bear-load",via:"c2"},
+          {slug:"cytoskeleton-sets-tension",via:"c4"},
+          {slug:"q-rigidity-sensing",via:"q1"}]},
+  Butler2002AmJPhysiol:{cur:false,type:"methods",year:2002,
+    title:"Traction fields, moments, and strain energy that cells exert on their surroundings",
+    abstract:"Introduces the traction-force-microscopy reconstruction used to compute the stress a cell applies to a compliant substrate."},
+  Ramms2013Pnas:{cur:false,type:"original",year:2013,
+    title:"Keratins as the main structural component of the epidermal cornified envelope",
+    abstract:"Keratin-rich cells show elevated cortical tension, implicating the keratin network in setting the mechanical baseline."},
+  Jones2018BiophysJ:{cur:false,type:"original",year:2018,
+    title:"Substrate rigidity controls cellular traction in single cells",
+    abstract:"In single cells, traction force increases with substrate rigidity — the result Ruppel2023:c1 corroborates at the monolayer scale."},
+  Smith2010PhysRevLett:{cur:false,type:"original",year:2010,
+    title:"Unbounded force transmission in stiffening extracellular matrices",
+    abstract:"Argues traction scales without bound in stiffening matrices — the claim Ruppel2023:c3 contradicts with its saturating model."}
+};
+const BROAD={
+  "traction-scales-with-stiffness":{kind:"broad claim",text:"Traction scales with substrate stiffness.",meter:{s:1,c:1}},
+  "junctions-bear-load":{kind:"broad claim",text:"Cell–cell junctions bear a substantial share of load.",meter:{s:1,c:0}},
+  "cytoskeleton-sets-tension":{kind:"broad claim",text:"The cytoskeleton sets baseline cortical tension.",meter:{s:1,c:0}},
+  "q-rigidity-sensing":{kind:"broad question",text:"How do cells sense substrate rigidity?",meter:null}
+};
+// static landing order; a real view sorts by pass desc, then year desc (curated above stubs)
+const ORDER=["Ruppel2023NatPhys","Jones2018BiophysJ","Ramms2013Pnas","Smith2010PhysRevLett","Butler2002AmJPhysiol"];
+
+const board=document.getElementById("edges").parentNode;
+const svg=document.getElementById("edges");
+const tip=document.getElementById("tip");
+let edges=[];            // {from,to,kind}
+const cols={};           // level -> {el, keys:Set}
+let focused=null;
+
+function dots(pass){
+  let h='<div class="dots">';
+  for(let i=0;i<4;i++) h+=`<div class="dot${(pass!=null&&i<=pass)?' on':''}"></div>`;
+  return h+'</div>';
+}
+function authLine(a){return a.map(([n,t])=>t===1?`<span class="star">${n}*</span>`:n).join(' · ');}
+
+function paperCard(key,level){
+  const p=PAPERS[key], id=`${level}:${key}`;
+  const el=document.createElement("div");
+  el.className=`card ${p.cur?'curated':'stub'}`;
+  el.id="card-"+id; el.dataset.key=key; el.dataset.id=id;
+  let body=`${dots(p.cur?p.pass:null)}
+    <div class="chd"><span class="ckey">${key}</span>
+      <span class="ctype ${p.type}">${p.type}</span><span class="cyr">${p.year}</span></div>
+    <div class="ctitle">${p.title}</div>`;
+  if(p.authors) body+=`<div class="cauth">${authLine(p.authors)}</div>`;
+  if(p.cur){
+    body+=`<div class="chead">▸ ${p.head}</div><div class="slices">${sliceRows(p)}</div>`;
+  }else{
+    body+=`<div class="stubnote">stub · ○○○○ not curated — promote to slice & open PDF</div>`;
+  }
+  el.innerHTML=body;
+  // hover tooltip
+  el.addEventListener("mousemove",e=>showTip(e,key));
+  el.addEventListener("mouseleave",()=>tip.style.display="none");
+  // click: title row slices open; rest focuses
+  el.addEventListener("click",e=>{
+    if(e.target.closest(".chd")||e.target.closest(".chead")){ if(p.cur) el.classList.toggle("open"); redraw(); return; }
+    if(p.cur) focus(key);
+  });
+  return el;
+}
+function sliceRows(p){
+  return p.slices.map(s=> s.g?`<div class="sgrp">${s.g}</div>`:
+    `<div class="slice"><span class="sid ${s.k}">${s.id}</span><span class="stx">${s.t}</span></div>`).join('');
+}
+function broadCard(slug,level){
+  const b=BROAD[slug], id=`${level}:${slug}`;
+  const el=document.createElement("div");
+  el.className="bn"+(b.kind.includes("question")?" q":"");
+  el.id="card-"+id; el.dataset.id=id;
+  let m = b.meter?`<div class="meter"><span class="s">▲ ${b.meter.s} support</span><span class="c">▼ ${b.meter.c} contradict</span></div>`:'';
+  el.innerHTML=`<div class="bkd">${b.kind}</div><div class="btx">${b.text}</div>${m}`;
+  return el;
+}
+
+function ensureCol(level,label){
+  if(cols[level]) return cols[level];
+  const el=document.createElement("div"); el.className="col";
+  if(label) el.innerHTML=`<div class="colhd">${label}</div>`;
+  cols[level]={el,keys:new Set(),label};
+  // insert in DOM ordered by level (left→right)
+  const levels=Object.keys(cols).map(Number).sort((a,b)=>a-b);
+  const idx=levels.indexOf(level);
+  if(idx===levels.length-1) board.appendChild(el);
+  else board.insertBefore(el, cols[levels[idx+1]].el);
+  return cols[level];
+}
+function addPaper(level,key,label){
+  const c=ensureCol(level,label);
+  if(c.keys.has(key)) return;          // de-dup by citekey (accumulate)
+  c.keys.add(key); c.el.appendChild(paperCard(key,level));
+}
+function addBroad(level,slug,label){
+  const c=ensureCol(level,label);
+  if(c.keys.has(slug)) return;
+  c.keys.add(slug); c.el.appendChild(broadCard(slug,level));
+}
+
+const edgeSeen=new Set();
+function addEdge(from,to,kind){            // de-dup: re-focusing must not stack duplicate paths
+  const k=`${from}|${to}|${kind}`;
+  if(edgeSeen.has(k)) return;
+  edgeSeen.add(k); edges.push({from,to,kind});
+}
+
+function focus(key){
+  const p=PAPERS[key];
+  // mark focus
+  document.querySelectorAll(".card.focus").forEach(c=>c.classList.remove("focus"));
+  const fc=document.getElementById("card-0:"+key); if(fc) fc.classList.add("focus");
+  focused=key;
+  // LEFT — grounds (leads-to, older) + lateral targets
+  (p.grounds||[]).forEach(g=>{
+    addPaper(-1,g.key,"grounds ←");
+    addEdge(`-1:${g.key}`,`0:${key}`,"leads");
+  });
+  (p.lateral||[]).forEach(l=>{
+    addPaper(-1,l.key,"grounds ←");
+    addEdge(`-1:${l.key}`,`0:${key}`,l.sign);
+  });
+  // RIGHT — synthesis band (leads-to, newer/atemporal)
+  (p.cons||[]).forEach(c=>{
+    addBroad(1,c.slug,"synthesis · now →");
+    addEdge(`0:${key}`,`1:${c.slug}`,"leads");
+  });
+  redraw();
+}
+
+// ── edges ──────────────────────────────────────────────────────────────────────────────
+function redraw(){
+  const bb=board.getBoundingClientRect();
+  const W=board.scrollWidth, H=board.scrollHeight;
+  svg.setAttribute("width",W); svg.setAttribute("height",H);
+  while(svg.firstChild) svg.removeChild(svg.firstChild);
+  // arrowheads
+  const defs=document.createElementNS(NS,"defs");
+  defs.innerHTML=`
+    <marker id="ar" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L6,3 L0,6 Z" fill="${cssv('--grounded')}"/></marker>
+    <marker id="arx" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L6,3 L0,6 Z" fill="${cssv('--cross')}"/></marker>`;
+  svg.appendChild(defs);
+  for(const e of edges){
+    const a=document.getElementById("card-"+e.from), b=document.getElementById("card-"+e.to);
+    if(!a||!b) continue;
+    const ra=a.getBoundingClientRect(), rb=b.getBoundingClientRect();
+    const x1=ra.right-bb.left+board.scrollLeft, y1=(ra.top+ra.bottom)/2-bb.top+board.scrollTop;
+    const x2=rb.left-bb.left+board.scrollLeft,  y2=(rb.top+rb.bottom)/2-bb.top+board.scrollTop;
+    const mx=(x1+x2)/2;
+    const path=document.createElementNS(NS,"path");
+    path.setAttribute("d",`M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}`);
+    path.setAttribute("fill","none");
+    const contra=e.kind==="contra"||e.kind==="contradict";
+    const lat=e.kind==="corr"||contra;
+    path.setAttribute("stroke",contra?cssv('--cross'):cssv('--grounded'));
+    path.setAttribute("stroke-width","1.6");
+    if(lat) path.setAttribute("stroke-dasharray","5 4");
+    path.setAttribute("opacity",lat?"0.85":"0.95");
+    if(!lat) path.setAttribute("marker-end","url(#ar)");
+    else if(contra) path.setAttribute("marker-end","url(#arx)");
+    svg.appendChild(path);
+  }
+}
+function cssv(n){return getComputedStyle(document.documentElement).getPropertyValue(n).trim();}
+
+// ── tooltip ────────────────────────────────────────────────────────────────────────────
+function showTip(e,key){
+  const p=PAPERS[key];
+  tip.innerHTML=`<h4>${key}</h4>
+    <div class="meta">${p.type} · ${p.year}${p.cur?` · curated (Pass ${p.pass})`:' · stub'}</div>
+    <div class="abs">${p.abstract||p.title}</div>
+    ${p.cur?`<div class="pdf live">▣ ${key}.pdf — click to open</div>`
+           :`<div class="nopdf">no PDF — uncurated stub (OpenAlex metadata only)</div>`}`;
+  tip.style.display="block";
+  const pad=14, w=300, h=tip.offsetHeight;
+  let x=e.clientX+pad, y=e.clientY+pad;
+  if(x+w>innerWidth) x=e.clientX-w-pad;
+  if(y+h>innerHeight) y=innerHeight-h-pad;
+  tip.style.left=x+"px"; tip.style.top=y+"px";
+}
+
+// ── boot: the landing list (column 0), ranked by pass desc, then year desc ───────────────
+function boot(){
+  ensureCol(0,"all papers · ranked by curation");
+  ORDER.forEach(k=>addPaper(0,k));
+  redraw();
+}
+boot();
+board.addEventListener("scroll",redraw);
+addEventListener("resize",redraw);
+</script>
+</body>
+</html>

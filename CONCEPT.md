@@ -286,9 +286,15 @@ Because first-class papers are human-curated and **the human supplies the PDF**,
 1. **Curation is the rate limiter** — propose / accept / edit / reject; never flood.
    A partial graph is valid — and so is a partial *paper*. Curation has **depth tiers**
    orthogonal to the curated/stub breadth tier (§5): some papers stop at Pass 0 (abstract
-   skeleton), some at Pass 1, some run all the way through Pass 3 (CURATION.md). Like the
-   breadth tier, depth is **emergent from what's present** — no `depth:` field — and
-   stopping early is a normal resting state, not an unfinished task.
+   skeleton), some at Pass 1, some run all the way through Pass 3 (CURATION.md). The
+   **breadth** tier stays emergent (curated vs stub = file presence, §5), but the **depth**
+   tier is recorded in one small authored field — `pass: 0–3` on the curated paper
+   (SCHEMA §4) — because *where curation paused* is process state, not graph structure, and
+   the interim tiers aren't reconstructable from the slices alone: the pass→slice map is
+   lossy both ways (a Pass-3 read may add no method slices; a Pass-1 read may opportunistically
+   grab a floor), so "deepest pass reached" can't be inferred from which slice kinds are
+   present. This is the lone exception to "no authored process fields"; stopping early is a
+   normal resting state, not an unfinished task.
 2. **Generalize, don't merge — but don't duplicate for nesting either.** Never equate two
    claims (lossy); co-parent them under a broader claim via `leads-to` (§4), and the
    paper-specific phrasing and quote are never destroyed. Conversely, a broader claim **earns
