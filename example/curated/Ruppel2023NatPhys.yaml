@@ -7,6 +7,9 @@
 title: "Force propagation in epithelial monolayers depends on substrate stiffness"
 type: original                       # original | review | methods | perspective | commentary
 year: 2023
+pass: 3                              # curation depth tier (SCHEMA §4): fully curated through Pass 3
+                                     #   (methods DAG + introducing papers). Absent → stub. Breadth
+                                     #   tier (curated vs stub) stays emergent via file presence.
 doi: 10.1038/s41567-023-01234
 authors:
   - {name: "Ruppel, Artur",   position: first}

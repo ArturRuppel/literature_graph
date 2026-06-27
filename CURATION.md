@@ -23,6 +23,9 @@ edits/accepts. Nothing is "curated" until the human commits it.
 - **Propose, never flood** (CONCEPT §10). A handful of well-welded slices beats a wall of
   shallow ones. **Curation has depth tiers** — a paper may stop at Pass 0, Pass 1, or run all
   the way to Pass 3; stopping early is a normal resting state, not an unfinished task.
+  **Record the tier you reach** as `pass: 0–3` on the curated file (SCHEMA §4), bumping it as
+  each pass is tokenized; a stub has no `pass` at all. This is the depth signal the interface
+  ranks and renders (the progress dots in `docs/2026-06-25-visualization-design.md`).
 - **The quote is the integrity anchor.** Every claim is welded to a quote grounded in the
   paper's `.md` full text (SCHEMA §6 rule 4). Verbatim substrings are the default; non-
   contiguous passages may be shortened with `[...]` when the curator explicitly accepts the
