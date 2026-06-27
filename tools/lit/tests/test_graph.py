@@ -139,3 +139,42 @@ def test_validate_flags_duplicate_local_id():
                Slice(id="c1", kind="claim", text="b"))
     with pytest.raises(BuildError, match="c1"):
         validate({"P1": p}, {})
+
+
+from litgraph.graph import build_graph, Graph
+
+
+def test_build_graph_example():
+    g = build_graph(EXAMPLE)
+    assert isinstance(g, Graph)
+    p = g.papers["Ruppel2023NatPhys"]
+    by_id = {s.id: s for s in p.slices}
+    # m1 is a floor (grounds only in a container)
+    assert by_id["m1"].is_floor is True and by_id["m1"].color == "floor"
+    # c1 grounds in m1 -> grounded + original
+    assert by_id["c1"].grounded is True and by_id["c1"].borrowed is False
+    assert by_id["c1"].color == "grounded"
+    # c4 grounds in a citation -> borrowed
+    assert by_id["c4"].borrowed is True and by_id["c4"].color == "borrowed"
+    # q2 answered (c4 answers it), q1 open
+    assert by_id["q2"].answered is True
+    assert by_id["q1"].answered is False
+    # top-altitude claims become the head (no outgoing leads_to) -- c3 has only contradicts
+    assert p.head  # non-empty
+    # broad-claim meter (example: 1 support via c1 leads_to, 1 contradict via c3)
+    b = g.broad["traction-scales-with-stiffness"]
+    assert (b.support, b.contradict) == (1, 1)
+    # landing order: curated before stubs
+    assert g.order[0] == "Ruppel2023NatPhys"
+    assert g.order.index("Ruppel2023NatPhys") < g.order.index("Ramms2013Pnas")
+
+
+def test_build_graph_handles_skeleton_paper(tmp_path):
+    # a curated paper with no slices and no `pass` is valid and sorts after passed papers
+    (tmp_path / "curated").mkdir()
+    (tmp_path / "curated" / "Bare2020Jrnl.yaml").write_text(
+        'title: "x"\ntype: original\nyear: 2020\nauthors: [{name: "A, B"}]\n')
+    (tmp_path / "stubs.yaml").write_text("Old1990Jrnl:\n  title: t\n  year: 1990\n")
+    g = build_graph(tmp_path)
+    assert g.papers["Bare2020Jrnl"].slices == []
+    assert g.order == ["Bare2020Jrnl", "Old1990Jrnl"]  # curated before stub

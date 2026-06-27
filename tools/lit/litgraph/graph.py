@@ -253,3 +253,52 @@ def reaches_floor(s: Slice, by_id: dict[str, Slice], seen: set[str] | None = Non
         if t is not None and reaches_floor(t, by_id, seen):
             return True
     return False
+
+
+def _slice_color(s: Slice) -> str:
+    if s.kind == "question":
+        return "question"
+    if s.kind == "method":
+        return "floor" if s.is_floor else "model"
+    # claim
+    if s.borrowed:
+        return "borrowed"
+    return "grounded" if s.grounded else "plausible"
+
+
+def _order(papers: dict[str, Paper]) -> list[str]:
+    curated = [p for p in papers.values() if p.curated]
+    stubs = [p for p in papers.values() if not p.curated]
+    curated.sort(key=lambda p: (
+        -(p.pass_ if p.pass_ is not None else -1), -(p.year or 0), p.citekey))
+    stubs.sort(key=lambda p: (-(p.year or 0), p.citekey))
+    return [p.citekey for p in curated] + [p.citekey for p in stubs]
+
+
+def build_graph(root) -> Graph:
+    """Load -> validate -> compute emergent properties -> order. The pure core."""
+    papers, broad = load_repo(Path(root))
+    validate(papers, broad)
+    answered = answered_question_ids(papers)
+
+    for p in papers.values():
+        by_id = {s.id: s for s in p.slices}
+        for s in p.slices:                       # methods first: floors feed grounded
+            if s.kind == "method":
+                s.is_floor = method_is_floor(s)
+            elif s.kind == "claim" and s.floor_flag:
+                s.is_floor = True
+        for s in p.slices:
+            if s.kind == "claim":
+                s.borrowed = claim_is_borrowed(s)
+                s.grounded = reaches_floor(s, by_id)
+            elif s.kind == "question":
+                s.answered = f"{p.citekey}:{s.id}" in answered
+            s.color = _slice_color(s)
+        p.head = [s.text for s in p.slices if s.kind == "claim" and not s.leads_to]
+
+    for slug, b in broad.items():
+        if b.kind == "broad claim":
+            b.support, b.contradict = broad_meter(slug, papers)
+
+    return Graph(papers=papers, broad=broad, order=_order(papers))
