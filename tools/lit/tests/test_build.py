@@ -41,3 +41,25 @@ def test_emit_writes_self_contained_viewer(tmp_path):
     text = html.read_text()
     assert "Ruppel2023NatPhys" in text
     assert "__GRAPH_JSON__" not in text
+
+
+from litgraph.cli import main
+
+
+def test_cli_build_writes_dist(tmp_path, capsys):
+    rc = main(["build", "--root", str(EXAMPLE), "--out", str(tmp_path / "dist")])
+    assert rc == 0
+    assert (tmp_path / "dist" / "index.html").exists()
+    out = capsys.readouterr().out
+    assert "dist" in out  # reports where it wrote
+
+
+def test_cli_build_reports_validation_error(tmp_path, capsys):
+    (tmp_path / "curated").mkdir()
+    (tmp_path / "curated" / "Bad2020Jrnl.yaml").write_text(
+        'title: t\ntype: original\nyear: 2020\nauthors: [{name: "A, B"}]\n'
+        'claims:\n  - {id: c1, text: x, grounded_in: [m9]}\n')
+    rc = main(["build", "--root", str(tmp_path), "--out", str(tmp_path / "dist")])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "m9" in err
