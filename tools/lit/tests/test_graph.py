@@ -87,3 +87,28 @@ def test_reaches_floor():
     assert reaches_floor(c1, by_id) is True          # c1 -> m3 -> m1 (floor)
     assert reaches_floor(c3, by_id) is True           # c3 -> c1 -> ... -> floor
     assert reaches_floor(c9, by_id) is False          # grounds only in a citation
+
+
+from litgraph.graph import answered_question_ids, broad_meter
+
+
+def _paper(citekey, *slices):
+    return Paper(citekey=citekey, curated=True, title="", type="original", year=2023,
+                 slices=list(slices))
+
+
+def test_answered_question_ids():
+    p = _paper("P1",
+               Slice(id="q1", kind="question", text="?"),
+               Slice(id="q2", kind="question", text="?"),
+               Slice(id="c1", kind="claim", text="ans", answers=["q1"]))
+    assert answered_question_ids({"P1": p}) == {"P1:q1"}
+
+
+def test_broad_meter_counts_support_and_contradict():
+    # c1 generalizes into the broad claim (support); c2 contradicts the slug directly
+    p1 = _paper("P1", Slice(id="c1", kind="claim", text="x", leads_to=["b-claim"]))
+    p2 = _paper("P2", Slice(id="c2", kind="claim", text="y", contradicts=["b-claim"]))
+    s, c = broad_meter("b-claim", {"P1": p1, "P2": p2})
+    assert s == 1          # one claim generalizes into it (leads_to)
+    assert c == 1          # one claim contradicts the slug directly

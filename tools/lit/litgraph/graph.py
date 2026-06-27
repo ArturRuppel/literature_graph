@@ -161,6 +161,41 @@ def claim_is_borrowed(s: Slice) -> bool:
     return any(classify_ref(r) in ("container", "sharpened") for r in s.grounded_in)
 
 
+def _global(citekey: str, ref: str) -> str:
+    """Resolve a same-paper local ref to its global id; pass sharpened refs through."""
+    return f"{citekey}:{ref}" if classify_ref(ref) == "local" else ref
+
+
+def answered_question_ids(papers: dict[str, Paper]) -> set[str]:
+    """Global ids (citekey:qN) of questions answered by some claim's `answers` edge."""
+    out: set[str] = set()
+    for p in papers.values():
+        if not p.curated:
+            continue
+        for s in p.slices:
+            if s.kind == "claim":
+                for r in s.answers:
+                    out.add(_global(p.citekey, r))
+    return out
+
+
+def broad_meter(slug: str, papers: dict[str, Paper]) -> tuple[int, int]:
+    """v1 meter (spec §3): a broad claim is itself a claim, so lateral edges may target its
+    slug directly (SCHEMA §6 allows "a claim"). support = #claims that generalize into it
+    (leads_to) or corroborate it; contradict = #claims that contradict it."""
+    support = 0
+    contradict = 0
+    for p in papers.values():
+        for s in p.slices:
+            if s.kind != "claim":
+                continue
+            if slug in s.leads_to or slug in s.corroborates:
+                support += 1
+            if slug in s.contradicts:
+                contradict += 1
+    return support, contradict
+
+
 def reaches_floor(s: Slice, by_id: dict[str, Slice], seen: set[str] | None = None) -> bool:
     """Does this slice's downward (grounded_in) chain reach a floor — a method floor or a
     `floor: true` claim? Only local refs are walkable; cross-paper refs are opaque here."""
