@@ -256,6 +256,8 @@ def reaches_floor(s: Slice, by_id: dict[str, Slice], seen: set[str] | None = Non
 
 
 def _slice_color(s: Slice) -> str:
+    """Map a slice's kind + computed state to its display color (SCHEMA §7):
+    question; method floor/model; claim borrowed/grounded/plausible."""
     if s.kind == "question":
         return "question"
     if s.kind == "method":
@@ -267,6 +269,8 @@ def _slice_color(s: Slice) -> str:
 
 
 def _order(papers: dict[str, Paper]) -> list[str]:
+    """Landing-list order: curated (by pass desc, year desc, citekey) before stubs
+    (year desc, citekey). A missing `pass` encodes as -1 so it sorts last among curated."""
     curated = [p for p in papers.values() if p.curated]
     stubs = [p for p in papers.values() if not p.curated]
     curated.sort(key=lambda p: (
@@ -283,11 +287,13 @@ def build_graph(root) -> Graph:
 
     for p in papers.values():
         by_id = {s.id: s for s in p.slices}
-        for s in p.slices:                       # methods first: floors feed grounded
+        # Phase 1: set is_floor (methods + floor_flag axioms) — must precede Phase 2.
+        for s in p.slices:
             if s.kind == "method":
                 s.is_floor = method_is_floor(s)
             elif s.kind == "claim" and s.floor_flag:
                 s.is_floor = True
+        # Phase 2: emergent grounded/borrowed/answered + color (reads is_floor).
         for s in p.slices:
             if s.kind == "claim":
                 s.borrowed = claim_is_borrowed(s)

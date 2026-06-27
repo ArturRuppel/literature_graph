@@ -178,3 +178,26 @@ def test_build_graph_handles_skeleton_paper(tmp_path):
     g = build_graph(tmp_path)
     assert g.papers["Bare2020Jrnl"].slices == []
     assert g.order == ["Bare2020Jrnl", "Old1990Jrnl"]  # curated before stub
+
+
+from litgraph.graph import _slice_color
+
+
+def test_slice_color_all_branches():
+    assert _slice_color(Slice(id="q1", kind="question", text="?")) == "question"
+    assert _slice_color(Slice(id="m1", kind="method", text="f", is_floor=True)) == "floor"
+    assert _slice_color(Slice(id="m2", kind="method", text="m", is_floor=False)) == "model"
+    assert _slice_color(Slice(id="c1", kind="claim", text="b", borrowed=True)) == "borrowed"
+    assert _slice_color(Slice(id="c2", kind="claim", text="g", grounded=True)) == "grounded"
+    assert _slice_color(Slice(id="c3", kind="claim", text="p")) == "plausible"
+
+
+def test_order_ranks_curated_by_pass(tmp_path):
+    (tmp_path / "curated").mkdir()
+    (tmp_path / "curated" / "Deep2021Jrnl.yaml").write_text(
+        'title: t\ntype: original\nyear: 2021\npass: 3\nauthors: [{name: "A, B"}]\n')
+    (tmp_path / "curated" / "Shallow2022Jrnl.yaml").write_text(
+        'title: t\ntype: original\nyear: 2022\nauthors: [{name: "A, B"}]\n')  # no pass
+    g = build_graph(tmp_path)
+    # pass 3 ranks above no-pass even though Shallow is newer
+    assert g.order == ["Deep2021Jrnl", "Shallow2022Jrnl"]
