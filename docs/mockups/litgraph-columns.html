@@ -148,6 +148,7 @@ const BROAD={
   "cytoskeleton-sets-tension":{kind:"broad claim",text:"The cytoskeleton sets baseline cortical tension.",meter:{s:1,c:0}},
   "q-rigidity-sensing":{kind:"broad question",text:"How do cells sense substrate rigidity?",meter:null}
 };
+// static landing order; a real view sorts by pass desc, then year desc (curated above stubs)
 const ORDER=["Ruppel2023NatPhys","Jones2018BiophysJ","Ramms2013Pnas","Smith2010PhysRevLett","Butler2002AmJPhysiol"];
 
 const board=document.getElementById("edges").parentNode;
@@ -227,6 +228,13 @@ function addBroad(level,slug,label){
   c.keys.add(slug); c.el.appendChild(broadCard(slug,level));
 }
 
+const edgeSeen=new Set();
+function addEdge(from,to,kind){            // de-dup: re-focusing must not stack duplicate paths
+  const k=`${from}|${to}|${kind}`;
+  if(edgeSeen.has(k)) return;
+  edgeSeen.add(k); edges.push({from,to,kind});
+}
+
 function focus(key){
   const p=PAPERS[key];
   // mark focus
@@ -236,16 +244,16 @@ function focus(key){
   // LEFT — grounds (leads-to, older) + lateral targets
   (p.grounds||[]).forEach(g=>{
     addPaper(-1,g.key,"grounds ←");
-    edges.push({from:`-1:${g.key}`,to:`0:${key}`,kind:"leads"});
+    addEdge(`-1:${g.key}`,`0:${key}`,"leads");
   });
   (p.lateral||[]).forEach(l=>{
     addPaper(-1,l.key,"grounds ←");
-    edges.push({from:`-1:${l.key}`,to:`0:${key}`,kind:l.sign});
+    addEdge(`-1:${l.key}`,`0:${key}`,l.sign);
   });
   // RIGHT — synthesis band (leads-to, newer/atemporal)
   (p.cons||[]).forEach(c=>{
     addBroad(1,c.slug,"synthesis · now →");
-    edges.push({from:`0:${key}`,to:`1:${c.slug}`,kind:"leads"});
+    addEdge(`0:${key}`,`1:${c.slug}`,"leads");
   });
   redraw();
 }
