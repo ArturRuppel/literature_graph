@@ -48,3 +48,18 @@ def test_load_repo_rejects_curated_stub_collision(tmp_path):
     (tmp_path / "stubs.yaml").write_text("Dup2020Jrnl:\n  title: t\n  year: 2020\n")
     with pytest.raises(BuildError, match="Dup2020Jrnl"):
         load_repo(tmp_path)
+
+
+from litgraph.graph import method_is_floor
+
+
+def test_method_floor_vs_model():
+    # floor: grounds only in containers (its source papers)
+    floor = Slice(id="m2", kind="method", text="TFM",
+                  grounded_in=["Sabass2007BiophysJ", "Bauer2021PloComputBiology"])
+    assert method_is_floor(floor) is True
+    # floor: no grounding at all still bottoms out
+    assert method_is_floor(Slice(id="m1", kind="method", text="x")) is True
+    # model: layers on another method (a local m-ref)
+    model = Slice(id="m3", kind="method", text="MSM", grounded_in=["m2", "Tambe2011NatMater"])
+    assert method_is_floor(model) is False

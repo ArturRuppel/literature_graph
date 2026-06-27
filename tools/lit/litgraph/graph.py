@@ -148,3 +148,9 @@ def classify_ref(ref: str) -> str:
     if _CITEKEY.match(ref):
         return "container"
     return "broad"
+
+
+def method_is_floor(s: Slice) -> bool:
+    """A method is a floor iff it grounds only in containers (source papers) — i.e. it
+    layers on no other method. A model has a local method ref in grounded_in (SCHEMA §7)."""
+    return not any(classify_ref(r) == "local" for r in s.grounded_in)
