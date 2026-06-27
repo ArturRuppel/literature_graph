@@ -14,7 +14,6 @@ def test_classify_ref_forms():
     assert classify_ref("jamming") == "broad"
 
 
-# tests/test_graph.py  (add)
 from litgraph.graph import load_repo, Paper, Slice
 
 EXAMPLE = Path(__file__).resolve().parents[3] / "example"
@@ -38,3 +37,14 @@ def test_load_repo_reads_curated_and_stubs():
     # broad nodes load
     assert "traction-scales-with-stiffness" in broad
     assert broad["traction-scales-with-stiffness"].kind == "broad claim"
+
+
+def test_load_repo_rejects_curated_stub_collision(tmp_path):
+    import pytest
+    from litgraph.graph import load_repo, BuildError
+    (tmp_path / "curated").mkdir()
+    (tmp_path / "curated" / "Dup2020Jrnl.yaml").write_text(
+        'title: t\ntype: original\nyear: 2020\nauthors: [{name: "A, B"}]\n')
+    (tmp_path / "stubs.yaml").write_text("Dup2020Jrnl:\n  title: t\n  year: 2020\n")
+    with pytest.raises(BuildError, match="Dup2020Jrnl"):
+        load_repo(tmp_path)

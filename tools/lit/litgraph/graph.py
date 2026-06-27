@@ -55,6 +55,7 @@ class BroadNode:
     slug: str
     kind: str                       # "broad claim" | "broad question" | "broad method"
     text: str
+    # computed (filled by build_graph in a later task):
     support: int = 0
     contradict: int = 0
 
@@ -120,6 +121,8 @@ def load_repo(root: Path) -> tuple[dict[str, Paper], dict[str, BroadNode]]:
     if stubs_path.exists():
         for citekey, raw in (_yaml.load(stubs_path.read_text()) or {}).items():
             raw = raw or {}
+            if citekey in papers:
+                raise BuildError(f"{citekey} is both curated and a stub (SCHEMA §6.3)")
             papers[citekey] = Paper(
                 citekey=citekey, curated=False,
                 title=raw.get("title", ""), type=raw.get("type", "original"),
