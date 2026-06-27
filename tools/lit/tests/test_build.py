@@ -1,7 +1,8 @@
 # tests/test_build.py
+import json
 from pathlib import Path
 from litgraph.graph import build_graph
-from litgraph.build import to_json_dict
+from litgraph.build import to_json_dict, emit
 
 EXAMPLE = Path(__file__).resolve().parents[3] / "example"
 
@@ -25,3 +26,18 @@ def test_to_json_dict_shape():
     assert "meter" in d["broad"]["traction-scales-with-stiffness"]
     # order is papers (curated + stubs), curated first
     assert d["order"][0] == "Ruppel2023NatPhys"
+
+
+def test_emit_writes_self_contained_viewer(tmp_path):
+    g = build_graph(EXAMPLE)
+    emit(g, tmp_path)
+    gj = tmp_path / "graph.json"
+    html = tmp_path / "index.html"
+    assert gj.exists() and html.exists()
+    # graph.json round-trips
+    data = json.loads(gj.read_text())
+    assert "Ruppel2023NatPhys" in data["papers"]
+    # index.html has the JSON inlined (self-contained) and no leftover token
+    text = html.read_text()
+    assert "Ruppel2023NatPhys" in text
+    assert "__GRAPH_JSON__" not in text

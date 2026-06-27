@@ -3,6 +3,9 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 from litgraph.graph import Graph, Paper, classify_ref
 
 
@@ -57,3 +60,23 @@ def to_json_dict(g: Graph) -> dict:
                               if b.kind == "broad claim" else None)}
              for slug, b in g.broad.items()}
     return {"papers": curated, "broad": broad, "stubs": stubs, "order": g.order}
+
+
+_TEMPLATE = Path(__file__).parent / "viewer" / "template.html"
+_TOKEN_START = "/*__GRAPH_JSON__*/"
+_TOKEN_END = "/*__END__*/"
+
+
+def emit(g: Graph, out: Path) -> None:
+    """Write graph.json and a self-contained index.html (JSON inlined) into `out`."""
+    out = Path(out)
+    out.mkdir(parents=True, exist_ok=True)
+    data = to_json_dict(g)
+    payload = json.dumps(data, ensure_ascii=False)
+    (out / "graph.json").write_text(payload, encoding="utf-8")
+
+    template = _TEMPLATE.read_text(encoding="utf-8")
+    start = template.index(_TOKEN_START)
+    end = template.index(_TOKEN_END) + len(_TOKEN_END)
+    html = template[:start] + payload + template[end:]
+    (out / "index.html").write_text(html, encoding="utf-8")
