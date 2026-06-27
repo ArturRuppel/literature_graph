@@ -75,8 +75,11 @@ def emit(g: Graph, out: Path) -> None:
     payload = json.dumps(data, ensure_ascii=False)
     (out / "graph.json").write_text(payload, encoding="utf-8")
 
+    # Inline into the <script>; escape "<" so a "</script>" inside any paper's text
+    # can't close the tag. < is a valid JS string escape that parses back to "<".
+    inline = payload.replace("<", "\\u003c")
     template = _TEMPLATE.read_text(encoding="utf-8")
     start = template.index(_TOKEN_START)
     end = template.index(_TOKEN_END) + len(_TOKEN_END)
-    html = template[:start] + payload + template[end:]
+    html = template[:start] + inline + template[end:]
     (out / "index.html").write_text(html, encoding="utf-8")

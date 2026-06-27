@@ -71,8 +71,11 @@ data repo YAML ──build_graph()──▶ Graph ──emit()──▶ dist/ind
    `citekey:id`. Build the node table (papers · slices · broad nodes · stubs) and resolve each
    `grounded_in` / `leads_to` / `corroborates` / `contradicts` / `answers` ref to a node.
    **Validate (SCHEMA §6)** and fail the build with a precise message on: dangling ref,
-   duplicate local id, citekey that is both curated and a stub, `leads-to` cycle. (Quote
-   integrity, §6 rule 4, is *not* re-checked here — it belongs to curation; v1 trusts it.)
+   duplicate local id, citekey that is both curated and a stub. (Quote integrity, §6 rule 4,
+   is *not* re-checked here — it belongs to curation; v1 trusts it. **`leads-to` cycle
+   detection (§6 rule 5) is deferred** — it's a tracked follow-up, not v1: nothing in the
+   build recursively traverses `leads_to`, and `grounded_in` cycles are already absorbed by
+   `reaches_floor`'s seen-set, so a cycle can't hang or crash the build.)
 
 3. **Compute emergent properties (SCHEMA §7).** Never authored; always derived:
    - **floor vs model** (method): a method whose `grounded_in` reaches only containers (its
@@ -156,8 +159,9 @@ Matches the existing offline/deterministic ethos (recorded fixtures, no live net
   evidence meter counts, and the top-altitude headline set.
 - **Build smoke test**: `example/` builds; `graph.json` has no dangling refs; `index.html` is
   written and self-contained.
-- **Validation failure test**: a malformed fixture (dangling ref / duplicate id / `leads-to`
-  cycle) makes the build fail with a clear, specific error.
+- **Validation failure test**: a malformed fixture (dangling ref / duplicate id / curated-stub
+  collision) makes the build fail with a clear, specific error. (`leads-to` cycle detection is
+  a deferred follow-up — see §3.)
 
 ## 8. File-by-file plan
 
