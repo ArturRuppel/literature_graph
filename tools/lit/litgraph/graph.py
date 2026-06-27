@@ -6,7 +6,7 @@ from __future__ import annotations
 import re
 
 _LOCAL = re.compile(r"^[cqm]\d+$")
-_CITEKEY = re.compile(r"^[A-Z][A-Za-z]*\d{4}[A-Za-z]")  # <Family><Year><Venue>
+_CITEKEY = re.compile(r"^[A-Z][A-Za-z]*\d{4}[A-Za-z]")  # <Family><Year><Venue>; no $ — venue varies in length
 
 
 def classify_ref(ref: str) -> str:
