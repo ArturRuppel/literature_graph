@@ -82,8 +82,11 @@ data repo YAML ──build_graph()──▶ Graph ──emit()──▶ dist/ind
    - **original vs borrowed** (claim): borrowed iff `grounded_in` reaches a cross-paper
      container/citation (a restatement, CONCEPT §6.1) rather than a same-paper floor.
    - **open vs answered** (question): answered iff some claim `answers` it.
-   - **evidence meter** (broad claim): count incoming `corroborates` vs `contradicts` (inverted
-     from the children, SCHEMA §4 thin-node note).
+   - **evidence meter** (broad claim): a broad claim is itself a claim, so lateral edges may
+     target its slug directly (SCHEMA §6 allows "a claim"). **support** = #claims that
+     `leads_to` or `corroborates` it; **contradict** = #claims that `contradicts` it. (On
+     `example/`: `traction-scales-with-stiffness` → 1 support / 1 contradict.) A documented v1
+     rule — revisit if richer lateral data wants child-level aggregation.
    - **top-altitude claims** (paper): claims with **no outgoing `leads_to`** → the card headline.
    - **pass**: authored, passed through (may be absent — see ranking below).
    - **landing rank** (`order`): **curated before stub** (the breadth tier wins first), then
