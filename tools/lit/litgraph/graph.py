@@ -154,3 +154,28 @@ def method_is_floor(s: Slice) -> bool:
     """A method is a floor iff it grounds only in containers (source papers) — i.e. it
     layers on no other method. A model has a local method ref in grounded_in (SCHEMA §7)."""
     return not any(classify_ref(r) == "local" for r in s.grounded_in)
+
+
+def claim_is_borrowed(s: Slice) -> bool:
+    """Borrowed (restated) iff grounded_in reaches a cross-paper container (CONCEPT §6.1)."""
+    return any(classify_ref(r) in ("container", "sharpened") for r in s.grounded_in)
+
+
+def reaches_floor(s: Slice, by_id: dict[str, Slice], seen: set[str] | None = None) -> bool:
+    """Does this slice's downward (grounded_in) chain reach a floor — a method floor or a
+    `floor: true` claim? Only local refs are walkable; cross-paper refs are opaque here."""
+    seen = set() if seen is None else seen
+    if s.id in seen:
+        return False
+    seen.add(s.id)
+    if s.kind == "method" and s.is_floor:
+        return True
+    if s.kind == "claim" and s.floor_flag:
+        return True
+    for r in s.grounded_in:
+        if classify_ref(r) != "local":
+            continue
+        t = by_id.get(r)
+        if t is not None and reaches_floor(t, by_id, seen):
+            return True
+    return False

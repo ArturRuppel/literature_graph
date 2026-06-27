@@ -63,3 +63,27 @@ def test_method_floor_vs_model():
     # model: layers on another method (a local m-ref)
     model = Slice(id="m3", kind="method", text="MSM", grounded_in=["m2", "Tambe2011NatMater"])
     assert method_is_floor(model) is False
+
+
+from litgraph.graph import claim_is_borrowed, reaches_floor
+
+
+def test_claim_borrowed():
+    borrowed = Slice(id="c4", kind="claim", text="borrowed", grounded_in=["Ramms2013Pnas"])
+    assert claim_is_borrowed(borrowed) is True
+    original = Slice(id="c1", kind="claim", text="orig", grounded_in=["m1"])
+    assert claim_is_borrowed(original) is False
+    sharp = Slice(id="c5", kind="claim", text="x", grounded_in=["Liu2010Pnas:c3"])
+    assert claim_is_borrowed(sharp) is True
+
+
+def test_reaches_floor():
+    m1 = Slice(id="m1", kind="method", text="floor", is_floor=True)
+    m3 = Slice(id="m3", kind="method", text="model", grounded_in=["m1"], is_floor=False)
+    c1 = Slice(id="c1", kind="claim", text="grounded", grounded_in=["m3"])
+    c3 = Slice(id="c3", kind="claim", text="theory", grounded_in=["c1"])
+    c9 = Slice(id="c9", kind="claim", text="plausible", grounded_in=["Some2010Paper"])
+    by_id = {s.id: s for s in (m1, m3, c1, c3, c9)}
+    assert reaches_floor(c1, by_id) is True          # c1 -> m3 -> m1 (floor)
+    assert reaches_floor(c3, by_id) is True           # c3 -> c1 -> ... -> floor
+    assert reaches_floor(c9, by_id) is False          # grounds only in a citation
