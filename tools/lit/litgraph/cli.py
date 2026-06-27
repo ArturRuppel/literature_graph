@@ -14,9 +14,13 @@ def _print_report(r: Report) -> None:
     tag = "DRY-RUN — nothing written" if r.dry_run else "written"
     print(f"\n=== lit ingest ({tag}) ===")
     print(f"  PDF        : {r.pdf}")
-    print(f"  DOI        : {r.doi}  (via {r.doi_source})")
+    srcnote = f"; metadata via {r.metadata_source}" if r.metadata_source == "crossref" else ""
+    print(f"  DOI        : {r.doi}  (via {r.doi_source}{srcnote})")
     if r.title_search_unverified:
         print("  ⚠ DOI resolved by TITLE SEARCH — verify the match is the right paper.")
+    if r.metadata_source == "crossref":
+        print("  ⚠ focal not in OpenAlex — metadata + references via Crossref; "
+              "DOI-less refs (books) and DataCite deposits (datasets) are not auto-resolved.")
     print(f"  citekey    : {r.citekey}")
     print(f"  title      : {r.title}")
     typenote = " (defaulted — review)" if r.type_defaulted else ""
@@ -33,7 +37,7 @@ def _print_report(r: Report) -> None:
         print(f"    - {a.name}" + (f"  [{', '.join(roles)}]" if roles else ""))
     refnote = ""
     if r.n_referenced and r.n_referenced != r.n_refs:
-        refnote = f" of {r.n_referenced} referenced ({r.n_referenced - r.n_refs} not returned by OpenAlex)"
+        refnote = f" of {r.n_referenced} referenced ({r.n_referenced - r.n_refs} not resolved)"
     print(f"  references : {r.n_refs} fetched{refnote} | {len(r.stubs_added)} new stubs | "
           f"{len(r.stubs_deduped)} deduped | {r.refs_skipped} skipped")
     print(f"  curated    : {r.curated_path}")

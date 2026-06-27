@@ -102,3 +102,14 @@ class OpenAlex:
             for raw in data.get("results") or []:
                 out.append(normalize_work(raw))
         return out
+
+    def fetch_works_by_doi(self, dois: list[str], chunk: int = 50) -> list[Work]:
+        """Batch-fetch works by DOI (OR-filter). Used to resolve a Crossref reference list."""
+        out: list[Work] = []
+        for start in range(0, len(dois), chunk):
+            batch = dois[start : start + chunk]
+            flt = "doi:" + "|".join(quote(d, safe="") for d in batch)
+            data = self._get_json(f"{BASE}/works?filter={flt}&per-page={chunk}&select={_SELECT}")
+            for raw in data.get("results") or []:
+                out.append(normalize_work(raw))
+        return out

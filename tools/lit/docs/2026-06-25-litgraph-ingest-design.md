@@ -140,7 +140,9 @@ flagged in the report.
 2. Regex candidate DOIs: `10\.\d{4,9}/[-._;()/:A-Za-z0-9]+`; choose the best candidate
    (dedupe; prefer one also present in metadata or repeated in text).
 3. Validate by resolving in OpenAlex.
-4. Fallbacks, in order: `--doi` override (wins outright) → OpenAlex **title search**
+4. Fallbacks, in order: `--doi` override (wins outright) → for a *known* DOI not yet in
+   OpenAlex, **Crossref metadata fallback** (`metadata_source = crossref`, flagged in the
+   report — covers papers published too recently to be indexed) → OpenAlex **title search**
    (title from PDF metadata / first heading), take the top hit and **flag low-confidence
    in the report** → otherwise hard-fail with a clear "pass `--doi`" message.
 
@@ -167,9 +169,13 @@ flagged in the report.
   curation step mines for exact `quote`s.
 
 ### Stage C — References → stub records
-- Read the focal work's `referenced_works` (list of OpenAlex IDs).
-- Batch-fetch (~50 IDs/request, paginated) selecting
+- **OpenAlex focal**: read the focal work's `referenced_works` (list of OpenAlex IDs) and
+  batch-fetch (~50 IDs/request, paginated) selecting
   `id, doi, display_name, publication_year, authorships, type`.
+- **Crossref focal** (fallback, Stage A): read the reference DOI list from the Crossref
+  record instead, then resolve those DOIs to works — OpenAlex batch (`filter=doi:…`) with a
+  per-DOI Crossref fallback. DOI-less references (e.g. books) and DataCite deposits (e.g.
+  Zenodo datasets) Crossref doesn't carry are **not auto-resolved** (add manually if wanted).
 - Per reference → stub `{title, year, doi?, type?}`; citekey `<Family><Year><Venue>` per
   §3a (venue omitted if OpenAlex has none).
 - Keep DOI-less references (schema `doi` is optional). Skip a reference missing **both**

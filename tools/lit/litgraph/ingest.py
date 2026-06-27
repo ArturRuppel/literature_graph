@@ -7,7 +7,7 @@ from pathlib import Path
 
 from . import pdf as pdfmod
 from . import store
-from .citekey import make_citekey
+from .citekey import _norm_doi, make_citekey
 from .fulltext import to_markdown
 from .model import Author, CuratedPaper, Stub, Work, map_type
 from .roles import resolve_roles
@@ -25,6 +25,7 @@ class Report:
     pdf: str
     doi: str | None = None
     doi_source: str = ""  # "--doi" | "pdf" | "title-search"
+    metadata_source: str = "openalex"  # "openalex" | "crossref" (focal metadata + refs origin)
     title_search_unverified: bool = False
     citekey: str = ""
     title: str = ""
@@ -54,34 +55,58 @@ def _enrich_names(work: Work, crossref_pairs: list[tuple[str, str]]) -> None:
             a.family, a.given = fam, given
 
 
-def _resolve_focal(pdf_path: str, doi_override: str | None, oa: OpenAlex, report: Report) -> Work:
+def _resolve_focal(pdf_path: str, doi_override: str | None, oa: OpenAlex, cr: Crossref, report: Report) -> Work:
+    def _by_doi(doi: str, source: str) -> Work | None:
+        """OpenAlex first, then Crossref (for papers OpenAlex hasn't indexed yet)."""
+        work = oa.fetch_work(doi)
+        if work is not None:
+            report.doi_source, report.metadata_source = source, "openalex"
+        else:
+            work = cr.fetch_work(doi)
+            if work is not None:
+                report.doi_source, report.metadata_source = source, "crossref"
+        if work is not None:
+            # OpenAlex lowercases DOIs; keep the caller's canonical casing.
+            work.doi = _prefer_casing(doi, work.doi)
+        return work
+
     if doi_override:
-        work = oa.fetch_work(doi_override)
-        report.doi_source = "--doi"
+        work = _by_doi(doi_override, "--doi")
         if work is None:
-            raise IngestError(f"--doi {doi_override} did not resolve in OpenAlex")
-        work.doi = _prefer_casing(doi_override, work.doi)
+            raise IngestError(f"--doi {doi_override} did not resolve in OpenAlex or Crossref")
         return work
     doi = pdfmod.extract_doi(pdf_path)
     if doi:
-        work = oa.fetch_work(doi)
+        work = _by_doi(doi, "pdf")
         if work is not None:
-            report.doi_source = "pdf"
-            # OpenAlex lowercases DOIs; keep the PDF's canonical casing.
-            work.doi = _prefer_casing(doi, work.doi)
             return work
-    # Fallback: title search.
+    # Fallback: title search (OpenAlex only).
     title = pdfmod.extract_title(pdf_path)
     if title:
         work = oa.search_by_title(title)
         if work is not None:
             report.doi_source = "title-search"
+            report.metadata_source = "openalex"
             report.title_search_unverified = True
             return work
     raise IngestError(
         "could not resolve a DOI from the PDF (no embedded DOI, title search failed). "
         "Re-run with --doi <doi>."
     )
+
+
+def _resolve_ref_dois(dois: list[str], oa: OpenAlex, cr: Crossref) -> list[Work]:
+    """Resolve a Crossref reference DOI list to Works: OpenAlex batch, Crossref per-DOI fallback.
+
+    Unresolvable DOIs (e.g. DataCite dataset deposits Crossref doesn't carry) are dropped.
+    """
+    by_doi = {_norm_doi(w.doi): w for w in oa.fetch_works_by_doi(dois) if w.doi}
+    out: list[Work] = []
+    for d in dois:
+        work = by_doi.get(_norm_doi(d)) or cr.fetch_work(d)
+        if work is not None:
+            out.append(work)
+    return out
 
 
 def _prefer_casing(local: str, canonical: str | None) -> str | None:
@@ -112,9 +137,11 @@ def ingest(
     report = Report(pdf=str(pdf_path), dry_run=dry_run)
 
     # A/B — focal work.
-    work = _resolve_focal(pdf_path, doi, oa, report)
+    work = _resolve_focal(pdf_path, doi, oa, cr, report)
     report.doi = work.doi
-    _enrich_names(work, cr.author_names(work.doi) if work.doi else [])
+    # Crossref-sourced focal already has clean family/given; only enrich OpenAlex names.
+    if report.metadata_source != "crossref":
+        _enrich_names(work, cr.author_names(work.doi) if work.doi else [])
 
     # Author roles: union OpenAlex order/flags with PDF markers.
     families = [a.family for a in work.authors]
@@ -149,9 +176,16 @@ def ingest(
         authors=authors,
     )
 
-    # C — references -> stubs.
-    refs = oa.fetch_works(work.referenced_works) if work.referenced_works else []
-    report.n_referenced = len(work.referenced_works)
+    # C — references -> stubs. OpenAlex ids when the focal came from OpenAlex; otherwise the
+    # Crossref reference DOI list (resolved via OpenAlex batch + Crossref fallback).
+    if work.referenced_works:
+        refs = oa.fetch_works(work.referenced_works)
+        report.n_referenced = len(work.referenced_works)
+    elif work.referenced_dois:
+        refs = _resolve_ref_dois(work.referenced_dois, oa, cr)
+        report.n_referenced = len(work.referenced_dois)
+    else:
+        refs = []
     report.n_refs = len(refs)
     stubs: list[Stub] = []
     for ref in refs:

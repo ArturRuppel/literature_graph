@@ -116,3 +116,65 @@ def test_idempotent_dedup_on_reingest(workspace):
     pdf2 = pdf.parent / "Ruppel2023eLife.pdf"
     r2 = ingest(str(pdf2), root=root, force=True, openalex=_openalex(), crossref=_crossref())
     assert r2.stubs_added == [] and len(r2.stubs_deduped) == 3
+
+
+def _crossref_focal(doi: str, ref_dois: list[str], *, venue: str, year: int) -> Crossref:
+    """Crossref that supplies focal metadata + a reference DOI list (one DOI-less)."""
+    msg = {
+        "message": {
+            "title": ["Morphogenesis on chip"],
+            "author": [{"family": "Ruppel", "given": "Artur"}, {"family": "Balland", "given": "Martial"}],
+            "issued": {"date-parts": [[year]]},
+            "type": "journal-article",
+            "container-title": [venue],
+            "DOI": doi,
+            "reference": [{"DOI": d} for d in ref_dois] + [{"unstructured": "A book, no DOI (1967)."}],
+        }
+    }
+    return Crossref(mailto="t@e", get_json=lambda url: msg)
+
+
+def _openalex_no_focal_doi_batch() -> OpenAlex:
+    """OpenAlex that lacks every single-DOI lookup but resolves the doi-filter batch."""
+    batch = json.loads((FIX / "oa_refs_batch.json").read_text())
+
+    def get_json(url: str) -> dict:
+        if "filter=doi:" in url:
+            return batch
+        if "/works/https://doi.org/" in url:  # focal + per-ref single lookups: absent
+            return {}
+        return {"results": []}
+
+    return OpenAlex(mailto="t@e", get_json=get_json)
+
+
+def test_crossref_fallback_when_openalex_lacks_focal(workspace):
+    """A just-published paper absent from OpenAlex: focal + refs come from Crossref."""
+    root, pdf = workspace
+    focal_doi = "10.1038/s41567-026-03311-6"
+    ref_dois = ["10.1016/j.bbamcr.2015.05.028", "10.1016/j.devcel.2015.03.016"]
+    oa = _openalex_no_focal_doi_batch()
+    cr = _crossref_focal(focal_doi, ref_dois, venue="eLife", year=2026)
+
+    r = ingest(str(pdf), root=root, doi=focal_doi, openalex=oa, crossref=cr)
+
+    assert r.metadata_source == "crossref"
+    assert r.doi_source == "--doi"
+    assert r.citekey == "Ruppel2026eLife"
+    assert r.doi == focal_doi and r.year == 2026
+    # Only the two DOI-bearing references resolve; the DOI-less book is not counted.
+    assert r.n_referenced == 2 and r.n_refs == 2
+    assert len(r.stubs_added) == 2
+    assert (root / "curated" / "Ruppel2026eLife.yaml").exists()
+
+
+def test_doi_unresolvable_in_both_raises(workspace):
+    root, pdf = workspace
+
+    def oa_get(url):
+        return {} if "/works/" in url else {"results": []}
+
+    oa = OpenAlex(mailto="t@e", get_json=oa_get)
+    cr = Crossref(mailto="t@e", get_json=lambda url: {})  # empty message -> None
+    with pytest.raises(Exception):
+        ingest(str(pdf), root=root, doi="10.0000/nope", openalex=oa, crossref=cr)

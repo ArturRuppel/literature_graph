@@ -35,7 +35,8 @@ class Work:
     type_raw: str | None
     venue_display: str | None
     authors: list[NormAuthor] = field(default_factory=list)
-    referenced_works: list[str] = field(default_factory=list)  # OpenAlex ids (focal only)
+    referenced_works: list[str] = field(default_factory=list)  # OpenAlex ids (focal, from OpenAlex)
+    referenced_dois: list[str] = field(default_factory=list)  # DOIs (focal, from Crossref fallback)
 
 
 # --- paper type mapping (spec §4 Stage B) -----------------------------------
