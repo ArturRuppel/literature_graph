@@ -112,3 +112,30 @@ def test_broad_meter_counts_support_and_contradict():
     s, c = broad_meter("b-claim", {"P1": p1, "P2": p2})
     assert s == 1          # one claim generalizes into it (leads_to)
     assert c == 1          # one claim contradicts the slug directly
+
+
+import pytest
+from litgraph.graph import validate, BuildError, BroadNode
+
+
+def test_validate_passes_clean_repo():
+    p = _paper("P1",
+               Slice(id="m1", kind="method", text="f"),
+               Slice(id="c1", kind="claim", text="x", grounded_in=["m1"],
+                     leads_to=["b-claim"]))
+    broad = {"b-claim": BroadNode(slug="b-claim", kind="broad claim", text="b")}
+    validate({"P1": p}, broad)   # no raise
+
+
+def test_validate_flags_dangling_ref():
+    p = _paper("P1", Slice(id="c1", kind="claim", text="x", grounded_in=["m9"]))
+    with pytest.raises(BuildError, match="m9"):
+        validate({"P1": p}, {})
+
+
+def test_validate_flags_duplicate_local_id():
+    p = _paper("P1",
+               Slice(id="c1", kind="claim", text="a"),
+               Slice(id="c1", kind="claim", text="b"))
+    with pytest.raises(BuildError, match="c1"):
+        validate({"P1": p}, {})

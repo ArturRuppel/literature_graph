@@ -196,6 +196,45 @@ def broad_meter(slug: str, papers: dict[str, Paper]) -> tuple[int, int]:
     return support, contradict
 
 
+_EDGE_FIELDS = ("grounded_in", "leads_to", "corroborates", "contradicts", "answers")
+
+
+def validate(papers: dict[str, Paper], broad: dict[str, BroadNode]) -> None:
+    """Enforce the SCHEMA §6 rules the build can check structurally: unique local ids,
+    no dangling refs. Raises BuildError naming the offender. (Quote integrity and full
+    cross-paper acyclicity are out of v1 scope; same-paper cycles are caught by
+    reaches_floor's seen-set, not here.)"""
+    for ck, p in papers.items():
+        local_ids: set[str] = set()
+        for s in p.slices:
+            if s.id in local_ids:
+                raise BuildError(f"{ck}: duplicate local id {s.id!r}")
+            local_ids.add(s.id)
+
+    broad_slugs = set(broad)
+    for ck, p in papers.items():
+        local_ids = {s.id for s in p.slices}
+        for s in p.slices:
+            for field_name in _EDGE_FIELDS:
+                for r in getattr(s, field_name):
+                    if not _ref_resolves(r, local_ids, broad_slugs, papers):
+                        raise BuildError(
+                            f"{ck}:{s.id} {field_name} -> dangling ref {r!r}")
+
+
+def _ref_resolves(ref, local_ids, broad_slugs, papers) -> bool:
+    kind = classify_ref(ref)
+    if kind == "local":
+        return ref in local_ids
+    if kind == "broad":
+        return ref in broad_slugs
+    if kind == "container":
+        return ref in papers
+    # sharpened "Citekey:id"
+    base = ref.split(":", 1)[0]
+    return base in papers
+
+
 def reaches_floor(s: Slice, by_id: dict[str, Slice], seen: set[str] | None = None) -> bool:
     """Does this slice's downward (grounded_in) chain reach a floor — a method floor or a
     `floor: true` claim? Only local refs are walkable; cross-paper refs are opaque here."""
