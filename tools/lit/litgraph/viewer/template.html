@@ -141,7 +141,7 @@
 </div>
 <div id="board"><svg id="edges"></svg></div>
 <div id="tip"></div>
-<div class="hint">Click a <b>curated</b> paper to focus it — grounds (←), papers that build on it (→) and synthesis fan out with paper-level edges. Uncurated sources fold into a “▸ N sources” stack — click it to unfold. Click a claim to drill into its support, branch by branch, down to the exact <i>quote</i> — edges sharpen to the slices you reveal. Click the header to collapse; several papers stay open at once. Hover a slice row to isolate its arrows and light up the papers they touch; a <span style="color:var(--broad)">⤴</span> row generalizes into the claim above it. Hover a broad synthesis node to light up every paper that feeds it, expanded or not. Hover a paper's <b>citekey</b> for its abstract and PDF preview.</div>
+<div class="hint">Click a <b>curated</b> paper to focus it — grounds (←), papers that build on it (→) and synthesis fan out with paper-level edges. Uncurated sources fold into a “▸ N sources” stack — click it to unfold. Click a claim to drill into its support, branch by branch, down to the exact <i>quote</i> — edges sharpen to the slices you reveal. Click the header to collapse; several papers stay open at once. Edges rest <b>dim</b>; hover a slice row or synthesis node to isolate its arrows and light up the papers they touch, and <b>click</b> to pin that view (click empty space to release). A <span style="color:var(--broad)">⤴</span> row generalizes into the claim above it; a broad node lights up every paper that feeds it, expanded or not. Hover a paper's <b>citekey</b> for its abstract and PDF preview.</div>
 
 <script>
 const NS="http://www.w3.org/2000/svg";
@@ -178,8 +178,10 @@ const drill=new Map();   // "level:key" -> Set of expanded row paths ("c3", "c3/
 let ctxOpen=new Set();   // cards context-opened to reveal a sharpened target (recomputed)
 let ctxDrill=new Map();  // row paths force-expanded to reveal a sharpened target (recomputed)
 const stacks=new Set();  // source-stack ids the human explicitly unfolded (persists rebuilds)
-let hover=null;          // {cardId,sid} — hovered slice row: redraw isolates its edges,
-                         // lifts them above the cards and highlights the counterpart papers
+let hover=null;          // {cardId,sid} — hovered slice row/broad node: redraw isolates its
+                         // edges (bright) and highlights the counterpart papers, transiently
+let pin=null;            // {cardId,sid} — a clicked isolation that persists after the pointer
+                         // leaves. Effective target = hover || pin; neither → all edges dim.
 const SYNTH=1e6;         // synthesis band: broad nodes always sit in the rightmost column
                          // (papers occupy small levels; builds-on growth stays left of it)
 
@@ -244,6 +246,10 @@ function hoverRow(el, e){
   }
   setHover(h);
 }
+// Click-to-pin: persist an isolation target after the pointer leaves. samePin lets a second
+// click on the same broad node release it; a click on empty board space thaws any pin.
+const samePin=(a,b)=>!!a&&!!b&&a.cardId===b.cardId&&a.sid===b.sid;
+function togglePin(t){ pin=samePin(pin,t)?null:t; redraw(); }
 const SID_CLASS = {floor: "fl", model: "fl", grounded: "cl", borrowed: "bo",
                    plausible: "cl", question: "q"};
 
@@ -253,7 +259,9 @@ function cardClick(e, el, level, key){
   const id = `${level}:${key}`;
   const row = e.target.closest(".slice");
   if (row && el.classList.contains("open")) {
-    if (row.classList.contains("drillable")) toggleDrill(id, row.dataset.path);
+    pin = {cardId: el.id, sid: row.dataset.sid};        // clicking a row pins its isolation
+    if (row.classList.contains("drillable")) toggleDrill(id, row.dataset.path);  // drill + rebuild
+    else redraw();                                      // non-drillable: just apply the pin
     return;
   }
   if (el.classList.contains("open")) {
@@ -336,6 +344,7 @@ function broadCard(slug,level){
   // hovering a broad node isolates its edges and lights up the papers linked into it
   el.addEventListener("mousemove",()=>setHover({cardId:el.id,sid:null}));
   el.addEventListener("mouseleave",()=>setHover(null));
+  el.addEventListener("click",()=>togglePin({cardId:el.id,sid:null}));  // pin/unpin this node
   return el;
 }
 
@@ -562,21 +571,21 @@ function reveal(id,sid){
 }
 
 // ── edges ──────────────────────────────────────────────────────────────────────────────
-// The slug of the broad node under the pointer (a broad hover carries sid===null), else null.
-function broadHoverSlug(){
-  if(!hover||hover.sid!==null) return null;
-  const el=document.getElementById(hover.cardId);
+// The slug of the isolated broad node (an active broad target carries sid===null), else null.
+function broadIsoSlug(iso){
+  if(!iso||iso.sid!==null) return null;
+  const el=document.getElementById(iso.cardId);
   if(!el||!el.classList.contains("bn")) return null;
   const id=el.dataset.id||"";
   return id.slice(id.indexOf(":")+1)||null;
 }
-// Broad-node hover: synthesize an edge to every linked paper NOT already wired to this node
+// Isolated broad node: synthesize an edge to every linked paper NOT already wired to this node
 // by a real (expanded-paper) edge, anchored on its card wherever it sits — so collapsed
 // landing-column papers light up and connect too, not just the expanded ones.
-function broadExtraEdges(slug){
+function broadExtraEdges(iso,slug){
   const have=new Set();
   for(const e of edges){
-    const other=e.to.cardId===hover.cardId?e.from:(e.from.cardId===hover.cardId?e.to:null);
+    const other=e.to.cardId===iso.cardId?e.from:(e.from.cardId===iso.cardId?e.to:null);
     if(other){ const oc=document.getElementById(other.cardId); if(oc&&oc.dataset.key) have.add(oc.dataset.key); }
   }
   const extra=[];
@@ -585,7 +594,7 @@ function broadExtraEdges(slug){
     have.add(lk.key);                              // one arrow per paper, even if several slices feed the node
     const cardId=`card-${findCardLevel(lk.key,0)}:${lk.key}`;
     if(document.getElementById(cardId))
-      extra.push({from:{cardId,sid:null},to:{cardId:hover.cardId,sid:null},kind:lk.kind});
+      extra.push({from:{cardId,sid:null},to:{cardId:iso.cardId,sid:null},kind:lk.kind});
   }
   return extra;
 }
@@ -604,20 +613,23 @@ function redraw(){
     <marker id="arq" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
       <path d="M0,0 L6,3 L0,6 Z" fill="${cssv('--question')}"/></marker>`;
   svg.appendChild(defs);
-  // hover isolation: only edges incident on the hovered slice row / broad node survive;
-  // their counterpart cards (paper / stack / broad node) get .hl
-  const at=(end)=>end.cardId===hover.cardId&&end.sid===hover.sid;
+  // Isolation: the effective target is hover (transient) else pin (persisted). Only edges
+  // incident on it survive, bright, and their counterpart cards get .hl. With no target every
+  // edge is drawn dim — faint scaffolding rather than a bright tangle in full expansion.
+  if(pin && !document.getElementById(pin.cardId)) pin=null;   // pinned card gone → release
+  const iso=hover||pin;
+  const at=(end)=>iso&&end.cardId===iso.cardId&&end.sid===iso.sid;
   document.querySelectorAll(".hl").forEach(el=>el.classList.remove("hl"));
-  const bslug=broadHoverSlug();
-  const work=bslug?edges.concat(broadExtraEdges(bslug)):edges;
+  const bslug=broadIsoSlug(iso);
+  const work=bslug?edges.concat(broadExtraEdges(iso,bslug)):edges;
   for(const e of work){
-    if(hover&&!at(e.from)&&!at(e.to)) continue;
+    if(iso&&!at(e.from)&&!at(e.to)) continue;
     const ra=anchorRect(e.from), rb=anchorRect(e.to);
     if(!ra||!rb) continue;                          // no visible endpoint yet
-    if(hover){
+    if(iso){
       const other=at(e.from)?e.to:e.from;
       const oc=document.getElementById(other.cardId);
-      if(oc&&other.cardId!==hover.cardId) oc.classList.add("hl");
+      if(oc&&other.cardId!==iso.cardId) oc.classList.add("hl");
     }
     const ya=(ra.top+ra.bottom)/2-bb.top+board.scrollTop;
     const yb=(rb.top+rb.bottom)/2-bb.top+board.scrollTop;
@@ -644,7 +656,7 @@ function redraw(){
     path.setAttribute("stroke-width","1.6");
     if(lat) path.setAttribute("stroke-dasharray","5 4");
     else if(ans) path.setAttribute("stroke-dasharray","2 3");   // dotted: answers ≠ support
-    path.setAttribute("opacity",lat||ans?"0.85":"0.95");
+    path.setAttribute("opacity",!iso?"0.22":(lat||ans?"0.85":"0.95"));  // resting → dim
     if(ans) path.setAttribute("marker-end","url(#arq)");
     else if(!lat) path.setAttribute("marker-end","url(#ar)");
     else if(contra) path.setAttribute("marker-end","url(#arx)");
@@ -727,10 +739,12 @@ function boot(){
 boot();
 board.addEventListener("scroll",redraw);
 addEventListener("resize",redraw);
+// a click on empty board space (not a card or broad node) thaws any pinned isolation
+board.addEventListener("click",e=>{ if(pin && !e.target.closest(".card,.bn")){ pin=null; redraw(); } });
 // read-only introspection for headless tests; not used by the UI
 window.litDebug={get edges(){return edges},get cols(){return cols},open,drill,stacks,
   get ctxOpen(){return ctxOpen},get ctxDrill(){return ctxDrill},get hover(){return hover},
-  anchorRect};
+  get pin(){return pin},anchorRect};
 </script>
 </body>
 </html>
