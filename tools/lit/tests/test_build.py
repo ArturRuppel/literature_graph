@@ -1,8 +1,8 @@
 # tests/test_build.py
 import json
 from pathlib import Path
-from litgraph.graph import build_graph
-from litgraph.build import to_json_dict, emit
+from litgraph.graph import build_graph, Paper, Slice
+from litgraph.build import to_json_dict, emit, _cons
 
 EXAMPLE = Path(__file__).resolve().parents[3] / "example"
 
@@ -60,6 +60,17 @@ def test_to_json_dict_shape():
     assert "meter" in d["broad"]["throughput-scales-with-batching"]
     # order is papers (curated + stubs), curated first
     assert d["order"][0] == "Chen2021Sys"
+
+
+def test_cons_skips_local_generalization():
+    # a local leads_to is a same-paper ladder (nests in place); only broad slugs are
+    # right-band synthesis nodes, so a phantom "c3" node must not be emitted.
+    p = Paper(citekey="P1", curated=True, title="", type="original", year=2023,
+              slices=[Slice(id="c1", kind="claim", text="x", leads_to=["c3", "b-claim"]),
+                      Slice(id="c3", kind="claim", text="broader")])
+    cons = _cons(p)
+    assert {"slug": "b-claim", "via": "c1"} in cons
+    assert all(co["slug"] != "c3" for co in cons)
 
 
 def test_emit_writes_self_contained_viewer(tmp_path):

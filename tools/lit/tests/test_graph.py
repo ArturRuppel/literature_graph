@@ -168,6 +168,23 @@ def test_validate_rejects_leads_to_kind_mismatch():
         validate({"P1": m}, _B)
 
 
+def test_validate_accepts_local_leads_to_generalization():
+    # a specific claim laddering up into a broader local claim (same paper, same kind)
+    p = _paper("P1",
+               Slice(id="c1", kind="claim", text="specific", leads_to=["c3"]),
+               Slice(id="c3", kind="claim", text="broader existence claim"))
+    validate({"P1": p}, _B)          # no raise
+
+
+def test_validate_rejects_local_leads_to_kind_mismatch():
+    # a claim cannot generalize into a local question
+    p = _paper("P1",
+               Slice(id="c1", kind="claim", text="x", leads_to=["q1"]),
+               Slice(id="q1", kind="question", text="?"))
+    with pytest.raises(BuildError, match="question"):
+        validate({"P1": p}, _B)
+
+
 def test_validate_answers_must_target_a_question():
     p = _paper("P1",
                Slice(id="c1", kind="claim", text="x"),

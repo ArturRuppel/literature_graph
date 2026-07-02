@@ -48,11 +48,13 @@ def _lateral(p: Paper) -> list[dict]:
 
 
 def _cons(p: Paper) -> list[dict]:
-    """Right-band targets: each leads_to broad slug (validate() guarantees broad-only)."""
+    """Right-band targets: each leads_to *broad slug*. A local leads_to is a same-paper
+    generalization ladder that nests in place, not a synthesis node — skip it here."""
     out = []
     for s in p.slices:
         for slug in s.leads_to:
-            out.append({"slug": slug, "via": s.id})
+            if classify_ref(slug) == "broad":
+                out.append({"slug": slug, "via": s.id})
     return out
 
 

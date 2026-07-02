@@ -222,7 +222,7 @@ def validate(papers: dict[str, Paper], broad: dict[str, BroadNode]) -> None:
                     if not _ref_resolves(r, local_ids, broad_slugs, papers):
                         raise BuildError(
                             f"{ck}:{s.id} {field_name} -> dangling ref {r!r}")
-            _check_kinds(ck, s, broad)
+            _check_kinds(ck, s, broad, {t.id: t for t in p.slices})
 
 
 def _target_id(ref: str, kind: str) -> str:
@@ -230,18 +230,27 @@ def _target_id(ref: str, kind: str) -> str:
     return ref.split(":", 1)[1] if kind == "sharpened" else ref
 
 
-def _check_kinds(ck: str, s: Slice, broad: dict[str, BroadNode]) -> None:
+def _check_kinds(ck: str, s: Slice, broad: dict[str, BroadNode],
+                 by_id: dict[str, Slice]) -> None:
     """SCHEMA §6.6 kind coherence, structurally: `leads_to` targets a same-kind broad slug
-    (a cross-paper ref here would mis-render as a synthesis node — author cross-paper
-    support as `grounded_in` on the derived slice); `answers` targets a question (a
-    container ref is the un-sliced wildcard, allowed); laterals target a claim or a
-    container; `floor: true` marks only a claim. Refs are known to resolve already."""
+    *or* a same-kind local slice (a same-paper generalization ladder — a specific claim
+    laddering up into a broader local claim). A cross-paper ref here has no home (it would
+    mis-render as a synthesis node) — author cross-paper support as `grounded_in` on the
+    derived slice. `answers` targets a question (a container ref is the un-sliced wildcard,
+    allowed); laterals target a claim or a container; `floor: true` marks only a claim.
+    Refs are known to resolve already."""
     want = _BROAD_KIND[s.kind]
     for r in s.leads_to:
-        if classify_ref(r) != "broad":
-            raise BuildError(f"{ck}:{s.id} leads_to -> {r!r} is not a broad slug "
+        kind = classify_ref(r)
+        if kind in ("container", "sharpened"):
+            raise BuildError(f"{ck}:{s.id} leads_to -> {r!r} is a cross-paper ref "
                              "(author cross-paper support as grounded_in, not leads_to)")
-        if broad[r].kind != want:
+        if kind == "local":
+            if by_id[r].kind != s.kind:
+                raise BuildError(f"{ck}:{s.id} leads_to -> {r!r} is a {by_id[r].kind}; "
+                                 f"a {s.kind} generalizes into a {s.kind}")
+            continue
+        if broad[r].kind != want:               # broad slug
             raise BuildError(f"{ck}:{s.id} leads_to -> {r!r} is a {broad[r].kind}; "
                              f"a {s.kind} generalizes into a {want}")
     for r in s.answers:
