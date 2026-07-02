@@ -50,22 +50,31 @@
   .cyr{display:none;margin-left:auto;font-size:9px;color:var(--faint)}
   /* expanded-only body (revealed when a curated card is focused → .open) */
   .ctitle{display:none;padding:0 11px 2px;font-size:10px;color:var(--dim);line-height:1.32}
-  .cauth{display:none;padding:4px 11px 2px;font-size:9px;color:var(--faint)}
+  .cauth{display:none;padding:4px 11px 6px;font-size:9px;color:var(--faint)}
   .cauth .star{color:var(--floor)}
-  .chead{display:none;margin:6px 11px 10px;font-size:9.5px;color:#cfe6da;
-    border-left:2px solid var(--grounded);padding-left:7px;line-height:1.3}
   .card.open .ctype,.card.open .cyr{display:inline-block}
-  .card.open .ctitle,.card.open .cauth,.card.open .chead{display:block}
+  .card.open .ctitle,.card.open .cauth{display:block}
+  /* open card: body is inert; the header collapses, the slice rows drill */
+  .card.open{cursor:default}
+  .card.open .chd{cursor:pointer}
 
-  /* slices (vertical, within-paper) — left gutter holds the substructure connectors */
-  .slices{display:none;border-top:1px solid var(--line);padding:6px 9px 9px 26px;background:#161c26}
+  /* slices (vertical, within-paper) — entry rows are the top of the local support DAG;
+     drilling a row unfolds its branch (quote + direct supports), outline-style */
+  .slices{display:none;border-top:1px solid var(--line);padding:6px 9px 9px 12px;background:#161c26}
   .card.open .slices{display:block}
   .slice{display:flex;gap:5px;align-items:flex-start;padding:3px 5px;margin:2px 0;border-radius:5px;
     background:#ffffff07;font-size:9px}
+  .slice.drillable{cursor:pointer}
+  .slice.drillable:hover{background:#ffffff12}
+  .car{flex:none;width:9px;color:var(--faint);font-size:8px;margin-top:1px;text-align:center}
   .sid{flex:none;font-size:7px;font-weight:700;padding:1px 4px;border-radius:3px;color:#0c0e14;margin-top:1px}
   .sid.fl{background:var(--floor)}.sid.cl{background:var(--grounded)}.sid.bo{background:var(--borrowed)}
   .sid.q{background:var(--question)}
+  .sid.q.ans{opacity:.55}
   .stx{color:#dbe5ef;line-height:1.28}
+  /* the weld: the exact quote a slice is anchored to, shown when its row is drilled */
+  .sq{margin:1px 2px 4px;padding:2px 0 2px 8px;border-left:2px solid var(--floor);
+    font-size:8.5px;font-style:italic;color:#cfc39a;line-height:1.32}
 
   /* broad / synthesis nodes */
   .bn{position:relative;border:1.6px solid var(--broad);border-radius:14px;padding:9px 12px;
@@ -102,7 +111,7 @@
 </div>
 <div id="board"><svg id="edges"></svg></div>
 <div id="tip"></div>
-<div class="hint">Click a <b>curated</b> paper to expand it — its substructure, grounds (←) and synthesis (→) fan out, edges meet the specific claim. Several papers can stay open; click a paper in a spawned column to drill one generation further. Click again to collapse. Hover for metadata.</div>
+<div class="hint">Click a <b>curated</b> paper to focus it — grounds (←) and synthesis (→) fan out with paper-level edges. Click a claim to drill into its support, branch by branch, down to the exact <i>quote</i> — edges sharpen to the slices you reveal. Click the header to collapse; several papers stay open at once. Hover for metadata.</div>
 
 <script>
 const NS="http://www.w3.org/2000/svg";
@@ -116,9 +125,14 @@ const ORDER = GRAPH.order;
 const board=document.getElementById("edges").parentNode;
 const svg=document.getElementById("edges");
 const tip=document.getElementById("tip");
-let edges=[];            // {from:[ids…],to:[ids…],kind,internal} — endpoints resolve at draw time
+let edges=[];            // {from:{cardId,sid},to:{cardId,sid},kind} — an endpoint anchors at the
+                         // sid's row when drilling has made it visible, else at the card, so
+                         // aggregate paper→paper edges sharpen to slice edges as the human drills
 const cols={};           // level -> {el, keys:Set, label}
-const open=new Set();    // "level:key" of user-opened cards — a set, so expansion is non-exclusive
+const open=new Set();    // "level:key" of focused cards — a set, so expansion is non-exclusive
+const drill=new Map();   // "level:key" -> Set of expanded row paths ("c3", "c3/c1", …)
+let ctxOpen=new Set();   // cards context-opened to reveal a sharpened target (recomputed)
+let ctxDrill=new Map();  // row paths force-expanded to reveal a sharpened target (recomputed)
 const SYNTH=1;           // synthesis band: broad nodes always sit in the rightmost column
 
 // curation maturity (SCHEMA §4) as a pie-filled circle: pass/4. Empty ring = stub (0),
@@ -153,40 +167,87 @@ function paperCard(key, level){
   if (cur) {
     body += `<div class="ctitle">${p.title}</div>`;
     if (p.authors) body += `<div class="cauth">${authLine(p.authors)}</div>`;
-    body += `<div class="chead">▸ ${(p.head && p.head[0]) || p.title}</div>
-             <div class="slices">${sliceRows(p, level, key)}</div>`;
+    body += `<div class="slices"></div>`;   // filled by renderSlices from the drill state
   }
   el.innerHTML = body;
   el.addEventListener("mousemove", e => showTip(e, key));
   el.addEventListener("mouseleave", () => tip.style.display = "none");
-  el.addEventListener("click", () => { if (cur) toggleOpen(level, key); });
+  el.addEventListener("click", e => { if (cur) cardClick(e, el, level, key); });
   return el;
 }
 const SID_CLASS = {floor: "fl", model: "fl", grounded: "cl", borrowed: "bo",
                    plausible: "cl", question: "q"};
-// Substructure as a hierarchy: render the slices as the forest of the paper's local
-// grounded_in DAG — each slice nests (indents) under its first local parent; extra
-// parents still draw as gutter bows. m1 ← m2 ← m3 reads as a staircase, not a flat list.
-function sliceRows(p, level, key){
-  const byId = {}; p.slices.forEach(s => byId[s.id] = s);
-  const kids = {}, roots = [];
-  for (const s of p.slices) {
-    const parent = (s.up || []).find(u => byId[u]);
-    if (parent) (kids[parent] = kids[parent] || []).push(s); else roots.push(s);
+
+// Click routing on a curated card: closed → click anywhere focuses it; open → the header
+// collapses it (or promotes a context-opened card to focus), and slice rows drill.
+function cardClick(e, el, level, key){
+  const id = `${level}:${key}`;
+  const row = e.target.closest(".slice");
+  if (row && el.classList.contains("open")) {
+    if (row.classList.contains("drillable")) toggleDrill(id, row.dataset.path);
+    return;
   }
+  if (el.classList.contains("open")) {
+    if (e.target.closest(".chd")) {
+      if (open.has(id)) { open.delete(id); drill.delete(id); }
+      else open.add(id);                 // context-opened card → promote to focused
+      rebuild();
+    }
+    return;
+  }
+  open.add(id); rebuild();
+}
+
+function toggleDrill(id, path){
+  let s = drill.get(id);
+  if (!s) { s = new Set(); drill.set(id, s); }
+  if (s.has(path))                       // fold the whole branch under this row
+    for (const p of [...s]) { if (p === path || p.startsWith(path + "/")) s.delete(p); }
+  else s.add(path);
+  rebuild();
+}
+
+// Drill-down rendering: entry rows are the top of the paper's local support hierarchy
+// (claims nothing else builds on, plus its questions). Expanding a row reveals its weld
+// (the exact quote) and its direct supports — for a question, the claims that answer it —
+// each drillable in turn, branch by branch, down to the floors. A support shared by two
+// branches appears under each (outline semantics); rows are addressed by path, so the
+// same slice can render at several positions and anchorRect picks any visible instance.
+function renderSlices(id){
+  const key = id.slice(id.indexOf(":") + 1), p = PAPERS[key];
+  const box = document.getElementById("card-" + id).querySelector(".slices");
+  if (!box) return;
+  const byId = {}; p.slices.forEach(s => byId[s.id] = s);
+  const answeredBy = {};
+  p.slices.forEach(s => (s.answers || []).forEach(r => {
+    if (!r.includes(":")) (answeredBy[r] = answeredBy[r] || []).push(s.id);
+  }));
+  const dependents = new Set();
+  p.slices.forEach(s => (s.up || []).forEach(u => dependents.add(u)));
+  const entries = p.slices.filter(s =>
+    (s.kind === "claim" && !dependents.has(s.id)) || s.kind === "question");
+  const paths = new Set([...(drill.get(id) || []), ...(ctxDrill.get(id) || [])]);
+  const kidsOf = s => s.kind === "question"
+    ? (answeredBy[s.id] || []).map(k => byId[k])
+    : (s.up || []).map(u => byId[u]).filter(Boolean);
   let html = "";
-  const done = new Set();
-  const emit = (s, depth) => {
-    if (done.has(s.id)) return;
-    done.add(s.id);
-    html += `<div class="slice" style="margin-left:${depth * 14}px" id="slice-${level}:${key}:${s.id}">`
-          + `<span class="sid ${SID_CLASS[s.color] || 'cl'}">${s.id}</span>`
+  const row = (s, path, depth) => {
+    const kids = kidsOf(s);
+    const can = kids.length || s.quote;
+    const isOpen = can && paths.has(path);
+    const ans = s.kind === "question" && s.answered ? " ans" : "";
+    html += `<div class="slice${can ? ' drillable' : ''}" data-sid="${s.id}" data-path="${path}"`
+          + ` style="margin-left:${depth * 14}px">`
+          + `<span class="car">${can ? (isOpen ? "▾" : "▸") : "·"}</span>`
+          + `<span class="sid ${SID_CLASS[s.color] || 'cl'}${ans}">${s.id}</span>`
           + `<span class="stx">${s.text}</span></div>`;
-    for (const c of kids[s.id] || []) emit(c, depth + 1);
+    if (isOpen) {
+      if (s.quote) html += `<div class="sq" style="margin-left:${depth * 14 + 19}px">“${s.quote}”</div>`;
+      for (const k of kids) row(k, `${path}/${k.id}`, depth + 1);
+    }
   };
-  roots.forEach(s => emit(s, 0));
-  p.slices.forEach(s => emit(s, 0));   // cycle guard: anything unreached renders at depth 0
-  return html;
+  entries.forEach(s => row(s, s.id, 0));
+  box.innerHTML = html;
 }
 function broadCard(slug,level){
   const b=BROAD[slug], id=`${level}:${slug}`;
@@ -230,55 +291,41 @@ function addBroad(level,slug,label){
 }
 
 const edgeSeen=new Set();
-// from/to are candidate DOM-id lists, most specific first ("slice-…" then "card-…").
-// redraw() anchors each end at the first visible candidate, so an edge sharpens to the
-// specific slice while the card is open and falls back to the container when it isn't.
-function addEdge(from,to,kind,internal){   // de-dup: rebuilds must not stack duplicate paths
-  const k=`${from.join()}|${to.join()}|${kind}`;
+// each endpoint is {cardId, sid}: it anchors at sid's row when visible, else at the card.
+function addEdge(from,to,kind){            // de-dup: rebuilds must not stack duplicate paths
+  const k=`${from.cardId}:${from.sid}|${to.cardId}:${to.sid}|${kind}`;
   if(edgeSeen.has(k)) return;
-  edgeSeen.add(k); edges.push({from,to,kind,internal:!!internal});
-}
-
-function toggleOpen(level,key){
-  const id=`${level}:${key}`;
-  if(open.has(id)) open.delete(id); else open.add(id);
-  rebuild();
+  edgeSeen.add(k); edges.push({from,to,kind});
 }
 
 // Recompute every spawned column + edge from the open set (non-exclusive: opening one
 // paper never tears down another). Levels drain leftward: an open card at level L pours
 // its grounds into L-1; if a spawned card is opened too, the sweep drills it in turn —
-// expansion is iterative, one generation per click.
+// cross-paper expansion is iterative, one generation per click.
 function rebuild(){
   Object.keys(cols).map(Number).forEach(lvl=>{
     if(lvl!==0){ cols[lvl].el.remove(); delete cols[lvl]; }
   });
   edges=[]; edgeSeen.clear();
   document.querySelectorAll(".card.open,.card.focus").forEach(c=>c.classList.remove("open","focus"));
-  const forced=new Set();   // "level:key" auto-opened to reveal a sharpened target slice
+  ctxOpen=new Set(); ctxDrill=new Map();
   let level=0;
   while(cols[level]){
     for(const key of [...cols[level].keys]){
       const p=PAPERS[key];
-      if(p&&open.has(`${level}:${key}`)) expandCard(level,key,p,forced);
+      if(p&&open.has(`${level}:${key}`)) expandCard(level,key,p);
     }
     level-=1;
   }
-  for(const id of forced){
-    if(open.has(id)) continue;                       // already fully expanded above
-    const key=id.slice(id.indexOf(":")+1);
+  // apply visual state + drill regions for focused and context-opened cards
+  for(const id of new Set([...open,...ctxOpen])){
     const el=document.getElementById("card-"+id);
-    if(!el) continue;
-    el.classList.add("open");                        // context-open: revealed, not focused
-    addInternal(id.slice(0,id.indexOf(":")),key,PAPERS[key]);
+    if(!el||!PAPERS[id.slice(id.indexOf(":")+1)]) continue;
+    el.classList.add("open");
+    if(open.has(id)) el.classList.add("focus");      // ctx-only cards: revealed, not focused
+    renderSlices(id);
   }
   redraw();
-}
-
-// SUBSTRUCTURE — the within-paper support skeleton (claims/methods built on each other)
-function addInternal(level,key,p){
-  for(const s of p.slices) for(const u of (s.up||[]))
-    addEdge([`slice-${level}:${key}:${u}`],[`slice-${level}:${key}:${s.id}`],"leads",true);
 }
 
 // Where does `key` already sit? Prefer the instance nearest `near`; every paper is in
@@ -292,39 +339,55 @@ function findCardLevel(key,near){
   return best===null?0:best;
 }
 
-function expandCard(level,key,p,forced){
-  const el=document.getElementById(`card-${level}:${key}`);
-  if(el) el.classList.add("open","focus");
-  addInternal(level,key,p);
-  // LEFT — grounds spawn the previous generation; a sharpened ref (tid) anchors the edge
-  // on the specific source slice and reveals it (the target card context-opens).
+function expandCard(level,key,p){
+  const cid=`card-${level}:${key}`;
+  // LEFT — grounds spawn the previous generation; a sharpened ref (tid) reveals the
+  // specific source slice in the target card and anchors the edge there.
   (p.grounds||[]).forEach(g=>{
     addPaper(level-1,g.key,"grounds ←");
-    const from=[];
-    if(g.tid&&PAPERS[g.key]){ from.push(`slice-${level-1}:${g.key}:${g.tid}`); forced.add(`${level-1}:${g.key}`); }
-    from.push(`card-${level-1}:${g.key}`);
-    addEdge(from,[`slice-${level}:${key}:${g.via}`,`card-${level}:${key}`],"leads");
+    if(g.tid&&PAPERS[g.key]) reveal(`${level-1}:${g.key}`,g.tid);
+    addEdge({cardId:`card-${level-1}:${g.key}`,sid:g.tid||null},{cardId:cid,sid:g.via},"leads");
   });
   // LATERAL — never spawns a column: connect to the target wherever it already sits,
   // revealing the specific claim when the ref is sharpened (Kumar → Chen2021Sys:c1).
   (p.lateral||[]).forEach(l=>{
-    const from=[`slice-${level}:${key}:${l.via}`,`card-${level}:${key}`];
+    const from={cardId:cid,sid:l.via};
     if(l.slug){                                      // stance toward a broad claim → synthesis band
       addBroad(SYNTH,l.slug,"synthesis · now →");
-      addEdge(from,[`card-${SYNTH}:${l.slug}`],l.sign);
+      addEdge(from,{cardId:`card-${SYNTH}:${l.slug}`,sid:null},l.sign);
       return;
     }
     const tl=findCardLevel(l.key,level);
-    const to=[];
-    if(l.tid&&PAPERS[l.key]){ to.push(`slice-${tl}:${l.key}:${l.tid}`); forced.add(`${tl}:${l.key}`); }
-    to.push(`card-${tl}:${l.key}`);
-    addEdge(from,to,l.sign);
+    if(l.tid&&PAPERS[l.key]) reveal(`${tl}:${l.key}`,l.tid);
+    addEdge(from,{cardId:`card-${tl}:${l.key}`,sid:l.tid||null},l.sign);
   });
-  // RIGHT — synthesis band, from the specific claim that generalizes
+  // RIGHT — synthesis band; the edge sharpens to the generalizing claim once it's drilled
   (p.cons||[]).forEach(c=>{
     addBroad(SYNTH,c.slug,"synthesis · now →");
-    addEdge([`slice-${level}:${key}:${c.via}`,`card-${level}:${key}`],[`card-${SYNTH}:${c.slug}`],"leads");
+    addEdge({cardId:cid,sid:c.via},{cardId:`card-${SYNTH}:${c.slug}`,sid:null},"leads");
   });
+}
+
+// Context-reveal a sharpened target: open its card and force-expand the drill path from
+// an entry row down to `sid` (climbing the local dependents chain), so the exact slice
+// is on screen. If the target is itself an entry row, opening the card suffices.
+function reveal(id,sid){
+  ctxOpen.add(id);
+  const p=PAPERS[id.slice(id.indexOf(":")+1)];
+  if(!p) return;
+  const dep={};
+  p.slices.forEach(s=>(s.up||[]).forEach(u=>{ (dep[u]=dep[u]||[]).push(s.id); }));
+  const chain=[sid];
+  let cur=sid, guard=0;
+  while(dep[cur]&&dep[cur].length&&guard++<64){ cur=dep[cur][0]; chain.push(cur); }
+  chain.reverse();                                   // entry row … target
+  let s=ctxDrill.get(id);
+  if(!s){ s=new Set(); ctxDrill.set(id,s); }
+  let path="";
+  for(let i=0;i<chain.length-1;i++){                 // expand every row above the target
+    path=path?`${path}/${chain[i]}`:chain[i];
+    s.add(path);
+  }
 }
 
 // ── edges ──────────────────────────────────────────────────────────────────────────────
@@ -342,18 +405,14 @@ function redraw(){
       <path d="M0,0 L6,3 L0,6 Z" fill="${cssv('--cross')}"/></marker>`;
   svg.appendChild(defs);
   for(const e of edges){
-    const ra=pick(e.from), rb=pick(e.to);
+    const ra=anchorRect(e.from), rb=anchorRect(e.to);
     if(!ra||!rb) continue;                          // no visible endpoint yet
     const ya=(ra.top+ra.bottom)/2-bb.top+board.scrollTop;
     const yb=(rb.top+rb.bottom)/2-bb.top+board.scrollTop;
     const contra=e.kind==="contra"||e.kind==="contradict";
     const lat=e.kind==="corr"||contra;
     let d;
-    if(e.internal){                                  // substructure: vertical bow in the left gutter
-      const xa=ra.left-bb.left+board.scrollLeft, xb=rb.left-bb.left+board.scrollLeft;
-      const bow=Math.min(xa,xb)-14;
-      d=`M${xa},${ya} C${bow},${ya} ${bow},${yb} ${xb},${yb}`;
-    } else if(Math.abs((ra.left+ra.right)-(rb.left+rb.right))<80){
+    if(Math.abs((ra.left+ra.right)-(rb.left+rb.right))<80){
       // same column (e.g. a lateral edge between two landing cards): bow out the right side
       const x1=ra.right-bb.left+board.scrollLeft, x2=rb.right-bb.left+board.scrollLeft;
       const bow=Math.max(x1,x2)+26;
@@ -371,22 +430,27 @@ function redraw(){
     path.setAttribute("stroke",contra?cssv('--cross'):cssv('--grounded'));
     path.setAttribute("stroke-width","1.6");
     if(lat) path.setAttribute("stroke-dasharray","5 4");
-    path.setAttribute("opacity",lat?"0.85":(e.internal?"0.72":"0.95"));
+    path.setAttribute("opacity",lat?"0.85":"0.95");
     if(!lat) path.setAttribute("marker-end","url(#ar)");
     else if(contra) path.setAttribute("marker-end","url(#arx)");
     svg.appendChild(path);
   }
 }
 function cssv(n){return getComputedStyle(document.documentElement).getPropertyValue(n).trim();}
-// first candidate id whose element exists and is visible (a slice in a closed card has width 0)
-function pick(ids){
-  for(const id of ids){
-    const el=document.getElementById(id);
-    if(!el) continue;
-    const r=el.getBoundingClientRect();
-    if(r.width>0) return r;
+// Resolve an endpoint: the first visible row of the endpoint's slice (drilled rows may
+// render the same slice at several paths), else the card itself. Falling back to the
+// card is what keeps un-drilled edges aggregate.
+function anchorRect(end){
+  const card=document.getElementById(end.cardId);
+  if(!card) return null;
+  if(end.sid){
+    for(const rowEl of card.querySelectorAll(`.slice[data-sid="${end.sid}"]`)){
+      const r=rowEl.getBoundingClientRect();
+      if(r.width>0) return r;
+    }
   }
-  return null;
+  const r=card.getBoundingClientRect();
+  return r.width>0?r:null;
 }
 
 // ── tooltip ────────────────────────────────────────────────────────────────────────────
@@ -416,7 +480,8 @@ boot();
 board.addEventListener("scroll",redraw);
 addEventListener("resize",redraw);
 // read-only introspection for headless tests; not used by the UI
-window.litDebug={get edges(){return edges},get cols(){return cols},open,toggleOpen,pick};
+window.litDebug={get edges(){return edges},get cols(){return cols},open,drill,
+  get ctxOpen(){return ctxOpen},get ctxDrill(){return ctxDrill},anchorRect};
 </script>
 </body>
 </html>

@@ -3,9 +3,11 @@
 Open requests for the `lit build` viewer. Details deliberately left thin for now.
 
 - [x] **Iterative expansion.** Expansion should drill in level by level, not jump straight
-  to a single fixed level. (Spec the levels later.) — *One click = one generation: opening a
-  card spawns only its own grounds column; a card in a spawned column drills further when
-  clicked in turn.*
+  to a single fixed level. (Spec the levels later.) — *Two axes, both iterative. Cross-paper:
+  one click = one generation (a spawned card drills the next when clicked in turn).
+  Within-paper: focusing shows only the top-level claims + questions; each row drills its
+  own branch of the support DAG, one level per click, down to the exact quote. Edges start
+  paper-level (aggregate) and sharpen to slices as rows are revealed.*
 
 - [x] **Specifically link context claims.** A context/lateral claim must show *which claim
   belongs to which paper* — resolve the link to the specific claim, not just the container.
@@ -19,6 +21,7 @@ Open requests for the `lit build` viewer. Details deliberately left thin for now
 
 - [x] **Make substructure visible.** Within an expanded paper the slices currently render as
   a flat list (e.g. the methods of `Ruppel2023eLife`), but the graph has a dependency
-  hierarchy among them — that hierarchy must be shown. — *Slices render as the forest of the
-  local `grounded_in` DAG: each slice indents under its first local parent; extra parents
-  keep their gutter bows.*
+  hierarchy among them — that hierarchy must be shown. — *The hierarchy IS the interaction:
+  drilling a row nests its direct supports beneath it (outline-style; a shared support
+  appears under each branch), a question nests the claims that `answer` it, and a drilled
+  claim shows its weld — the exact quote.*

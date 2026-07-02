@@ -63,7 +63,8 @@ def _paper_json(p: Paper) -> dict:
         "note": p.note, "head": p.head,
         "slices": [{"id": s.id, "kind": s.kind, "text": s.text, "color": s.color,
                     "is_floor": s.is_floor, "grounded": s.grounded,
-                    "borrowed": s.borrowed, "answered": s.answered, "up": _up(s)}
+                    "borrowed": s.borrowed, "answered": s.answered, "up": _up(s),
+                    "quote": s.quote, "answers": list(s.answers)}
                    for s in p.slices],
         "grounds": _grounds(p), "lateral": _lateral(p), "cons": _cons(p),
     }

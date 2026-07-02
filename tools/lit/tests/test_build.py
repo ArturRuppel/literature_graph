@@ -22,6 +22,12 @@ def test_to_json_dict_shape():
     assert m1["up"] == []              # the floor builds on nothing local (grounds in a citation)
     assert all(ref.startswith(("c", "q", "m")) and ":" not in ref
                for s in p["slices"] for ref in s["up"])   # local refs only
+    # the weld (exact quote) and answers edges ride along for the viewer's drill-down
+    assert c1["quote"].startswith("throughput increased monotonically")
+    c4 = next(s for s in p["slices"] if s["id"] == "c4")
+    assert c4["answers"] == ["q2"]
+    m1_q = next(s for s in p["slices"] if s["id"] == "m1")["quote"]
+    assert m1_q is None                                   # methods' quotes are optional
     assert any(g["via"] == "m1" for g in p["grounds"])          # grounds -> left
     # container (unsharpened) grounds carry tid=None — the wildcard "some slice in here"
     assert all(g["tid"] is None for g in p["grounds"])
