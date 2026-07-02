@@ -26,8 +26,11 @@
   .lg-contra i{border-top-style:dashed;border-color:var(--cross)}
   .lg-ans i{border-top-style:dotted;border-color:var(--question)}
 
+  /* side padding centers the landing column on screen when nothing is expanded (half the
+     viewport minus half a column), so grounds (←) and builds/synthesis (→) spawn symmetrically;
+     it grows into scroll as columns fan out. min 40px keeps a gutter on narrow screens. */
   #board{position:absolute;inset:46px 0 0 0;overflow:auto;display:flex;align-items:flex-start;
-    gap:54px;padding:34px 40px 80px}
+    gap:54px;padding:34px max(40px, 50vw - 132px) 80px}
   /* edges paint above the cards so an arrow runs all the way to the slice row it anchors
      on (never clipped at the container border); hover-isolation is for disentangling */
   svg#edges{position:absolute;top:0;left:0;z-index:10;pointer-events:none;overflow:visible}
