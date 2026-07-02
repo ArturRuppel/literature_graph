@@ -111,7 +111,8 @@ def _paper_json(p: Paper, builds: list[dict]) -> dict:
         "slices": [{"id": s.id, "kind": s.kind, "text": s.text, "color": s.color,
                     "is_floor": s.is_floor, "grounded": s.grounded,
                     "borrowed": s.borrowed, "answered": s.answered, "up": _up(s),
-                    "gen": _gen(s), "quote": s.quote, "answers": list(s.answers)}
+                    "gen": _gen(s), "quote": s.quote, "qd": s.quote_display,
+                    "answers": list(s.answers)}
                    for s in p.slices],
         "grounds": _grounds(p), "lateral": _lateral(p), "cons": _cons(p),
         "ans": _answers(p), "builds": builds,

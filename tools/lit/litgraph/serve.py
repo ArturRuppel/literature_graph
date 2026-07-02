@@ -24,6 +24,7 @@ import fitz  # pymupdf — already a hard dependency (litgraph.pdf)
 
 from litgraph.build import render_html, to_json_dict
 from litgraph.graph import BuildError, build_graph
+from litgraph.quotes import polish_graph
 
 # strictly <citekey>.<ext> — one flat name, no separators, so /pdf/ can't traverse out
 _PDF_NAME = re.compile(r"^[A-Za-z0-9]+\.pdf$")
@@ -69,8 +70,12 @@ class _Handler(BaseHTTPRequestHandler):
             self.wfile.write(body)
 
     def _payload(self) -> str:
-        """graph.json, rebuilt from the repo's YAML on every request (may raise BuildError)."""
-        return json.dumps(to_json_dict(build_graph(self.server.root)), ensure_ascii=False)
+        """graph.json, rebuilt from the repo's YAML on every request (may raise BuildError).
+        Quotes are polished against the `.md` full text in pdf_dir (falls back to the raw
+        anchor when a paper's `.md` is absent)."""
+        graph = build_graph(self.server.root)
+        polish_graph(graph, self.server.pdf_dir)
+        return json.dumps(to_json_dict(graph), ensure_ascii=False)
 
     def do_GET(self) -> None:  # noqa: N802 (http.server API)
         path = unquote(urlparse(self.path).path)

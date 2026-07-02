@@ -331,7 +331,7 @@ function renderSlices(id){
           + `<span class="sid ${SID_CLASS[s.color] || 'cl'}${ans}">${s.id}</span>`
           + `<span class="stx">${s.text}</span></div>`;
     if (isOpen) {
-      if (s.quote) html += `<div class="sq" style="margin-left:${depth * 14 + 19}px">“${s.quote}”</div>`;
+      if (s.quote) html += `<div class="sq" style="margin-left:${depth * 14 + 19}px">“${s.qd || s.quote}”</div>`;
       for (const k of kids) row(k.s, `${path}/${k.s.id}`, depth + 1, k.lad);
     }
   };

@@ -10,6 +10,7 @@ from .config import load_config
 from .ingest import IngestError, Report, ingest
 from .graph import build_graph, BuildError
 from .build import emit
+from .quotes import polish_graph
 from .serve import serve
 
 
@@ -106,11 +107,14 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "build":
         cfg = load_config(args.root)
         out = Path(args.out) if args.out else cfg.root / "dist"
+        pdf_dir = cfg.pdf_dir or cfg.root / "pdfs"
         try:
             graph = build_graph(cfg.root)
         except BuildError as e:
             print(f"error: {e}", file=sys.stderr)
             return 1
+        for w in polish_graph(graph, pdf_dir):
+            print(f"quote-flag: {w}", file=sys.stderr)
         emit(graph, out)
         print(f"built {len(graph.papers)} papers -> {out}/index.html")
         return 0

@@ -27,6 +27,7 @@ class Slice:
     answers: list[str] = field(default_factory=list)
     floor_flag: bool = False        # authored `floor: true` (claim axiom)
     quote: str | None = None
+    quote_display: str | None = None  # polished for the viewer (quotes.polish_graph); anchor unchanged
     # computed (filled by build_graph in a later task):
     is_floor: bool = False
     grounded: bool = False
@@ -205,8 +206,10 @@ _BROAD_KIND = {"claim": "broad claim", "question": "broad question", "method": "
 def validate(papers: dict[str, Paper], broad: dict[str, BroadNode]) -> None:
     """Enforce the SCHEMA §6 rules the build can check structurally: unique local ids,
     no dangling refs, kind coherence (§6.6). Raises BuildError naming the offender.
-    (Quote integrity and full cross-paper acyclicity are out of v1 scope; same-paper
-    cycles are caught by reaches_floor's seen-set, not here.)"""
+    (Quote integrity (§6.4) is a non-fatal flag, checked against the `.md` full text in
+    quotes.polish_graph — it can't run here since this core reads only YAML. Full
+    cross-paper acyclicity is out of v1 scope; same-paper cycles are caught by
+    reaches_floor's seen-set, not here.)"""
     for ck, p in papers.items():
         local_ids: set[str] = set()
         for s in p.slices:
