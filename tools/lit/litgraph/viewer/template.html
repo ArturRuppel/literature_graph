@@ -66,7 +66,6 @@
   .sid.fl{background:var(--floor)}.sid.cl{background:var(--grounded)}.sid.bo{background:var(--borrowed)}
   .sid.q{background:var(--question)}
   .stx{color:#dbe5ef;line-height:1.28}
-  .sgrp{font-size:7.5px;letter-spacing:1px;text-transform:uppercase;color:var(--faint);margin:5px 2px 1px}
 
   /* broad / synthesis nodes */
   .bn{position:relative;border:1.6px solid var(--broad);border-radius:14px;padding:9px 12px;
@@ -103,7 +102,7 @@
 </div>
 <div id="board"><svg id="edges"></svg></div>
 <div id="tip"></div>
-<div class="hint">Click a <b>curated</b> paper to expand it — its substructure, grounds (←) and synthesis (→) fan out, edges meet the specific claim. Click again to collapse. Hover for metadata.</div>
+<div class="hint">Click a <b>curated</b> paper to expand it — its substructure, grounds (←) and synthesis (→) fan out, edges meet the specific claim. Several papers can stay open; click a paper in a spawned column to drill one generation further. Click again to collapse. Hover for metadata.</div>
 
 <script>
 const NS="http://www.w3.org/2000/svg";
@@ -117,9 +116,10 @@ const ORDER = GRAPH.order;
 const board=document.getElementById("edges").parentNode;
 const svg=document.getElementById("edges");
 const tip=document.getElementById("tip");
-let edges=[];            // {from,to,kind}
-const cols={};           // level -> {el, keys:Set}
-let focused=null;
+let edges=[];            // {from:[ids…],to:[ids…],kind,internal} — endpoints resolve at draw time
+const cols={};           // level -> {el, keys:Set, label}
+const open=new Set();    // "level:key" of user-opened cards — a set, so expansion is non-exclusive
+const SYNTH=1;           // synthesis band: broad nodes always sit in the rightmost column
 
 // curation maturity (SCHEMA §4) as a pie-filled circle: pass/4. Empty ring = stub (0),
 // full disk = fully curated (4). Stubs have no `pass` → treated as 0.
@@ -145,6 +145,7 @@ function paperCard(key, level){
   const el = document.createElement("div");
   el.className = `card ${cur ? 'curated' : 'stub'}`;
   el.id = "card-" + id; el.dataset.key = key; el.dataset.id = id;
+  el.dataset.year = p.year || 0;
   // Collapsed by default: circle + citekey only. The rest is revealed on focus (.open).
   let body = `<div class="chd">${passCircle(cur ? p.pass : 0)}<span class="ckey">${key}</span>`;
   if (cur) body += `<span class="ctype ${p.type}">${p.type}</span><span class="cyr">${p.year}</span>`;
@@ -158,20 +159,33 @@ function paperCard(key, level){
   el.innerHTML = body;
   el.addEventListener("mousemove", e => showTip(e, key));
   el.addEventListener("mouseleave", () => tip.style.display = "none");
-  el.addEventListener("click", () => { if (cur) focus(key); });
+  el.addEventListener("click", () => { if (cur) toggleOpen(level, key); });
   return el;
 }
-const GROUP_LABEL = {method: "Methods", claim: "Claims", question: "Questions"};
 const SID_CLASS = {floor: "fl", model: "fl", grounded: "cl", borrowed: "bo",
                    plausible: "cl", question: "q"};
+// Substructure as a hierarchy: render the slices as the forest of the paper's local
+// grounded_in DAG — each slice nests (indents) under its first local parent; extra
+// parents still draw as gutter bows. m1 ← m2 ← m3 reads as a staircase, not a flat list.
 function sliceRows(p, level, key){
-  let html = "", lastKind = null;
+  const byId = {}; p.slices.forEach(s => byId[s.id] = s);
+  const kids = {}, roots = [];
   for (const s of p.slices) {
-    if (s.kind !== lastKind) { html += `<div class="sgrp">${GROUP_LABEL[s.kind]}</div>`; lastKind = s.kind; }
-    html += `<div class="slice" id="slice-${level}:${key}:${s.id}">`
+    const parent = (s.up || []).find(u => byId[u]);
+    if (parent) (kids[parent] = kids[parent] || []).push(s); else roots.push(s);
+  }
+  let html = "";
+  const done = new Set();
+  const emit = (s, depth) => {
+    if (done.has(s.id)) return;
+    done.add(s.id);
+    html += `<div class="slice" style="margin-left:${depth * 14}px" id="slice-${level}:${key}:${s.id}">`
           + `<span class="sid ${SID_CLASS[s.color] || 'cl'}">${s.id}</span>`
           + `<span class="stx">${s.text}</span></div>`;
-  }
+    for (const c of kids[s.id] || []) emit(c, depth + 1);
+  };
+  roots.forEach(s => emit(s, 0));
+  p.slices.forEach(s => emit(s, 0));   // cycle guard: anything unreached renders at depth 0
   return html;
 }
 function broadCard(slug,level){
@@ -199,7 +213,15 @@ function ensureCol(level,label){
 function addPaper(level,key,label){
   const c=ensureCol(level,label);
   if(c.keys.has(key)) return;          // de-dup by citekey (accumulate)
-  c.keys.add(key); c.el.appendChild(paperCard(key,level));
+  c.keys.add(key);
+  const card=paperCard(key,level);
+  if(level===0){ c.el.appendChild(card); return; }   // landing keeps its pass ranking
+  // spawned columns sort by year desc — chronology falls out of the grounding walk
+  const yr=+card.dataset.year||0;
+  let before=null;
+  for(const ch of c.el.querySelectorAll(":scope > .card"))
+    if((+ch.dataset.year||0)<yr){ before=ch; break; }
+  c.el.insertBefore(card,before);
 }
 function addBroad(level,slug,label){
   const c=ensureCol(level,label);
@@ -208,47 +230,101 @@ function addBroad(level,slug,label){
 }
 
 const edgeSeen=new Set();
-// from/to are full DOM element ids ("card-0:Key" or "slice-0:Key:c1"); internal = within-card.
-function addEdge(from,to,kind,internal){   // de-dup: re-focusing must not stack duplicate paths
-  const k=`${from}|${to}|${kind}`;
+// from/to are candidate DOM-id lists, most specific first ("slice-…" then "card-…").
+// redraw() anchors each end at the first visible candidate, so an edge sharpens to the
+// specific slice while the card is open and falls back to the container when it isn't.
+function addEdge(from,to,kind,internal){   // de-dup: rebuilds must not stack duplicate paths
+  const k=`${from.join()}|${to.join()}|${kind}`;
   if(edgeSeen.has(k)) return;
   edgeSeen.add(k); edges.push({from,to,kind,internal:!!internal});
 }
 
-function resetFans(){                       // tear down the previous focus → back to a clean landing
+function toggleOpen(level,key){
+  const id=`${level}:${key}`;
+  if(open.has(id)) open.delete(id); else open.add(id);
+  rebuild();
+}
+
+// Recompute every spawned column + edge from the open set (non-exclusive: opening one
+// paper never tears down another). Levels drain leftward: an open card at level L pours
+// its grounds into L-1; if a spawned card is opened too, the sweep drills it in turn —
+// expansion is iterative, one generation per click.
+function rebuild(){
   Object.keys(cols).map(Number).forEach(lvl=>{
     if(lvl!==0){ cols[lvl].el.remove(); delete cols[lvl]; }
   });
   edges=[]; edgeSeen.clear();
   document.querySelectorAll(".card.open,.card.focus").forEach(c=>c.classList.remove("open","focus"));
+  const forced=new Set();   // "level:key" auto-opened to reveal a sharpened target slice
+  let level=0;
+  while(cols[level]){
+    for(const key of [...cols[level].keys]){
+      const p=PAPERS[key];
+      if(p&&open.has(`${level}:${key}`)) expandCard(level,key,p,forced);
+    }
+    level-=1;
+  }
+  for(const id of forced){
+    if(open.has(id)) continue;                       // already fully expanded above
+    const key=id.slice(id.indexOf(":")+1);
+    const el=document.getElementById("card-"+id);
+    if(!el) continue;
+    el.classList.add("open");                        // context-open: revealed, not focused
+    addInternal(id.slice(0,id.indexOf(":")),key,PAPERS[key]);
+  }
+  redraw();
 }
 
-function focus(key){
-  const reopen = focused!==key;
-  resetFans();
-  if(!reopen){ focused=null; redraw(); return; }   // clicking the focused paper collapses it
-  focused=key;
-  const p=PAPERS[key];
-  const fc=document.getElementById("card-0:"+key);
-  fc.classList.add("focus","open");                 // expand the focused paper in place
-  // SUBSTRUCTURE — the within-paper support skeleton (claims/methods built on each other)
+// SUBSTRUCTURE — the within-paper support skeleton (claims/methods built on each other)
+function addInternal(level,key,p){
   for(const s of p.slices) for(const u of (s.up||[]))
-    addEdge(`slice-0:${key}:${u}`,`slice-0:${key}:${s.id}`,"leads",true);
-  // LEFT — grounds (leads-to, older) + lateral, anchored at the specific slice (via)
+    addEdge([`slice-${level}:${key}:${u}`],[`slice-${level}:${key}:${s.id}`],"leads",true);
+}
+
+// Where does `key` already sit? Prefer the instance nearest `near`; every paper is in
+// the landing column, so level 0 is the guaranteed fallback.
+function findCardLevel(key,near){
+  let best=null;
+  for(const lvl of Object.keys(cols).map(Number)){
+    if(lvl===SYNTH||!cols[lvl].keys.has(key)) continue;
+    if(best===null||Math.abs(lvl-near)<Math.abs(best-near)) best=lvl;
+  }
+  return best===null?0:best;
+}
+
+function expandCard(level,key,p,forced){
+  const el=document.getElementById(`card-${level}:${key}`);
+  if(el) el.classList.add("open","focus");
+  addInternal(level,key,p);
+  // LEFT — grounds spawn the previous generation; a sharpened ref (tid) anchors the edge
+  // on the specific source slice and reveals it (the target card context-opens).
   (p.grounds||[]).forEach(g=>{
-    addPaper(-1,g.key,"grounds ←");
-    addEdge(`card--1:${g.key}`,`slice-0:${key}:${g.via}`,"leads");
+    addPaper(level-1,g.key,"grounds ←");
+    const from=[];
+    if(g.tid&&PAPERS[g.key]){ from.push(`slice-${level-1}:${g.key}:${g.tid}`); forced.add(`${level-1}:${g.key}`); }
+    from.push(`card-${level-1}:${g.key}`);
+    addEdge(from,[`slice-${level}:${key}:${g.via}`,`card-${level}:${key}`],"leads");
   });
+  // LATERAL — never spawns a column: connect to the target wherever it already sits,
+  // revealing the specific claim when the ref is sharpened (Kumar → Chen2021Sys:c1).
   (p.lateral||[]).forEach(l=>{
-    addPaper(-1,l.key,"grounds ←");
-    addEdge(`slice-0:${key}:${l.via}`,`card--1:${l.key}`,l.sign);
+    const from=[`slice-${level}:${key}:${l.via}`,`card-${level}:${key}`];
+    if(l.slug){                                      // stance toward a broad claim → synthesis band
+      addBroad(SYNTH,l.slug,"synthesis · now →");
+      addEdge(from,[`card-${SYNTH}:${l.slug}`],l.sign);
+      return;
+    }
+    const tl=findCardLevel(l.key,level);
+    const to=[];
+    if(l.tid&&PAPERS[l.key]){ to.push(`slice-${tl}:${l.key}:${l.tid}`); forced.add(`${tl}:${l.key}`); }
+    to.push(`card-${tl}:${l.key}`);
+    addEdge(from,to,l.sign);
   });
   // RIGHT — synthesis band, from the specific claim that generalizes
   (p.cons||[]).forEach(c=>{
-    addBroad(1,c.slug,"synthesis · now →");
-    addEdge(`slice-0:${key}:${c.via}`,`card-1:${c.slug}`,"leads");
+    addBroad(SYNTH,c.slug,"synthesis · now →");
+    addEdge([`slice-${level}:${key}:${c.via}`,`card-${level}:${key}`],[`card-${SYNTH}:${c.slug}`],"leads");
   });
-  redraw();
 }
 
 // ── edges ──────────────────────────────────────────────────────────────────────────────
@@ -266,10 +342,8 @@ function redraw(){
       <path d="M0,0 L6,3 L0,6 Z" fill="${cssv('--cross')}"/></marker>`;
   svg.appendChild(defs);
   for(const e of edges){
-    const a=document.getElementById(e.from), b=document.getElementById(e.to);
-    if(!a||!b) continue;
-    const ra=a.getBoundingClientRect(), rb=b.getBoundingClientRect();
-    if(ra.width===0||rb.width===0) continue;        // skip hidden (collapsed) endpoints
+    const ra=pick(e.from), rb=pick(e.to);
+    if(!ra||!rb) continue;                          // no visible endpoint yet
     const ya=(ra.top+ra.bottom)/2-bb.top+board.scrollTop;
     const yb=(rb.top+rb.bottom)/2-bb.top+board.scrollTop;
     const contra=e.kind==="contra"||e.kind==="contradict";
@@ -279,6 +353,11 @@ function redraw(){
       const xa=ra.left-bb.left+board.scrollLeft, xb=rb.left-bb.left+board.scrollLeft;
       const bow=Math.min(xa,xb)-14;
       d=`M${xa},${ya} C${bow},${ya} ${bow},${yb} ${xb},${yb}`;
+    } else if(Math.abs((ra.left+ra.right)-(rb.left+rb.right))<80){
+      // same column (e.g. a lateral edge between two landing cards): bow out the right side
+      const x1=ra.right-bb.left+board.scrollLeft, x2=rb.right-bb.left+board.scrollLeft;
+      const bow=Math.max(x1,x2)+26;
+      d=`M${x1},${ya} C${bow},${ya} ${bow},${yb} ${x2},${yb}`;
     } else {                                          // cross-paper: connect the facing edges
       const aLeft=(ra.left+ra.right)/2 < (rb.left+rb.right)/2;
       const x1=(aLeft?ra.right:ra.left)-bb.left+board.scrollLeft;
@@ -299,6 +378,16 @@ function redraw(){
   }
 }
 function cssv(n){return getComputedStyle(document.documentElement).getPropertyValue(n).trim();}
+// first candidate id whose element exists and is visible (a slice in a closed card has width 0)
+function pick(ids){
+  for(const id of ids){
+    const el=document.getElementById(id);
+    if(!el) continue;
+    const r=el.getBoundingClientRect();
+    if(r.width>0) return r;
+  }
+  return null;
+}
 
 // ── tooltip ────────────────────────────────────────────────────────────────────────────
 function showTip(e, key){
@@ -326,6 +415,8 @@ function boot(){
 boot();
 board.addEventListener("scroll",redraw);
 addEventListener("resize",redraw);
+// read-only introspection for headless tests; not used by the UI
+window.litDebug={get edges(){return edges},get cols(){return cols},open,toggleOpen,pick};
 </script>
 </body>
 </html>

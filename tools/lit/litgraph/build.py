@@ -16,22 +16,34 @@ def _up(s: Slice) -> list[str]:
 
 
 def _grounds(p: Paper) -> list[dict]:
-    """Left-column targets: each grounded_in ref that points at a container (a source paper)."""
+    """Left-column targets: each grounded_in ref that points at a container (a source paper).
+    A sharpened ref keeps its target slice id in `tid` so the viewer can anchor the edge on
+    that specific slice; a plain container ref carries tid=None (the wildcard, CONCEPT §2)."""
     out = []
     for s in p.slices:
         for r in s.grounded_in:
             if classify_ref(r) in ("container", "sharpened"):
-                out.append({"key": r.split(":", 1)[0], "via": s.id})
+                key, _, tid = r.partition(":")
+                out.append({"key": key, "tid": tid or None, "via": s.id})
     return out
 
 
 def _lateral(p: Paper) -> list[dict]:
+    """Lateral stance edges. Paper targets emit {key, tid, sign, via} (tid = the specific
+    slice for sharpened refs, else None); broad-slug targets emit {slug, sign, via} so the
+    viewer routes them to the synthesis band, not a phantom paper card."""
     out = []
     for s in p.slices:
-        for r in s.corroborates:
-            out.append({"key": r.split(":", 1)[0], "sign": "corr", "via": s.id})
-        for r in s.contradicts:
-            out.append({"key": r.split(":", 1)[0], "sign": "contra", "via": s.id})
+        for sign, refs in (("corr", s.corroborates), ("contra", s.contradicts)):
+            for r in refs:
+                kind = classify_ref(r)
+                if kind == "broad":
+                    out.append({"slug": r, "sign": sign, "via": s.id})
+                elif kind == "local":
+                    out.append({"key": p.citekey, "tid": r, "sign": sign, "via": s.id})
+                else:
+                    key, _, tid = r.partition(":")
+                    out.append({"key": key, "tid": tid or None, "sign": sign, "via": s.id})
     return out
 
 
