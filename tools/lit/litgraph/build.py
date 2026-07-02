@@ -48,7 +48,7 @@ def _lateral(p: Paper) -> list[dict]:
 
 
 def _cons(p: Paper) -> list[dict]:
-    """Right-band targets: each leads_to broad slug."""
+    """Right-band targets: each leads_to broad slug (validate() guarantees broad-only)."""
     out = []
     for s in p.slices:
         for slug in s.leads_to:
@@ -56,7 +56,45 @@ def _cons(p: Paper) -> list[dict]:
     return out
 
 
-def _paper_json(p: Paper) -> dict:
+def _answers(p: Paper) -> list[dict]:
+    """Cross-paper answers edges: a claim answering a question in another container.
+    Local refs are omitted (they nest in place via the slice's own `answers` list).
+    A sharpened ref keeps the target question id in `tid`; a plain container ref is the
+    wildcard (tid=None); a broad-question slug routes to the synthesis band ({slug})."""
+    out = []
+    for s in p.slices:
+        for r in s.answers:
+            kind = classify_ref(r)
+            if kind == "broad":
+                out.append({"slug": r, "via": s.id})
+            elif kind in ("container", "sharpened"):
+                key, _, tid = r.partition(":")
+                out.append({"key": key, "tid": tid or None, "via": s.id})
+    return out
+
+
+def _builds(g: Graph) -> dict[str, list[dict]]:
+    """Invert cross-paper grounding: for each curated paper, the (newer) curated papers
+    that build on it — the viewer's rightward "builds-on" column. Each entry names the
+    building paper (`key`), its building slice (`via`), and — for a sharpened ref — the
+    grounded slice of *this* paper (`tid`)."""
+    idx: dict[str, list[dict]] = {}
+    for q in g.papers.values():
+        if not q.curated:
+            continue
+        for s in q.slices:
+            for r in s.grounded_in:
+                if classify_ref(r) not in ("container", "sharpened"):
+                    continue
+                key, _, tid = r.partition(":")
+                target = g.papers.get(key)
+                if target is not None and target.curated:
+                    idx.setdefault(key, []).append(
+                        {"key": q.citekey, "tid": tid or None, "via": s.id})
+    return idx
+
+
+def _paper_json(p: Paper, builds: list[dict]) -> dict:
     return {
         "cur": p.curated, "pass": p.pass_, "type": p.type, "year": p.year,
         "title": p.title, "authors": [[n, pos, corr] for n, pos, corr in p.authors],
@@ -67,11 +105,13 @@ def _paper_json(p: Paper) -> dict:
                     "quote": s.quote, "answers": list(s.answers)}
                    for s in p.slices],
         "grounds": _grounds(p), "lateral": _lateral(p), "cons": _cons(p),
+        "ans": _answers(p), "builds": builds,
     }
 
 
 def to_json_dict(g: Graph) -> dict:
-    curated = {ck: _paper_json(p) for ck, p in g.papers.items() if p.curated}
+    builds = _builds(g)
+    curated = {ck: _paper_json(p, builds.get(ck, [])) for ck, p in g.papers.items() if p.curated}
     stubs = {ck: {"title": p.title, "year": p.year, "type": p.type, "doi": p.doi}
              for ck, p in g.papers.items() if not p.curated}
     broad = {slug: {"kind": b.kind, "text": b.text,

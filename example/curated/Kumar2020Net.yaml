@@ -1,6 +1,7 @@
 # Synthetic test paper (fully fictional). Contextualized (pass 3).
-# Key feature: its claims take lateral stance toward SPECIFIC slices of another curated paper
-# (sharpened cross-paper refs Chen2021Sys:c1 / Chen2021Sys:c2) -- exercises "link to the specific claim".
+# Key features: its claims take lateral stance toward SPECIFIC slices of another curated paper
+# (sharpened cross-paper refs Chen2021Sys:c1 / Chen2021Sys:c2) -- exercises "link to the specific
+# claim"; c2 answers Lopez2019Arch:q1 -- exercises the cross-paper answers edge.
 title: "Adaptive batching under variable load"
 type: original
 year: 2020
@@ -33,3 +34,5 @@ claims:
     quote: "static large batches raised p99 latency by 3x during bursts"
     grounded_in: [m1]
     contradicts: ["Chen2021Sys:c2"]          # sharpened: clashes with Chen's specific latency claim
+    answers:     ["Lopez2019Arch:q1"]        # sharpened cross-paper answers: resolves Lopez's
+                                             # open tail-cost question (claim -> question)

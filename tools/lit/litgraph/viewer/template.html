@@ -24,6 +24,7 @@
   .lg-leads i{border-color:var(--grounded)}
   .lg-corr i{border-top-style:dashed;border-color:var(--grounded)}
   .lg-contra i{border-top-style:dashed;border-color:var(--cross)}
+  .lg-ans i{border-top-style:dotted;border-color:var(--question)}
 
   #board{position:absolute;inset:46px 0 0 0;overflow:auto;display:flex;align-items:flex-start;
     gap:54px;padding:34px 40px 80px}
@@ -76,6 +77,18 @@
   .sq{margin:1px 2px 4px;padding:2px 0 2px 8px;border-left:2px solid var(--floor);
     font-size:8.5px;font-style:italic;color:#cfc39a;line-height:1.32}
 
+  /* source stack — citation-wall collapse: a focused paper's uncurated sources fold into
+     one "▸ N sources" card; only an explicit click unfolds it */
+  .card.stack{cursor:pointer}
+  .stack .ckey{color:var(--dim);font-weight:600}
+  .srcs{display:none;border-top:1px solid var(--line);padding:5px 9px 8px;background:#161c26}
+  .card.stack.open .srcs{display:block}
+  .src{display:flex;gap:6px;align-items:baseline;padding:2px 5px;margin:1px 0;border-radius:4px;
+    background:#ffffff07;font-size:9px}
+  .src:hover{background:#ffffff12}
+  .src .skey{font-weight:700}
+  .src .sy{margin-left:auto;color:var(--faint);font-size:8px}
+
   /* broad / synthesis nodes */
   .bn{position:relative;border:1.6px solid var(--broad);border-radius:14px;padding:9px 12px;
     background:linear-gradient(160deg,#2a2150,#1c1838);cursor:default}
@@ -105,13 +118,14 @@
   <b>litgraph</b><span class="sub">paper-centric column view</span>
   <div class="legend">
     <span class="lg-leads"><i></i>leads-to (ground→derived)</span>
+    <span class="lg-ans"><i></i>answers (claim→question)</span>
     <span class="lg-corr"><i></i>corroborate</span>
     <span class="lg-contra"><i></i>contradict</span>
   </div>
 </div>
 <div id="board"><svg id="edges"></svg></div>
 <div id="tip"></div>
-<div class="hint">Click a <b>curated</b> paper to focus it — grounds (←) and synthesis (→) fan out with paper-level edges. Click a claim to drill into its support, branch by branch, down to the exact <i>quote</i> — edges sharpen to the slices you reveal. Click the header to collapse; several papers stay open at once. Hover for metadata.</div>
+<div class="hint">Click a <b>curated</b> paper to focus it — grounds (←), papers that build on it (→) and synthesis fan out with paper-level edges. Uncurated sources fold into a “▸ N sources” stack — click it to unfold. Click a claim to drill into its support, branch by branch, down to the exact <i>quote</i> — edges sharpen to the slices you reveal. Click the header to collapse; several papers stay open at once. Hover for metadata.</div>
 
 <script>
 const NS="http://www.w3.org/2000/svg";
@@ -133,7 +147,9 @@ const open=new Set();    // "level:key" of focused cards — a set, so expansion
 const drill=new Map();   // "level:key" -> Set of expanded row paths ("c3", "c3/c1", …)
 let ctxOpen=new Set();   // cards context-opened to reveal a sharpened target (recomputed)
 let ctxDrill=new Map();  // row paths force-expanded to reveal a sharpened target (recomputed)
-const SYNTH=1;           // synthesis band: broad nodes always sit in the rightmost column
+const stacks=new Set();  // source-stack ids the human explicitly unfolded (persists rebuilds)
+const SYNTH=1e6;         // synthesis band: broad nodes always sit in the rightmost column
+                         // (papers occupy small levels; builds-on growth stays left of it)
 
 // curation maturity (SCHEMA §4) as a pie-filled circle: pass/4. Empty ring = stub (0),
 // full disk = fully curated (4). Stubs have no `pass` → treated as 0.
@@ -289,6 +305,45 @@ function addBroad(level,slug,label){
   if(c.keys.has(slug)) return;
   c.keys.add(slug); c.el.appendChild(broadCard(slug,level));
 }
+// Citation-wall collapse: a focused paper's UNCURATED sources never spawn cards — they fold
+// into one "▸ N sources" stack per focused card, expandable on demand and ONLY on demand
+// (reveal()/rebuild() never unfold it, so it stays collapsed under any programmatic
+// expansion). Rows carry data-sid=<citekey>, so a wall edge sharpens from the stack card to
+// its source row the moment the stack is unfolded. Returns the stack element id.
+function addStack(level,owner,wall,label){
+  const c=ensureCol(level,label);
+  const key=owner+"::srcs", id=`${level}:${key}`, eid="card-"+id;
+  if(c.keys.has(key)) return eid;
+  c.keys.add(key);
+  const srcs=[...new Set(wall.map(g=>g.key))]
+    .map(k=>({k,p:STUBS[k]||{}}))
+    .sort((a,b)=>(b.p.year||0)-(a.p.year||0));
+  const el=document.createElement("div");
+  el.className="card stack"+(stacks.has(id)?" open":"");
+  el.id=eid; el.dataset.id=id;
+  el.dataset.year=srcs.length?(srcs[0].p.year||0):0;   // sorts by its newest source
+  el.innerHTML=`<div class="chd"><span class="car">${stacks.has(id)?"▾":"▸"}</span>`
+    +`<span class="ckey">${srcs.length} source${srcs.length===1?"":"s"}</span></div>`
+    +`<div class="srcs">`+srcs.map(s=>
+      `<div class="src" data-sid="${s.k}"><span class="skey">${s.k}</span>`
+      +`<span class="sy">${s.p.year||""}</span></div>`).join("")+`</div>`;
+  el.addEventListener("click",()=>{
+    if(stacks.has(id)) stacks.delete(id); else stacks.add(id);
+    el.classList.toggle("open",stacks.has(id));
+    el.querySelector(".car").textContent=stacks.has(id)?"▾":"▸";
+    redraw();                                          // anchors move; edges re-route
+  });
+  for(const row of el.querySelectorAll(".src")){
+    row.addEventListener("mousemove",e=>showTip(e,row.dataset.sid));
+    row.addEventListener("mouseleave",()=>tip.style.display="none");
+  }
+  const yr=+el.dataset.year||0;                        // year-sorted, same rule as cards
+  let before=null;
+  for(const ch of c.el.querySelectorAll(":scope > .card"))
+    if((+ch.dataset.year||0)<yr){ before=ch; break; }
+  c.el.insertBefore(el,before);
+  return eid;
+}
 
 const edgeSeen=new Set();
 // each endpoint is {cardId, sid}: it anchors at sid's row when visible, else at the card.
@@ -299,23 +354,34 @@ function addEdge(from,to,kind){            // de-dup: rebuilds must not stack du
 }
 
 // Recompute every spawned column + edge from the open set (non-exclusive: opening one
-// paper never tears down another). Levels drain leftward: an open card at level L pours
-// its grounds into L-1; if a spawned card is opened too, the sweep drills it in turn —
-// cross-paper expansion is iterative, one generation per click.
+// paper never tears down another). An open card at level L pours its grounds into L-1 and
+// the papers that build on it into L+1; if a spawned card is opened too, the sweep drills
+// it in turn — cross-paper expansion is iterative, one generation per click. Expansion
+// runs both directions, so the sweep iterates to a fixpoint instead of walking one way.
 function rebuild(){
   Object.keys(cols).map(Number).forEach(lvl=>{
-    if(lvl!==0){ cols[lvl].el.remove(); delete cols[lvl]; }
+    if(lvl!==0){ cols[lvl].el.remove(); delete cols[lvl]; return; }
+    for(const k of [...cols[0].keys]){          // stacks are rebuild-scoped; the landing
+      if(!k.endsWith("::srcs")) continue;       // column persists, so evict its stacks
+      cols[0].keys.delete(k);
+      const el=document.getElementById(`card-0:${k}`); if(el) el.remove();
+    }
   });
   edges=[]; edgeSeen.clear();
   document.querySelectorAll(".card.open,.card.focus").forEach(c=>c.classList.remove("open","focus"));
   ctxOpen=new Set(); ctxDrill=new Map();
-  let level=0;
-  while(cols[level]){
-    for(const key of [...cols[level].keys]){
-      const p=PAPERS[key];
-      if(p&&open.has(`${level}:${key}`)) expandCard(level,key,p);
+  const done=new Set();
+  let changed=true;
+  while(changed){
+    changed=false;
+    for(const lvl of Object.keys(cols).map(Number)){
+      if(lvl===SYNTH) continue;
+      for(const key of [...cols[lvl].keys]){
+        const id=`${lvl}:${key}`;
+        if(done.has(id)||!open.has(id)||!PAPERS[key]) continue;
+        done.add(id); expandCard(lvl,key,PAPERS[key]); changed=true;
+      }
     }
-    level-=1;
   }
   // apply visual state + drill regions for focused and context-opened cards
   for(const id of new Set([...open,...ctxOpen])){
@@ -341,13 +407,21 @@ function findCardLevel(key,near){
 
 function expandCard(level,key,p){
   const cid=`card-${level}:${key}`;
-  // LEFT — grounds spawn the previous generation; a sharpened ref (tid) reveals the
-  // specific source slice in the target card and anchors the edge there.
+  // LEFT — grounds spawn the previous generation. Curated sources get their own card; a
+  // sharpened ref (tid) reveals the specific source slice there and anchors the edge on
+  // it. Uncurated sources fold into one collapsed "▸ N sources" stack (citation-wall
+  // collapse) — their edges anchor on the stack until the human unfolds it.
+  const wall=[];
   (p.grounds||[]).forEach(g=>{
+    if(!PAPERS[g.key]){ wall.push(g); return; }
     addPaper(level-1,g.key,"grounds ←");
-    if(g.tid&&PAPERS[g.key]) reveal(`${level-1}:${g.key}`,g.tid);
+    if(g.tid) reveal(`${level-1}:${g.key}`,g.tid);
     addEdge({cardId:`card-${level-1}:${g.key}`,sid:g.tid||null},{cardId:cid,sid:g.via},"leads");
   });
+  if(wall.length){
+    const sid=addStack(level-1,key,wall,"grounds ←");
+    wall.forEach(g=>addEdge({cardId:sid,sid:g.key},{cardId:cid,sid:g.via},"leads"));
+  }
   // LATERAL — never spawns a column: connect to the target wherever it already sits,
   // revealing the specific claim when the ref is sharpened (Kumar → Chen2021Sys:c1).
   (p.lateral||[]).forEach(l=>{
@@ -361,7 +435,28 @@ function expandCard(level,key,p){
     if(l.tid&&PAPERS[l.key]) reveal(`${tl}:${l.key}`,l.tid);
     addEdge(from,{cardId:`card-${tl}:${l.key}`,sid:l.tid||null},l.sign);
   });
-  // RIGHT — synthesis band; the edge sharpens to the generalizing claim once it's drilled
+  // ANSWERS — cross-paper claim→question: like lateral, never spawns a column. The target
+  // question is context-revealed (an entry row, so opening its card suffices) and the
+  // edge anchors on it; a broad-question target routes to the synthesis band.
+  (p.ans||[]).forEach(a=>{
+    const from={cardId:cid,sid:a.via};
+    if(a.slug){
+      addBroad(SYNTH,a.slug,"synthesis · now →");
+      addEdge(from,{cardId:`card-${SYNTH}:${a.slug}`,sid:null},"answers");
+      return;
+    }
+    const tl=findCardLevel(a.key,level);
+    if(a.tid&&PAPERS[a.key]) reveal(`${tl}:${a.key}`,a.tid);
+    addEdge(from,{cardId:`card-${tl}:${a.key}`,sid:a.tid||null},"answers");
+  });
+  // RIGHT — the papers that build on this one (inverted grounds) spawn the next
+  // generation rightward; the edge runs ground→derived and sharpens as either side's
+  // rows are drilled (b.tid = this paper's grounded slice, b.via = the building slice).
+  (p.builds||[]).forEach(b=>{
+    addPaper(level+1,b.key,"builds on →");
+    addEdge({cardId:cid,sid:b.tid||null},{cardId:`card-${level+1}:${b.key}`,sid:b.via},"leads");
+  });
+  // RIGHTMOST — synthesis band; the edge sharpens to the generalizing claim once it's drilled
   (p.cons||[]).forEach(c=>{
     addBroad(SYNTH,c.slug,"synthesis · now →");
     addEdge({cardId:cid,sid:c.via},{cardId:`card-${SYNTH}:${c.slug}`,sid:null},"leads");
@@ -402,7 +497,9 @@ function redraw(){
     <marker id="ar" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
       <path d="M0,0 L6,3 L0,6 Z" fill="${cssv('--grounded')}"/></marker>
     <marker id="arx" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
-      <path d="M0,0 L6,3 L0,6 Z" fill="${cssv('--cross')}"/></marker>`;
+      <path d="M0,0 L6,3 L0,6 Z" fill="${cssv('--cross')}"/></marker>
+    <marker id="arq" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L6,3 L0,6 Z" fill="${cssv('--question')}"/></marker>`;
   svg.appendChild(defs);
   for(const e of edges){
     const ra=anchorRect(e.from), rb=anchorRect(e.to);
@@ -410,6 +507,7 @@ function redraw(){
     const ya=(ra.top+ra.bottom)/2-bb.top+board.scrollTop;
     const yb=(rb.top+rb.bottom)/2-bb.top+board.scrollTop;
     const contra=e.kind==="contra"||e.kind==="contradict";
+    const ans=e.kind==="answers";
     const lat=e.kind==="corr"||contra;
     let d;
     if(Math.abs((ra.left+ra.right)-(rb.left+rb.right))<80){
@@ -427,24 +525,26 @@ function redraw(){
     const path=document.createElementNS(NS,"path");
     path.setAttribute("d",d);
     path.setAttribute("fill","none");
-    path.setAttribute("stroke",contra?cssv('--cross'):cssv('--grounded'));
+    path.setAttribute("stroke",contra?cssv('--cross'):ans?cssv('--question'):cssv('--grounded'));
     path.setAttribute("stroke-width","1.6");
     if(lat) path.setAttribute("stroke-dasharray","5 4");
-    path.setAttribute("opacity",lat?"0.85":"0.95");
-    if(!lat) path.setAttribute("marker-end","url(#ar)");
+    else if(ans) path.setAttribute("stroke-dasharray","2 3");   // dotted: answers ≠ support
+    path.setAttribute("opacity",lat||ans?"0.85":"0.95");
+    if(ans) path.setAttribute("marker-end","url(#arq)");
+    else if(!lat) path.setAttribute("marker-end","url(#ar)");
     else if(contra) path.setAttribute("marker-end","url(#arx)");
     svg.appendChild(path);
   }
 }
 function cssv(n){return getComputedStyle(document.documentElement).getPropertyValue(n).trim();}
-// Resolve an endpoint: the first visible row of the endpoint's slice (drilled rows may
-// render the same slice at several paths), else the card itself. Falling back to the
-// card is what keeps un-drilled edges aggregate.
+// Resolve an endpoint: the first visible row carrying the endpoint's sid — a slice row
+// (drilled rows may render the same slice at several paths) or a stack's source row —
+// else the card itself. Falling back to the card is what keeps un-drilled edges aggregate.
 function anchorRect(end){
   const card=document.getElementById(end.cardId);
   if(!card) return null;
   if(end.sid){
-    for(const rowEl of card.querySelectorAll(`.slice[data-sid="${end.sid}"]`)){
+    for(const rowEl of card.querySelectorAll(`[data-sid="${end.sid}"]`)){
       const r=rowEl.getBoundingClientRect();
       if(r.width>0) return r;
     }
@@ -480,7 +580,7 @@ boot();
 board.addEventListener("scroll",redraw);
 addEventListener("resize",redraw);
 // read-only introspection for headless tests; not used by the UI
-window.litDebug={get edges(){return edges},get cols(){return cols},open,drill,
+window.litDebug={get edges(){return edges},get cols(){return cols},open,drill,stacks,
   get ctxOpen(){return ctxOpen},get ctxDrill(){return ctxDrill},anchorRect};
 </script>
 </body>

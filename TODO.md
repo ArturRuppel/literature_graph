@@ -26,23 +26,34 @@ Open requests for the `lit build` viewer. Details deliberately left thin for now
   appears under each branch), a question nests the claims that `answer` it, and a drilled
   claim shows its weld — the exact quote.*
 
-## Open
-
-- [ ] **Citation-wall collapse.** A real paper carries 30–80 citations, so a curated paper's
+- [x] **Citation-wall collapse.** A real paper carries 30–80 citations, so a curated paper's
   grounds column becomes a wall of stub cards (the example's two-stub column hides this).
   Spawn a borrowed claim's sources as a single collapsed "▸ N sources" stack, expandable on
-  demand (design doc, "known gaps") — must stay folded even under "expand all".
+  demand (design doc, "known gaps") — must stay folded even under "expand all". — *A focused
+  paper's uncurated sources never spawn cards: they fold into one "▸ N sources" stack per
+  focused card (curated sources keep their own cards). Only an explicit click unfolds it —
+  reveal/rebuild never do — and edges anchor on the stack until unfolding sharpens them to
+  the source rows.*
 
-- [ ] **Cross-paper `answers` edges.** Local answers now drill in place (a question nests
+- [x] **Cross-paper `answers` edges.** Local answers now drill in place (a question nests
   its answering claims), but a sharpened `answers` ref into another paper
   (`Citekey:qN`) still draws nothing. Emit it from build.py and draw it like the other
-  sharpened edges (context-reveal the target question).
+  sharpened edges (context-reveal the target question). — *Emitted as a per-paper `ans`
+  list (sharpened → `{key, tid}`, container → wildcard, broad slug → synthesis band) and
+  drawn like lateral edges: no column spawned, target question context-revealed, dotted
+  question-colored stroke with its own arrowhead.*
 
-- [ ] **Rightward "builds-on" column.** The right side only ever shows broad synthesis
+- [x] **Rightward "builds-on" column.** The right side only ever shows broad synthesis
   nodes; the design sketch also has *newer papers that build on the focus*. Derivable at
   build time by inverting `grounds`. Related hardening: `_cons` assumes every `leads_to`
   target is a broad slug — a cross-paper `leads_to` ref would be mis-rendered, and nothing
-  validates against it.
+  validates against it. — *build.py inverts cross-paper `grounded_in` between curated papers
+  into a `builds` list; a focused card spawns them one generation rightward (the synthesis
+  band stays rightmost) and the rebuild sweep runs to a fixpoint since expansion now grows
+  both ways. Hardening became SCHEMA §6.6 kind-coherence validation: `leads_to` → same-kind
+  broad slug, `answers` → a question, laterals → claim/container, `floor` → claims only.*
+
+## Open
 
 - [ ] **Entry-row rule check after real use.** Entry rows = top-level claims + questions.
   On first focus a paper can look sparse (Chen's much-cited `c1` sits one drill below `c3`

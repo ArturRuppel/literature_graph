@@ -29,8 +29,10 @@ def test_to_json_dict_shape():
     m1_q = next(s for s in p["slices"] if s["id"] == "m1")["quote"]
     assert m1_q is None                                   # methods' quotes are optional
     assert any(g["via"] == "m1" for g in p["grounds"])          # grounds -> left
-    # container (unsharpened) grounds carry tid=None — the wildcard "some slice in here"
-    assert all(g["tid"] is None for g in p["grounds"])
+    # container (unsharpened) grounds carry tid=None — the wildcard "some slice in here";
+    # a sharpened ground keeps its target slice (Chen m2 extends Lopez2019Arch:m2)
+    assert {"key": "Lopez2019Arch", "tid": "m2", "via": "m2"} in p["grounds"]
+    assert all(g["tid"] is None for g in p["grounds"] if g["key"] != "Lopez2019Arch")
     assert any(co["slug"] == "throughput-scales-with-batching" for co in p["cons"])
     assert any(l["sign"] in ("corr", "contra") for l in p["lateral"])
     # a lateral ref to a broad slug routes to the synthesis band ({slug}), not a paper ({key})
@@ -42,6 +44,15 @@ def test_to_json_dict_shape():
     k = d["papers"]["Kumar2020Net"]
     assert {"key": "Chen2021Sys", "tid": "c1", "sign": "corr", "via": "c1"} in k["lateral"]
     assert {"key": "Chen2021Sys", "tid": "c2", "sign": "contra", "via": "c2"} in k["lateral"]
+    # cross-paper answers edges are emitted separately (local ones nest via slice "answers")
+    assert k["ans"] == [{"key": "Lopez2019Arch", "tid": "q1", "via": "c2"}]
+    assert p["ans"] == []                                 # Chen's c4->q2 answer is local
+    # inverted grounds: Lopez's builds-on lists Chen (m2 grounds in Lopez2019Arch:m2)
+    lo = d["papers"]["Lopez2019Arch"]
+    assert lo["builds"] == [{"key": "Chen2021Sys", "tid": "m2", "via": "m2"}]
+    assert p["builds"] == []                              # nothing grounds in Chen (yet)
+    # the cross-paper answer flips Lopez q1 to answered (emergent, SCHEMA §7)
+    assert next(s for s in lo["slices"] if s["id"] == "q1")["answered"] is True
     # stubs are separated out (one-line cards), not under papers' slices
     assert "Patel2017Vldb" in d["stubs"]
     assert d["stubs"]["Patel2017Vldb"]["year"] == 2017
@@ -64,6 +75,45 @@ def test_emit_writes_self_contained_viewer(tmp_path):
     text = html.read_text()
     assert "Chen2021Sys" in text
     assert "__GRAPH_JSON__" not in text
+
+
+from litgraph.graph import Graph, Paper, Slice
+from litgraph.build import _answers, _builds
+
+
+def _paper(citekey, *slices, curated=True):
+    return Paper(citekey=citekey, curated=curated, title="", type="original",
+                 year=2023, slices=list(slices))
+
+
+def test_answers_emits_cross_paper_forms_only():
+    p = _paper("P1",
+               Slice(id="q1", kind="question", text="?"),
+               Slice(id="c1", kind="claim", text="x",
+                     answers=["q1", "Other2020Jrnl:q2", "Stub2019Conf", "broad-q"]))
+    out = _answers(p)
+    # local q1 nests in place; sharpened keeps tid; container is the wildcard (tid=None);
+    # a broad question slug routes to the synthesis band
+    assert out == [{"key": "Other2020Jrnl", "tid": "q2", "via": "c1"},
+                   {"key": "Stub2019Conf", "tid": None, "via": "c1"},
+                   {"slug": "broad-q", "via": "c1"}]
+
+
+def test_builds_inverts_grounds_between_curated_papers_only():
+    old = _paper("Old2019Jrnl", Slice(id="m1", kind="method", text="f"))
+    new = _paper("New2021Jrnl",
+                 Slice(id="m1", kind="method", text="g",
+                       grounded_in=["Old2019Jrnl:m1", "Stub2016Conf"]),
+                 Slice(id="c1", kind="claim", text="x", grounded_in=["Old2019Jrnl"]))
+    stub = _paper("Stub2016Conf", curated=False)
+    g = Graph(papers={"Old2019Jrnl": old, "New2021Jrnl": new, "Stub2016Conf": stub},
+              broad={}, order=[])
+    idx = _builds(g)
+    # both the sharpened and the container ground invert onto the curated source;
+    # the stub target gets no builds entry (stubs cannot be focused)
+    assert idx == {"Old2019Jrnl": [
+        {"key": "New2021Jrnl", "tid": "m1", "via": "m1"},
+        {"key": "New2021Jrnl", "tid": None, "via": "c1"}]}
 
 
 from litgraph.cli import main
