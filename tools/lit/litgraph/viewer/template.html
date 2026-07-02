@@ -423,6 +423,11 @@ function addEdge(from,to,kind){            // de-dup: rebuilds must not stack du
 // it in turn — cross-paper expansion is iterative, one generation per click. Expansion
 // runs both directions, so the sweep iterates to a fixpoint instead of walking one way.
 function rebuild(){
+  // The landing column is a fixed anchor: content expands out from it (grounds ←, builds →)
+  // without it sliding sideways. Capture its screen-x before the DOM churns, restore it after
+  // by compensating scrollLeft for whatever columns were inserted/removed to its left.
+  const anchorEl=cols[0]&&cols[0].el;
+  const beforeLeft=anchorEl?anchorEl.getBoundingClientRect().left:0;
   Object.keys(cols).map(Number).forEach(lvl=>{
     if(lvl!==0){ cols[lvl].el.remove(); delete cols[lvl]; return; }
     for(const k of [...cols[0].keys]){          // stacks are rebuild-scoped; the landing
@@ -454,6 +459,9 @@ function rebuild(){
     el.classList.add("open");
     if(open.has(id)) el.classList.add("focus");      // ctx-only cards: revealed, not focused
     renderSlices(id);
+  }
+  if(anchorEl){                                       // hold the anchor column visually still
+    board.scrollLeft+=anchorEl.getBoundingClientRect().left-beforeLeft;
   }
   redraw();
 }
