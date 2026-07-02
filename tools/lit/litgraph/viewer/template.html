@@ -49,7 +49,7 @@
   /* header: circle + citekey always; type/year only when expanded. Flex row = no overlap. */
   .chd{display:flex;align-items:center;gap:7px;padding:9px 11px}
   .circle{flex:none;display:flex;width:16px;height:16px}
-  .ckey{font-size:11px;font-weight:700}
+  .ckey{font-size:11px;font-weight:700;cursor:help}
   .ctype{display:none;font-size:7px;padding:1px 5px;border-radius:4px;font-weight:700;
     color:#0c0e14;background:var(--dim)}
   .ctype.original{background:#7ea8d8}.ctype.methods{background:var(--floor)}
@@ -109,10 +109,12 @@
 
   /* tooltip */
   #tip{position:fixed;z-index:50;width:300px;border:1px solid var(--line);border-radius:10px;
-    background:#0c1119f0;box-shadow:0 10px 40px #000b;padding:11px 13px;display:none;backdrop-filter:blur(8px)}
+    background:#0c1119f0;box-shadow:0 10px 40px #000b;padding:11px 13px;display:none;backdrop-filter:blur(8px);
+    max-height:88vh;overflow-y:auto}
   #tip h4{margin:0 0 3px;font-size:11px}
   #tip .meta{font-size:9px;color:var(--faint);margin-bottom:7px}
-  #tip .abs{font-size:10px;color:var(--dim);line-height:1.4;max-height:120px;overflow:hidden}
+  /* abstract shown in full, above the clickable preview — read it without opening the PDF */
+  #tip .abs{font-size:10px;color:var(--dim);line-height:1.4}
   #tip .pdf{margin-top:9px;height:70px;border:1px dashed var(--line);border-radius:6px;
     display:flex;align-items:center;justify-content:center;font-size:9px;color:var(--faint);
     background:repeating-linear-gradient(180deg,#11161f,#11161f 6px,#0e131b 6px,#0e131b 12px)}
@@ -136,7 +138,7 @@
 </div>
 <div id="board"><svg id="edges"></svg></div>
 <div id="tip"></div>
-<div class="hint">Click a <b>curated</b> paper to focus it — grounds (←), papers that build on it (→) and synthesis fan out with paper-level edges. Uncurated sources fold into a “▸ N sources” stack — click it to unfold. Click a claim to drill into its support, branch by branch, down to the exact <i>quote</i> — edges sharpen to the slices you reveal. Click the header to collapse; several papers stay open at once. Hover a slice row to isolate its arrows and light up the papers they touch; a <span style="color:var(--broad)">⤴</span> row generalizes into the claim above it. Hover for metadata.</div>
+<div class="hint">Click a <b>curated</b> paper to focus it — grounds (←), papers that build on it (→) and synthesis fan out with paper-level edges. Uncurated sources fold into a “▸ N sources” stack — click it to unfold. Click a claim to drill into its support, branch by branch, down to the exact <i>quote</i> — edges sharpen to the slices you reveal. Click the header to collapse; several papers stay open at once. Hover a slice row to isolate its arrows and light up the papers they touch; a <span style="color:var(--broad)">⤴</span> row generalizes into the claim above it. Hover a broad synthesis node to light up every paper that feeds it, expanded or not. Hover a paper's <b>citekey</b> for its abstract and PDF preview.</div>
 
 <script>
 const NS="http://www.w3.org/2000/svg";
@@ -146,6 +148,20 @@ const PAPERS = GRAPH.papers;
 const BROAD = GRAPH.broad;
 const STUBS = GRAPH.stubs;
 const ORDER = GRAPH.order;
+
+// slug -> every curated paper that links into that broad node (generalize / stance / answer),
+// independent of expansion state. Lets a broad-node hover reach papers still collapsed in the
+// landing column, not just the expanded ones whose edges happen to already be drawn.
+const BROAD_LINKS = {};
+(function(){
+  const push=(slug,key,via,kind)=>{ (BROAD_LINKS[slug]=BROAD_LINKS[slug]||[]).push({key,via,kind}); };
+  for(const [key,p] of Object.entries(PAPERS)){
+    if(!p.cur) continue;
+    (p.cons||[]).forEach(c=>push(c.slug,key,c.via,"leads"));
+    (p.lateral||[]).forEach(l=>{ if(l.slug) push(l.slug,key,l.via,l.sign); });
+    (p.ans||[]).forEach(a=>{ if(a.slug) push(a.slug,key,a.via,"answers"); });
+  }
+})();
 
 const board=document.getElementById("edges").parentNode;
 const svg=document.getElementById("edges");
@@ -199,7 +215,12 @@ function paperCard(key, level){
     body += `<div class="slices"></div>`;   // filled by renderSlices from the drill state
   }
   el.innerHTML = body;
-  el.addEventListener("mousemove", e => { showTip(e, key, el); hoverRow(el, e); });
+  // the abstract + PDF-preview tip is bound to the citekey tag only (hovering the body drills
+  // slices / isolates edges without popping the tip); edge-isolation still tracks any row.
+  el.addEventListener("mousemove", e => {
+    if (e.target.closest(".ckey")) showTip(e, key, el); else dropTip();
+    hoverRow(el, e);
+  });
   el.addEventListener("mouseleave", () => { dropTip(); hoverRow(null); });
   el.addEventListener("click", e => { if (cur) cardClick(e, el, level, key); });
   return el;
@@ -530,6 +551,33 @@ function reveal(id,sid){
 }
 
 // ── edges ──────────────────────────────────────────────────────────────────────────────
+// The slug of the broad node under the pointer (a broad hover carries sid===null), else null.
+function broadHoverSlug(){
+  if(!hover||hover.sid!==null) return null;
+  const el=document.getElementById(hover.cardId);
+  if(!el||!el.classList.contains("bn")) return null;
+  const id=el.dataset.id||"";
+  return id.slice(id.indexOf(":")+1)||null;
+}
+// Broad-node hover: synthesize an edge to every linked paper NOT already wired to this node
+// by a real (expanded-paper) edge, anchored on its card wherever it sits — so collapsed
+// landing-column papers light up and connect too, not just the expanded ones.
+function broadExtraEdges(slug){
+  const have=new Set();
+  for(const e of edges){
+    const other=e.to.cardId===hover.cardId?e.from:(e.from.cardId===hover.cardId?e.to:null);
+    if(other){ const oc=document.getElementById(other.cardId); if(oc&&oc.dataset.key) have.add(oc.dataset.key); }
+  }
+  const extra=[];
+  for(const lk of (BROAD_LINKS[slug]||[])){
+    if(have.has(lk.key)) continue;
+    have.add(lk.key);                              // one arrow per paper, even if several slices feed the node
+    const cardId=`card-${findCardLevel(lk.key,0)}:${lk.key}`;
+    if(document.getElementById(cardId))
+      extra.push({from:{cardId,sid:null},to:{cardId:hover.cardId,sid:null},kind:lk.kind});
+  }
+  return extra;
+}
 function redraw(){
   const bb=board.getBoundingClientRect();
   const W=board.scrollWidth, H=board.scrollHeight;
@@ -549,7 +597,9 @@ function redraw(){
   // their counterpart cards (paper / stack / broad node) get .hl
   const at=(end)=>end.cardId===hover.cardId&&end.sid===hover.sid;
   document.querySelectorAll(".hl").forEach(el=>el.classList.remove("hl"));
-  for(const e of edges){
+  const bslug=broadHoverSlug();
+  const work=bslug?edges.concat(broadExtraEdges(bslug)):edges;
+  for(const e of work){
     if(hover&&!at(e.from)&&!at(e.to)) continue;
     const ra=anchorRect(e.from), rb=anchorRect(e.to);
     if(!ra||!rb) continue;                          // no visible endpoint yet
