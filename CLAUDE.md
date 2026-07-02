@@ -63,6 +63,11 @@ the rate limiter; never flood. A half-finished graph is a normal, valid state.**
   graph + emergent properties (SCHEMA §7), and emits a self-contained `dist/index.html`
   (the paper-centric column view) plus `graph.json`. Open the HTML directly; no server.
   Validation fails the build on a dangling ref or a curated/stub citekey collision (SCHEMA §6).
+- **`lit serve`** — the same viewer over loopback HTTP, for a curation session: the graph is
+  rebuilt from the YAML on every refresh (edit → refresh; a broken edit returns the
+  validation error and the server survives), and the tooltip gains PDF hover-preview +
+  click-to-open for the `<citekey>.pdf` files in `pdf_dir` (config.toml, else
+  `<root>/pdfs`). `lit build` stays the shareable artifact.
 
 ## Curating a paper
 

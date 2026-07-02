@@ -116,7 +116,10 @@
   #tip .pdf{margin-top:9px;height:70px;border:1px dashed var(--line);border-radius:6px;
     display:flex;align-items:center;justify-content:center;font-size:9px;color:var(--faint);
     background:repeating-linear-gradient(180deg,#11161f,#11161f 6px,#0e131b 6px,#0e131b 12px)}
-  #tip .pdf.live{color:var(--borrowed);border-color:#2a4a6a;cursor:pointer}
+  #tip .pdf.live{color:var(--borrowed);border-color:#2a4a6a;cursor:pointer;
+    height:170px;padding:0;overflow:hidden;background:#fff;align-items:flex-start}
+  #tip .pdf.live img{width:100%;display:block}
+  #tip .pdfcap{margin-top:4px;font-size:8.5px;color:var(--borrowed)}
   #tip .nopdf{margin-top:9px;font-size:9px;color:var(--faint);font-style:italic}
   .hint{position:fixed;bottom:12px;left:16px;font-size:10px;color:var(--faint);z-index:30}
 </style>
@@ -197,7 +200,7 @@ function paperCard(key, level){
   }
   el.innerHTML = body;
   el.addEventListener("mousemove", e => { showTip(e, key); hoverRow(el, e); });
-  el.addEventListener("mouseleave", () => { tip.style.display = "none"; hoverRow(null); });
+  el.addEventListener("mouseleave", () => { dropTip(); hoverRow(null); });
   el.addEventListener("click", e => { if (cur) cardClick(e, el, level, key); });
   return el;
 }
@@ -367,7 +370,7 @@ function addStack(level,owner,wall,label){
   });
   for(const row of el.querySelectorAll(".src")){
     row.addEventListener("mousemove",e=>showTip(e,row.dataset.sid));
-    row.addEventListener("mouseleave",()=>tip.style.display="none");
+    row.addEventListener("mouseleave",dropTip);
   }
   const yr=+el.dataset.year||0;                        // year-sorted, same rule as cards
   let before=null;
@@ -601,14 +604,44 @@ function anchorRect(end){
 }
 
 // ── tooltip ────────────────────────────────────────────────────────────────────────────
+// Served over HTTP (`lit serve`), the tooltip upgrades: pdfs.json says which curated
+// papers have a servable PDF, hovering embeds its first page, clicking the preview opens
+// the full PDF in a new tab. Opened from file:// (`lit build` output) it stays inert.
+const LIVE = location.protocol.startsWith("http");
+let PDFS = null;                       // Set of citekeys with a PDF (null until fetched)
+if (LIVE) fetch("pdfs.json").then(r => r.ok ? r.json() : [])
+  .then(l => { PDFS = new Set(l); }).catch(() => { PDFS = new Set(); });
+// The tip must survive the hop from card to tip (to click the preview): hiding is
+// deferred a beat (dropTip) and cancelled when the pointer arrives (keepTip).
+let tipHide = null;
+function keepTip(){ if (tipHide) { clearTimeout(tipHide); tipHide = null; } }
+function dropTip(){
+  keepTip();
+  tipHide = setTimeout(() => { tip.style.display = "none"; tip.dataset.key = ""; }, 140);
+}
+tip.addEventListener("mouseenter", keepTip);
+tip.addEventListener("mouseleave", () => { tip.style.display = "none"; tip.dataset.key = ""; });
+
 function showTip(e, key){
-  const cur = !!(PAPERS[key] && PAPERS[key].cur);
-  const p = PAPERS[key] || STUBS[key];
-  tip.innerHTML = `<h4>${key}</h4>
-    <div class="meta">${p.type || 'stub'} · ${p.year || ''}${cur ? ` · curated${p.pass!=null?` (maturity ${p.pass}/4)`:''}` : ' · stub (maturity 0)'}</div>
-    <div class="abs">${cur ? (p.note || p.title) : p.title}</div>
-    ${cur ? `<div class="nopdf">PDF preview/open needs <code>lit serve</code></div>`
-          : `<div class="nopdf">uncurated stub — bib metadata only</div>`}`;
+  keepTip();
+  if (tip.dataset.key !== key) {       // rebuild only on a new target — repositioning per
+    tip.dataset.key = key;             // mousemove must not reload the <embed>ed PDF
+    const cur = !!(PAPERS[key] && PAPERS[key].cur);
+    const p = PAPERS[key] || STUBS[key];
+    let pdf;
+    if (!cur) pdf = `<div class="nopdf">uncurated stub — bib metadata only</div>`;
+    else if (!LIVE) pdf = `<div class="nopdf">PDF preview/open needs <code>lit serve</code></div>`;
+    else if (!PDFS || !PDFS.has(key)) pdf = `<div class="nopdf">no PDF served (${key}.pdf)</div>`;
+    else pdf = `<div class="pdf live" title="open ${key}.pdf">`
+             + `<img src="preview/${key}.png" alt="first page of ${key}.pdf"></div>`
+             + `<div class="pdfcap">PDF — click the preview to open</div>`;
+    tip.innerHTML = `<h4>${key}</h4>
+      <div class="meta">${p.type || 'stub'} · ${p.year || ''}${cur ? ` · curated${p.pass!=null?` (maturity ${p.pass}/4)`:''}` : ' · stub (maturity 0)'}</div>
+      <div class="abs">${cur ? (p.note || p.title) : p.title}</div>
+      ${pdf}`;
+    const box = tip.querySelector(".pdf.live");
+    if (box) box.addEventListener("click", () => window.open(`pdf/${key}.pdf`, "_blank"));
+  }
   tip.style.display = "block";
   const pad = 14, w = 300, h = tip.offsetHeight;
   let x = e.clientX + pad, y = e.clientY + pad;

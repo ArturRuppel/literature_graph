@@ -135,19 +135,21 @@ _TOKEN_START = "/*__GRAPH_JSON__*/"
 _TOKEN_END = "/*__END__*/"
 
 
-def emit(g: Graph, out: Path) -> None:
-    """Write graph.json and a self-contained index.html (JSON inlined) into `out`."""
-    out = Path(out)
-    out.mkdir(parents=True, exist_ok=True)
-    data = to_json_dict(g)
-    payload = json.dumps(data, ensure_ascii=False)
-    (out / "graph.json").write_text(payload, encoding="utf-8")
-
-    # Inline into the <script>; escape "<" so a "</script>" inside any paper's text
-    # can't close the tag. < is a valid JS string escape that parses back to "<".
+def render_html(payload: str) -> str:
+    """The self-contained viewer page for a graph.json payload (JSON inlined).
+    Escapes "<" so a "</script>" inside any paper's text can't close the tag;
+    \\u003c is a valid JS string escape that parses back to "<"."""
     inline = payload.replace("<", "\\u003c")
     template = _TEMPLATE.read_text(encoding="utf-8")
     start = template.index(_TOKEN_START)
     end = template.index(_TOKEN_END) + len(_TOKEN_END)
-    html = template[:start] + inline + template[end:]
-    (out / "index.html").write_text(html, encoding="utf-8")
+    return template[:start] + inline + template[end:]
+
+
+def emit(g: Graph, out: Path) -> None:
+    """Write graph.json and a self-contained index.html (JSON inlined) into `out`."""
+    out = Path(out)
+    out.mkdir(parents=True, exist_ok=True)
+    payload = json.dumps(to_json_dict(g), ensure_ascii=False)
+    (out / "graph.json").write_text(payload, encoding="utf-8")
+    (out / "index.html").write_text(render_html(payload), encoding="utf-8")
