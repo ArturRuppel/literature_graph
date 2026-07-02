@@ -141,7 +141,7 @@
 </div>
 <div id="board"><svg id="edges"></svg></div>
 <div id="tip"></div>
-<div class="hint">Click a <b>curated</b> paper to focus it — grounds (←), papers that build on it (→) and synthesis fan out with paper-level edges. Uncurated sources fold into a “▸ N sources” stack — click it to unfold. Click a claim to drill into its support, branch by branch, down to the exact <i>quote</i> — edges sharpen to the slices you reveal. Click the header to collapse; several papers stay open at once. Edges rest <b>dim</b>; hover a slice row or synthesis node to isolate its arrows and light up the papers they touch, and <b>click</b> to pin that view (click empty space to release). A <span style="color:var(--broad)">⤴</span> row generalizes into the claim above it; a broad node lights up every paper that feeds it, expanded or not. Hover a paper's <b>citekey</b> for its abstract and PDF preview.</div>
+<div class="hint">Click a <b>curated</b> paper to focus it — grounds (←), papers that build on it (→) and synthesis fan out with paper-level edges. Uncurated sources fold into a “▸ N sources” stack — click it to unfold. Click a claim to drill into its support, branch by branch, down to the exact <i>quote</i> — edges sharpen to the slices you reveal. Click the header to collapse; several papers stay open at once. Edges rest <b>dim</b>; hover a slice row or synthesis node to <b>brighten</b> its arrows and light up the papers they touch (the rest stay dim), and <b>click</b> to pin that view (click empty space to release). A <span style="color:var(--broad)">⤴</span> row generalizes into the claim above it; a broad node lights up every paper that feeds it, expanded or not. Hover a paper's <b>citekey</b> for its abstract and PDF preview.</div>
 
 <script>
 const NS="http://www.w3.org/2000/svg";
@@ -619,14 +619,16 @@ function redraw(){
   if(pin && !document.getElementById(pin.cardId)) pin=null;   // pinned card gone → release
   const iso=hover||pin;
   const at=(end)=>iso&&end.cardId===iso.cardId&&end.sid===iso.sid;
+  const inc=e=>!!iso&&(at(e.from)||at(e.to));      // incident on the isolation target
   document.querySelectorAll(".hl").forEach(el=>el.classList.remove("hl"));
   const bslug=broadIsoSlug(iso);
-  const work=bslug?edges.concat(broadExtraEdges(iso,bslug)):edges;
+  const work=bslug?edges.concat(broadExtraEdges(iso,bslug)):edges.slice();
+  work.sort((a,b)=>(inc(a)?1:0)-(inc(b)?1:0));     // draw incident (bright) last → on top of dim
   for(const e of work){
-    if(iso&&!at(e.from)&&!at(e.to)) continue;
+    const on=inc(e);                               // incident → bright; every other edge stays dim
     const ra=anchorRect(e.from), rb=anchorRect(e.to);
     if(!ra||!rb) continue;                          // no visible endpoint yet
-    if(iso){
+    if(on){
       const other=at(e.from)?e.to:e.from;
       const oc=document.getElementById(other.cardId);
       if(oc&&other.cardId!==iso.cardId) oc.classList.add("hl");
@@ -656,7 +658,7 @@ function redraw(){
     path.setAttribute("stroke-width","1.6");
     if(lat) path.setAttribute("stroke-dasharray","5 4");
     else if(ans) path.setAttribute("stroke-dasharray","2 3");   // dotted: answers ≠ support
-    path.setAttribute("opacity",!iso?"0.22":(lat||ans?"0.85":"0.95"));  // resting → dim
+    path.setAttribute("opacity",on?(lat||ans?"0.85":"0.95"):"0.22");    // incident bright, rest dim
     if(ans) path.setAttribute("marker-end","url(#arq)");
     else if(!lat) path.setAttribute("marker-end","url(#ar)");
     else if(contra) path.setAttribute("marker-end","url(#arx)");
