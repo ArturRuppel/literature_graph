@@ -23,8 +23,19 @@ def test_to_json_dict_shape():
     assert all(ref.startswith(("c", "q", "m")) and ":" not in ref
                for s in p["slices"] for ref in s["up"])   # local refs only
     assert any(g["via"] == "m1" for g in p["grounds"])          # grounds -> left
+    # container (unsharpened) grounds carry tid=None — the wildcard "some slice in here"
+    assert all(g["tid"] is None for g in p["grounds"])
     assert any(co["slug"] == "throughput-scales-with-batching" for co in p["cons"])
     assert any(l["sign"] in ("corr", "contra") for l in p["lateral"])
+    # a lateral ref to a broad slug routes to the synthesis band ({slug}), not a paper ({key})
+    broad_lat = [l for l in p["lateral"] if "slug" in l]
+    assert broad_lat == [{"slug": "throughput-scales-with-batching",
+                          "sign": "contra", "via": "c3"}]
+    assert all("key" not in l for l in broad_lat)
+    # sharpened lateral refs keep the specific target slice (Kumar -> Chen2021Sys:c1/:c2)
+    k = d["papers"]["Kumar2020Net"]
+    assert {"key": "Chen2021Sys", "tid": "c1", "sign": "corr", "via": "c1"} in k["lateral"]
+    assert {"key": "Chen2021Sys", "tid": "c2", "sign": "contra", "via": "c2"} in k["lateral"]
     # stubs are separated out (one-line cards), not under papers' slices
     assert "Patel2017Vldb" in d["stubs"]
     assert d["stubs"]["Patel2017Vldb"]["year"] == 2017
