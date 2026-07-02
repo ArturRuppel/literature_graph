@@ -53,15 +53,19 @@
   .chd{display:flex;align-items:center;gap:7px;padding:9px 11px}
   .circle{flex:none;display:flex;width:16px;height:16px}
   .ckey{font-size:11px;font-weight:700;cursor:help}
-  .ctype{display:none;font-size:7px;padding:1px 5px;border-radius:4px;font-weight:700;
+  /* the paper classifier (original / perspective / methods …) rides in the header at all
+     times — collapsed or open — so a paper's kind is legible without focusing it */
+  .ctype{display:inline-block;font-size:7px;padding:1px 5px;border-radius:4px;font-weight:700;
     color:#0c0e14;background:var(--dim)}
   .ctype.original{background:#7ea8d8}.ctype.methods{background:var(--floor)}
+  .ctype.perspective{background:#c8a2e0}.ctype.review{background:#7ad2b8}
+  .ctype.commentary{background:#e0a87e}
   .cyr{display:none;margin-left:auto;font-size:9px;color:var(--faint)}
   /* expanded-only body (revealed when a curated card is focused → .open) */
   .ctitle{display:none;padding:0 11px 2px;font-size:10px;color:var(--dim);line-height:1.32}
   .cauth{display:none;padding:4px 11px 6px;font-size:9px;color:var(--faint)}
   .cauth .star{color:var(--floor)}
-  .card.open .ctype,.card.open .cyr{display:inline-block}
+  .card.open .cyr{display:inline-block}
   .card.open .ctitle,.card.open .cauth{display:block}
   /* open card: body is inert; the header collapses, the slice rows drill */
   .card.open{cursor:default}
@@ -382,6 +386,14 @@ function addBroad(level,slug,label){
   if(c.keys.has(slug)) return;
   c.keys.add(slug); c.el.appendChild(broadCard(slug,level));
 }
+// The synthesis band always shows every broad claim / question, expanded state or not —
+// they're the standing right-hand column. expandCard still adds the ones linked from an
+// open paper (with real edges); this backfills the rest (deduped), so the band is complete
+// on the landing view and survives every rebuild. Unlinked-yet nodes stay hover-active
+// (broadExtraEdges lights their papers) like any other broad node.
+function ensureBroadBand(){
+  for(const slug of Object.keys(BROAD)) addBroad(SYNTH,slug,"synthesis · now →");
+}
 // Citation-wall collapse: a focused paper's UNCURATED sources never spawn cards — they fold
 // into one "▸ N sources" stack per focused card, expandable on demand and ONLY on demand
 // (reveal()/rebuild() never unfold it, so it stays collapsed under any programmatic
@@ -465,6 +477,7 @@ function rebuild(){
       }
     }
   }
+  ensureBroadBand();                                 // keep the full synthesis band standing
   // apply visual state + drill regions for focused and context-opened cards
   for(const id of new Set([...open,...ctxOpen])){
     const el=document.getElementById("card-"+id);
@@ -745,6 +758,7 @@ function showTip(e, key, el){
 function boot(){
   ensureCol(0,"all papers · ranked by curation");
   ORDER.forEach(k=>addPaper(0,k));
+  ensureBroadBand();                                 // synthesis band present from the landing view
   redraw();
 }
 boot();
