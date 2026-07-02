@@ -55,6 +55,20 @@ Open requests for the `lit build` viewer. Details deliberately left thin for now
 
 ## Open
 
+- [ ] **Draw the local generalization ladder.** A same-paper `leads_to` to a local slice
+  (a specific claim laddering up into a broader local claim, e.g. Atia's `c3 <- {c5,c6,c7,c8}`)
+  now validates and builds, but the substructure tree is `grounded_in`-only, so the ladder
+  is stored yet invisible. Render it in the substructure view (or a gutter bow) so the
+  generalization the curator authored actually shows.
+
+- [ ] **Hover-isolate edges, drawn to the box.** Hovering a claim should hide every arrow
+  except the ones pointing *at* it, and those arrows must run all the way to the claim box —
+  they're currently clipped/occluded by the container (z-order or clip-path issue; lift the
+  hovered edges above the cards and anchor on the box edge, not behind it).
+
+- [ ] **Hover-highlight the cited papers.** Hovering a cross-paper claim should highlight the
+  paper(s) it points to, so the target container is visible even before its slice is revealed.
+
 - [ ] **Entry-row rule check after real use.** Entry rows = top-level claims + questions.
   On first focus a paper can look sparse (Chen's much-cited `c1` sits one drill below `c3`
   because `c3` builds on it). Deliberate, but revisit once a real paper is curated.
