@@ -68,6 +68,15 @@ def test_polish_abbreviation_does_not_end_sentence():
     assert disp == "The shape index, as shown in Fig. 3, determines the phase."
 
 
+def test_polish_stops_at_period_glued_to_bracket_cite():
+    # a citation bracket hugging the terminal period must not hide the sentence boundary
+    ft = ("cell jamming is seen in development, wound healing, and fibrosis.[16] "
+          "Underlying events are coming to light.[15,17,18]\n")
+    disp, status = polish("cell jamming is seen in development", ft)
+    assert status == "verbatim"
+    assert disp == "cell jamming is seen in development, wound healing, and fibrosis."
+
+
 def test_polish_not_found_strips_without_expanding():
     disp, status = polish("a claim not present [9] in the text", FULLTEXT)
     assert status == "not_found"

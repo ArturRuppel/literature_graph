@@ -75,6 +75,15 @@ _ABBR = (r"(?:Fig|Figs|Eq|Eqs|Ref|Refs|No|Nos|Dr|Mr|Ms|Prof|Inc|Ltd|St|vs|cf|ca|
          r"e\.g|i\.e|et al|resp|ca|Suppl|Vol)")
 _ABBR_END = re.compile(_ABBR + r"$")
 
+# A numeric bracket-cite carries no sentence-boundary information, but glued to a terminal
+# period ("fibrosis.[16] Underlying") it hides the boundary from the scan below. Blank it to
+# equal-length spaces in a scan-only copy so offsets stay valid and the period reads as an end.
+_CITE_BLANK = re.compile(r"\[\d+(?:[–,\-]\s*\d+)*\]")
+
+
+def _blank_cites(text: str) -> str:
+    return _CITE_BLANK.sub(lambda m: " " * len(m.group(0)), text)
+
 
 def _sentence_span(text: str, lo: int, hi: int) -> tuple[int, int]:
     """Grow [lo, hi) out to the enclosing sentence boundaries within `text`.
@@ -121,7 +130,8 @@ def _polish_contiguous(anchor: str, fulltext: str) -> tuple[str, bool]:
     lo, hi = _locate(fulltext, anchor) if fulltext else (None, None)
     if lo is None:
         return strip_artifacts(anchor), False
-    s0, s1 = _sentence_span(fulltext, lo, hi)
+    # Detect boundaries on a cite-blanked copy (offsets preserved); slice the original.
+    s0, s1 = _sentence_span(_blank_cites(fulltext), lo, hi)
     sentence = " ".join(fulltext[s0:s1].split())
     return strip_artifacts(sentence), True
 
