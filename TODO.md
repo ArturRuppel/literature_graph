@@ -76,11 +76,19 @@ Open requests for the `lit build` viewer. Details deliberately left thin for now
   — *Each surviving edge's counterpart — paper card, source stack or synthesis node — lights
   up (`.hl`) for the duration of the hover, whether or not its slice is revealed.*
 
+- [x] **`lit serve`.** PDF hover-preview and click-to-open; the tooltip already stubs
+  "PDF preview/open needs `lit serve`". Convenience, not a correctness gap. — *`lit serve
+  [--root] [--port] [--pdf-dir]`: the viewer on loopback, rebuilt from the YAML on every
+  refresh (edit → refresh is the curation loop; a broken edit returns the BuildError as a
+  500 and the server survives). Over HTTP the tooltip upgrades: `pdfs.json` lists which
+  citekeys have a PDF in `pdf_dir` (config.toml, else `<root>/pdfs`), hovering shows the
+  first page rendered server-side (`/preview/<citekey>.png`, mtime-cached — an `<img>`
+  previews everywhere, unlike embedding a PDF), and clicking the preview opens
+  `/pdf/<citekey>.pdf` (flat `<citekey>.<ext>` names only — no traversal). The `lit build`
+  file:// output stays inert as before.*
+
 ## Open
 
 - [ ] **Entry-row rule check after real use.** Entry rows = top-level claims + questions.
   On first focus a paper can look sparse (Chen's much-cited `c1` sits one drill below `c3`
   because `c3` builds on it). Deliberate, but revisit once a real paper is curated.
-
-- [ ] **`lit serve`.** PDF hover-preview and click-to-open; the tooltip already stubs
-  "PDF preview/open needs `lit serve`". Convenience, not a correctness gap.

@@ -10,6 +10,7 @@ from .config import load_config
 from .ingest import IngestError, Report, ingest
 from .graph import build_graph, BuildError
 from .build import emit
+from .serve import serve
 
 
 def _print_report(r: Report) -> None:
@@ -69,6 +70,14 @@ def main(argv: list[str] | None = None) -> int:
     p_build.add_argument("--out", default=None,
                          help="output dir (default: <root>/dist)")
 
+    p_srv = sub.add_parser("serve", help="serve the viewer over HTTP: rebuild on refresh, "
+                                         "PDF hover-preview and click-to-open")
+    p_srv.add_argument("--root", default=".", help="data root (curated/, stubs.yaml, ...)")
+    p_srv.add_argument("--port", type=int, default=8000, help="port (default: 8000)")
+    p_srv.add_argument("--pdf-dir", default=None,
+                       help="dir holding <citekey>.pdf files "
+                            "(default: config.toml pdf_dir, else <root>/pdfs)")
+
     args = parser.parse_args(argv)
 
     if args.command == "ingest":
@@ -104,6 +113,21 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         emit(graph, out)
         print(f"built {len(graph.papers)} papers -> {out}/index.html")
+        return 0
+
+    if args.command == "serve":
+        cfg = load_config(args.root)
+        pdf_dir = Path(args.pdf_dir) if args.pdf_dir else (cfg.pdf_dir or cfg.root / "pdfs")
+        try:
+            build_graph(cfg.root)   # fail fast on a broken repo; later edits 500 per request
+        except BuildError as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 1
+        try:
+            serve(cfg.root, pdf_dir, port=args.port)
+        except OSError as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 1
         return 0
 
     return 2
