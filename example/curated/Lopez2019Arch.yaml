@@ -1,6 +1,8 @@
 # Synthetic test paper (fully fictional). Skeleton (pass 2): claims + their methods sliced.
-# Key feature: a 3-level method dependency hierarchy (m1 -> m2 -> m3) to exercise
-# "make substructure visible" (the grounded_in DAG among a paper's own slices).
+# Key features: a 3-level method dependency hierarchy (m1 -> m2 -> m3) to exercise
+# "make substructure visible" (the grounded_in DAG among a paper's own slices); grounded_in
+# by Chen2021Sys:m2 (exercises the inverted "builds on ->" column); q1 answered
+# cross-paper by Kumar2020Net:c2 (exercises the sharpened answers edge).
 title: "A cost model for buffer sizing"
 type: original
 year: 2019
@@ -21,6 +23,11 @@ methods:
   - id: m3
     text: "end-to-end pipeline simulator"     # layers on both m2 and m1
     grounded_in: [m2, m1]
+
+questions:
+  - id: q1
+    text: "Do larger buffers carry a latency cost at the tail?"
+    # answered cross-paper by Kumar2020Net:c2 (emergent)
 
 claims:
   - id: c1

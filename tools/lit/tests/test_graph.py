@@ -141,6 +141,67 @@ def test_validate_flags_duplicate_local_id():
         validate({"P1": p}, {})
 
 
+# ── SCHEMA §6.6 kind coherence ─────────────────────────────────────────────────────────
+
+_B = {"b-claim": BroadNode(slug="b-claim", kind="broad claim", text="b"),
+      "b-q": BroadNode(slug="b-q", kind="broad question", text="q"),
+      "b-m": BroadNode(slug="b-m", kind="broad method", text="m")}
+
+
+def test_validate_rejects_cross_paper_leads_to():
+    # a cross-paper leads_to would mis-render as a synthesis node (build's _cons)
+    other = _paper("Other2020Jrnl", Slice(id="c1", kind="claim", text="y"))
+    p = _paper("P1", Slice(id="c1", kind="claim", text="x", leads_to=["Other2020Jrnl"]))
+    with pytest.raises(BuildError, match="leads_to"):
+        validate({"P1": p, "Other2020Jrnl": other}, _B)
+    p2 = _paper("P1", Slice(id="c1", kind="claim", text="x", leads_to=["Other2020Jrnl:c1"]))
+    with pytest.raises(BuildError, match="leads_to"):
+        validate({"P1": p2, "Other2020Jrnl": other}, _B)
+
+
+def test_validate_rejects_leads_to_kind_mismatch():
+    p = _paper("P1", Slice(id="c1", kind="claim", text="x", leads_to=["b-q"]))
+    with pytest.raises(BuildError, match="broad question"):
+        validate({"P1": p}, _B)
+    m = _paper("P1", Slice(id="m1", kind="method", text="t", leads_to=["b-claim"]))
+    with pytest.raises(BuildError, match="broad claim"):
+        validate({"P1": m}, _B)
+
+
+def test_validate_answers_must_target_a_question():
+    p = _paper("P1",
+               Slice(id="c1", kind="claim", text="x"),
+               Slice(id="c2", kind="claim", text="y", answers=["c1"]))
+    with pytest.raises(BuildError, match="answers"):
+        validate({"P1": p}, _B)
+    p2 = _paper("P1", Slice(id="c1", kind="claim", text="x", answers=["b-claim"]))
+    with pytest.raises(BuildError, match="not a question"):
+        validate({"P1": p2}, _B)
+    # a container ref is the un-sliced wildcard — allowed; sharpened :qN is allowed
+    stub = _paper("Stub2019Conf")
+    stub.curated = False
+    ok = _paper("P1", Slice(id="c1", kind="claim", text="x",
+                            answers=["Stub2019Conf", "Stub2019Conf:q1"]))
+    validate({"P1": ok, "Stub2019Conf": stub}, _B)   # no raise
+
+
+def test_validate_lateral_must_target_a_claim_or_container():
+    p = _paper("P1",
+               Slice(id="q1", kind="question", text="?"),
+               Slice(id="c1", kind="claim", text="x", corroborates=["q1"]))
+    with pytest.raises(BuildError, match="corroborates"):
+        validate({"P1": p}, _B)
+    p2 = _paper("P1", Slice(id="c1", kind="claim", text="x", contradicts=["b-q"]))
+    with pytest.raises(BuildError, match="not a claim"):
+        validate({"P1": p2}, _B)
+
+
+def test_validate_floor_only_on_a_claim():
+    p = _paper("P1", Slice(id="m1", kind="method", text="t", floor_flag=True))
+    with pytest.raises(BuildError, match="floor"):
+        validate({"P1": p}, _B)
+
+
 from litgraph.graph import build_graph, Graph
 
 

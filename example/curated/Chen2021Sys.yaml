@@ -17,7 +17,8 @@ methods:
     leads_to:    [microbenchmark]
   - id: m2
     text: "open-network queueing model"     # a MODEL: layers on the m1 measurements -> not a floor
-    grounded_in: [m1]
+    grounded_in: [m1, "Lopez2019Arch:m2"]   # sharpened cross-paper ground: extends Lopez's cost
+                                            # model -> Lopez's "builds on ->" column shows Chen
 
 questions:
   - id: q1

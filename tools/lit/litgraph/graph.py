@@ -198,12 +198,14 @@ def broad_meter(slug: str, papers: dict[str, Paper]) -> tuple[int, int]:
 
 _EDGE_FIELDS = ("grounded_in", "leads_to", "corroborates", "contradicts", "answers")
 
+_BROAD_KIND = {"claim": "broad claim", "question": "broad question", "method": "broad method"}
+
 
 def validate(papers: dict[str, Paper], broad: dict[str, BroadNode]) -> None:
     """Enforce the SCHEMA §6 rules the build can check structurally: unique local ids,
-    no dangling refs. Raises BuildError naming the offender. (Quote integrity and full
-    cross-paper acyclicity are out of v1 scope; same-paper cycles are caught by
-    reaches_floor's seen-set, not here.)"""
+    no dangling refs, kind coherence (§6.6). Raises BuildError naming the offender.
+    (Quote integrity and full cross-paper acyclicity are out of v1 scope; same-paper
+    cycles are caught by reaches_floor's seen-set, not here.)"""
     for ck, p in papers.items():
         local_ids: set[str] = set()
         for s in p.slices:
@@ -220,6 +222,45 @@ def validate(papers: dict[str, Paper], broad: dict[str, BroadNode]) -> None:
                     if not _ref_resolves(r, local_ids, broad_slugs, papers):
                         raise BuildError(
                             f"{ck}:{s.id} {field_name} -> dangling ref {r!r}")
+            _check_kinds(ck, s, broad)
+
+
+def _target_id(ref: str, kind: str) -> str:
+    """The slice-id part of a local/sharpened ref (its kind is readable off the prefix)."""
+    return ref.split(":", 1)[1] if kind == "sharpened" else ref
+
+
+def _check_kinds(ck: str, s: Slice, broad: dict[str, BroadNode]) -> None:
+    """SCHEMA §6.6 kind coherence, structurally: `leads_to` targets a same-kind broad slug
+    (a cross-paper ref here would mis-render as a synthesis node — author cross-paper
+    support as `grounded_in` on the derived slice); `answers` targets a question (a
+    container ref is the un-sliced wildcard, allowed); laterals target a claim or a
+    container; `floor: true` marks only a claim. Refs are known to resolve already."""
+    want = _BROAD_KIND[s.kind]
+    for r in s.leads_to:
+        if classify_ref(r) != "broad":
+            raise BuildError(f"{ck}:{s.id} leads_to -> {r!r} is not a broad slug "
+                             "(author cross-paper support as grounded_in, not leads_to)")
+        if broad[r].kind != want:
+            raise BuildError(f"{ck}:{s.id} leads_to -> {r!r} is a {broad[r].kind}; "
+                             f"a {s.kind} generalizes into a {want}")
+    for r in s.answers:
+        kind = classify_ref(r)
+        if kind == "broad" and broad[r].kind != "broad question":
+            raise BuildError(f"{ck}:{s.id} answers -> {r!r} is a {broad[r].kind}, "
+                             "not a question")
+        if kind in ("local", "sharpened") and not _target_id(r, kind).startswith("q"):
+            raise BuildError(f"{ck}:{s.id} answers -> {r!r} does not target a question")
+    for field_name in ("corroborates", "contradicts"):
+        for r in getattr(s, field_name):
+            kind = classify_ref(r)
+            if kind == "broad" and broad[r].kind != "broad claim":
+                raise BuildError(f"{ck}:{s.id} {field_name} -> {r!r} is a "
+                                 f"{broad[r].kind}, not a claim")
+            if kind in ("local", "sharpened") and not _target_id(r, kind).startswith("c"):
+                raise BuildError(f"{ck}:{s.id} {field_name} -> {r!r} does not target a claim")
+    if s.floor_flag and s.kind != "claim":
+        raise BuildError(f"{ck}:{s.id} floor: true is only valid on a claim (SCHEMA §6.6)")
 
 
 def _ref_resolves(ref, local_ids, broad_slugs, papers) -> bool:
