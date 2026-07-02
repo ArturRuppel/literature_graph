@@ -2,7 +2,9 @@
 # Key features: a 3-level method dependency hierarchy (m1 -> m2 -> m3) to exercise
 # "make substructure visible" (the grounded_in DAG among a paper's own slices); grounded_in
 # by Chen2021Sys:m2 (exercises the inverted "builds on ->" column); q1 answered
-# cross-paper by Kumar2020Net:c2 (exercises the sharpened answers edge).
+# cross-paper by Kumar2020Net:c2 (exercises the sharpened answers edge); a local
+# generalization ladder c1 <- {c2, c3} (two regime-specific claims laddering, via
+# leads_to, into the broader superlinearity claim) — exercises the ladder rendering.
 title: "A cost model for buffer sizing"
 type: original
 year: 2019
@@ -35,3 +37,15 @@ claims:
     quote: "measured resident memory scaled worse than linearly past the L3 working-set point"
     grounded_in: [m3]
     leads_to:    [buffering-has-costs]
+  # the generalization ladder: two regime-specific claims co-parented under c1 (leads_to,
+  # same paper, same kind) — the specifics survive with their own quotes and grounds
+  - id: c2
+    text:  "While the buffer fits in L3, resident memory grows linearly with buffer size."
+    quote: "below the working-set point resident memory tracked buffer size one-to-one"
+    grounded_in: [m1]
+    leads_to:    [c1]
+  - id: c3
+    text:  "Past the L3 working-set point, miss-driven copies inflate memory cost."
+    quote: "beyond the L3 point each doubling of the buffer more than doubled resident memory"
+    grounded_in: [m1]
+    leads_to:    [c1]

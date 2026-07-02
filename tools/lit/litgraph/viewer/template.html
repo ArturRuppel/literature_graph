@@ -29,6 +29,8 @@
   #board{position:absolute;inset:46px 0 0 0;overflow:auto;display:flex;align-items:flex-start;
     gap:54px;padding:34px 40px 80px}
   svg#edges{position:absolute;top:0;left:0;pointer-events:none;overflow:visible}
+  /* hover isolation: the surviving edges lift above the cards so they run to the row box */
+  svg#edges.top{z-index:10}
 
   .col{position:relative;z-index:5;display:flex;flex-direction:column;gap:14px;flex:none;width:264px}
   .col .colhd{font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--faint);
@@ -41,6 +43,9 @@
   .card.curated{border-style:solid}
   .card.stub{border-style:dashed;opacity:.92;cursor:default}
   .card.focus{border-color:var(--grounded);box-shadow:0 0 0 1px var(--grounded),0 6px 24px #000a}
+  /* hover counterpart: the paper(s) an edge of the hovered claim touches */
+  .card.hl{border-color:var(--borrowed);box-shadow:0 0 0 1px var(--borrowed)}
+  .bn.hl{box-shadow:0 0 0 1.5px var(--borrowed)}
   /* header: circle + citekey always; type/year only when expanded. Flex row = no overlap. */
   .chd{display:flex;align-items:center;gap:7px;padding:9px 11px}
   .circle{flex:none;display:flex;width:16px;height:16px}
@@ -76,6 +81,9 @@
   /* the weld: the exact quote a slice is anchored to, shown when its row is drilled */
   .sq{margin:1px 2px 4px;padding:2px 0 2px 8px;border-left:2px solid var(--floor);
     font-size:8.5px;font-style:italic;color:#cfc39a;line-height:1.32}
+  /* the generalization ladder: a row that ladders (leads_to) into the broader claim above */
+  .slice.gen{border-left:2px solid var(--broad)}
+  .gmk{flex:none;color:var(--broad);font-size:8px;margin-top:1px}
 
   /* source stack — citation-wall collapse: a focused paper's uncurated sources fold into
      one "▸ N sources" card; only an explicit click unfolds it */
@@ -125,7 +133,7 @@
 </div>
 <div id="board"><svg id="edges"></svg></div>
 <div id="tip"></div>
-<div class="hint">Click a <b>curated</b> paper to focus it — grounds (←), papers that build on it (→) and synthesis fan out with paper-level edges. Uncurated sources fold into a “▸ N sources” stack — click it to unfold. Click a claim to drill into its support, branch by branch, down to the exact <i>quote</i> — edges sharpen to the slices you reveal. Click the header to collapse; several papers stay open at once. Hover for metadata.</div>
+<div class="hint">Click a <b>curated</b> paper to focus it — grounds (←), papers that build on it (→) and synthesis fan out with paper-level edges. Uncurated sources fold into a “▸ N sources” stack — click it to unfold. Click a claim to drill into its support, branch by branch, down to the exact <i>quote</i> — edges sharpen to the slices you reveal. Click the header to collapse; several papers stay open at once. Hover a slice row to isolate its arrows and light up the papers they touch; a <span style="color:var(--broad)">⤴</span> row generalizes into the claim above it. Hover for metadata.</div>
 
 <script>
 const NS="http://www.w3.org/2000/svg";
@@ -148,6 +156,8 @@ const drill=new Map();   // "level:key" -> Set of expanded row paths ("c3", "c3/
 let ctxOpen=new Set();   // cards context-opened to reveal a sharpened target (recomputed)
 let ctxDrill=new Map();  // row paths force-expanded to reveal a sharpened target (recomputed)
 const stacks=new Set();  // source-stack ids the human explicitly unfolded (persists rebuilds)
+let hover=null;          // {cardId,sid} — hovered slice row: redraw isolates its edges,
+                         // lifts them above the cards and highlights the counterpart papers
 const SYNTH=1e6;         // synthesis band: broad nodes always sit in the rightmost column
                          // (papers occupy small levels; builds-on growth stays left of it)
 
@@ -186,10 +196,24 @@ function paperCard(key, level){
     body += `<div class="slices"></div>`;   // filled by renderSlices from the drill state
   }
   el.innerHTML = body;
-  el.addEventListener("mousemove", e => showTip(e, key));
-  el.addEventListener("mouseleave", () => tip.style.display = "none");
+  el.addEventListener("mousemove", e => { showTip(e, key); hoverRow(el, e); });
+  el.addEventListener("mouseleave", () => { tip.style.display = "none"; hoverRow(null); });
   el.addEventListener("click", e => { if (cur) cardClick(e, el, level, key); });
   return el;
+}
+
+// Hover-isolate: hovering a slice row keeps only the edges incident on it — every other
+// arrow disappears, the survivors lift above the cards (svg.top) so they run all the way
+// to the row box, and each counterpart card lights up (.hl), so the paper a claim points
+// at is visible even while its slice is still folded away.
+function hoverRow(el, e){
+  let h = null;
+  if (el && el.classList.contains("open")) {
+    const row = e.target.closest(".slice");
+    if (row) h = {cardId: el.id, sid: row.dataset.sid};
+  }
+  if (h ? (hover && h.cardId === hover.cardId && h.sid === hover.sid) : !hover) return;
+  hover = h; redraw();
 }
 const SID_CLASS = {floor: "fl", model: "fl", grounded: "cl", borrowed: "bo",
                    plausible: "cl", question: "q"};
@@ -224,11 +248,13 @@ function toggleDrill(id, path){
 }
 
 // Drill-down rendering: entry rows are the top of the paper's local support hierarchy
-// (claims nothing else builds on, plus its questions). Expanding a row reveals its weld
-// (the exact quote) and its direct supports — for a question, the claims that answer it —
-// each drillable in turn, branch by branch, down to the floors. A support shared by two
-// branches appears under each (outline semantics); rows are addressed by path, so the
-// same slice can render at several positions and anchorRect picks any visible instance.
+// (claims nothing else builds on or subsumes, plus its questions). Expanding a row reveals
+// its weld (the exact quote) and its direct supports — for a question, the claims that
+// answer it; for a broader claim, also the claims that ladder into it (local leads_to,
+// the generalization ladder — marked ⤴). Each is drillable in turn, branch by branch,
+// down to the floors. A support shared by two branches appears under each (outline
+// semantics); rows are addressed by path, so the same slice can render at several
+// positions and anchorRect picks any visible instance.
 function renderSlices(id){
   const key = id.slice(id.indexOf(":") + 1), p = PAPERS[key];
   const box = document.getElementById("card-" + id).querySelector(".slices");
@@ -238,31 +264,37 @@ function renderSlices(id){
   p.slices.forEach(s => (s.answers || []).forEach(r => {
     if (!r.includes(":")) (answeredBy[r] = answeredBy[r] || []).push(s.id);
   }));
+  const genBy = {};                    // broader slice -> the local slices laddering into it
+  p.slices.forEach(s => (s.gen || []).forEach(g => (genBy[g] = genBy[g] || []).push(s.id)));
   const dependents = new Set();
   p.slices.forEach(s => (s.up || []).forEach(u => dependents.add(u)));
+  // a laddering claim (local leads_to) sits under its broader parent, not at the top
   const entries = p.slices.filter(s =>
-    (s.kind === "claim" && !dependents.has(s.id)) || s.kind === "question");
+    (s.kind === "claim" && !dependents.has(s.id) && !(s.gen || []).length)
+    || s.kind === "question");
   const paths = new Set([...(drill.get(id) || []), ...(ctxDrill.get(id) || [])]);
   const kidsOf = s => s.kind === "question"
-    ? (answeredBy[s.id] || []).map(k => byId[k])
-    : (s.up || []).map(u => byId[u]).filter(Boolean);
+    ? (answeredBy[s.id] || []).map(k => ({s: byId[k], lad: false}))
+    : [...(s.up || []).map(u => ({s: byId[u], lad: false})),
+       ...(genBy[s.id] || []).map(u => ({s: byId[u], lad: true}))].filter(k => k.s);
   let html = "";
-  const row = (s, path, depth) => {
+  const row = (s, path, depth, lad) => {
     const kids = kidsOf(s);
     const can = kids.length || s.quote;
     const isOpen = can && paths.has(path);
     const ans = s.kind === "question" && s.answered ? " ans" : "";
-    html += `<div class="slice${can ? ' drillable' : ''}" data-sid="${s.id}" data-path="${path}"`
-          + ` style="margin-left:${depth * 14}px">`
+    html += `<div class="slice${can ? ' drillable' : ''}${lad ? ' gen' : ''}" data-sid="${s.id}" data-path="${path}"`
+          + ` style="margin-left:${depth * 14}px"${lad ? ' title="generalizes into the claim above (leads_to)"' : ''}>`
           + `<span class="car">${can ? (isOpen ? "▾" : "▸") : "·"}</span>`
+          + (lad ? `<span class="gmk">⤴</span>` : ``)
           + `<span class="sid ${SID_CLASS[s.color] || 'cl'}${ans}">${s.id}</span>`
           + `<span class="stx">${s.text}</span></div>`;
     if (isOpen) {
       if (s.quote) html += `<div class="sq" style="margin-left:${depth * 14 + 19}px">“${s.quote}”</div>`;
-      for (const k of kids) row(k, `${path}/${k.id}`, depth + 1);
+      for (const k of kids) row(k.s, `${path}/${k.s.id}`, depth + 1, k.lad);
     }
   };
-  entries.forEach(s => row(s, s.id, 0));
+  entries.forEach(s => row(s, s.id, 0, false));
   box.innerHTML = html;
 }
 function broadCard(slug,level){
@@ -367,7 +399,7 @@ function rebuild(){
       const el=document.getElementById(`card-0:${k}`); if(el) el.remove();
     }
   });
-  edges=[]; edgeSeen.clear();
+  edges=[]; edgeSeen.clear(); hover=null;   // rows re-render; next mousemove re-isolates
   document.querySelectorAll(".card.open,.card.focus").forEach(c=>c.classList.remove("open","focus"));
   ctxOpen=new Set(); ctxDrill=new Map();
   const done=new Set();
@@ -464,14 +496,18 @@ function expandCard(level,key,p){
 }
 
 // Context-reveal a sharpened target: open its card and force-expand the drill path from
-// an entry row down to `sid` (climbing the local dependents chain), so the exact slice
-// is on screen. If the target is itself an entry row, opening the card suffices.
+// an entry row down to `sid` (climbing the local outline parents — the slice's dependents
+// via `up`, or the broader claim it ladders into via `gen`), so the exact slice is on
+// screen. If the target is itself an entry row, opening the card suffices.
 function reveal(id,sid){
   ctxOpen.add(id);
   const p=PAPERS[id.slice(id.indexOf(":")+1)];
   if(!p) return;
   const dep={};
-  p.slices.forEach(s=>(s.up||[]).forEach(u=>{ (dep[u]=dep[u]||[]).push(s.id); }));
+  p.slices.forEach(s=>{
+    (s.up||[]).forEach(u=>{ (dep[u]=dep[u]||[]).push(s.id); });
+    (s.gen||[]).forEach(g=>{ (dep[s.id]=dep[s.id]||[]).push(g); });
+  });
   const chain=[sid];
   let cur=sid, guard=0;
   while(dep[cur]&&dep[cur].length&&guard++<64){ cur=dep[cur][0]; chain.push(cur); }
@@ -501,9 +537,20 @@ function redraw(){
     <marker id="arq" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
       <path d="M0,0 L6,3 L0,6 Z" fill="${cssv('--question')}"/></marker>`;
   svg.appendChild(defs);
+  // hover isolation: only edges incident on the hovered slice row survive, lifted above
+  // the cards; their counterpart cards (paper / stack / broad node) get .hl
+  const at=(end)=>end.cardId===hover.cardId&&end.sid===hover.sid;
+  svg.classList.toggle("top",!!hover);
+  document.querySelectorAll(".hl").forEach(el=>el.classList.remove("hl"));
   for(const e of edges){
+    if(hover&&!at(e.from)&&!at(e.to)) continue;
     const ra=anchorRect(e.from), rb=anchorRect(e.to);
     if(!ra||!rb) continue;                          // no visible endpoint yet
+    if(hover){
+      const other=at(e.from)?e.to:e.from;
+      const oc=document.getElementById(other.cardId);
+      if(oc&&other.cardId!==hover.cardId) oc.classList.add("hl");
+    }
     const ya=(ra.top+ra.bottom)/2-bb.top+board.scrollTop;
     const yb=(rb.top+rb.bottom)/2-bb.top+board.scrollTop;
     const contra=e.kind==="contra"||e.kind==="contradict";
@@ -581,7 +628,8 @@ board.addEventListener("scroll",redraw);
 addEventListener("resize",redraw);
 // read-only introspection for headless tests; not used by the UI
 window.litDebug={get edges(){return edges},get cols(){return cols},open,drill,stacks,
-  get ctxOpen(){return ctxOpen},get ctxDrill(){return ctxDrill},anchorRect};
+  get ctxOpen(){return ctxOpen},get ctxDrill(){return ctxDrill},get hover(){return hover},
+  anchorRect};
 </script>
 </body>
 </html>
