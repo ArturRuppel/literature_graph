@@ -84,9 +84,3 @@ Open requests for the `lit build` viewer. Details deliberately left thin for now
 
 - [ ] **`lit serve`.** PDF hover-preview and click-to-open; the tooltip already stubs
   "PDF preview/open needs `lit serve`". Convenience, not a correctness gap.
-
-## Beyond the viewer
-
-- [ ] **Curate the first real paper.** Everything above is provisional until a real PDF has
-  been through `lit ingest` + the four-pass CURATION.md sweep — real data decides which
-  viewer gaps actually matter (citation walls, crowding, entry rows).
