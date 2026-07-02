@@ -25,3 +25,34 @@ Open requests for the `lit build` viewer. Details deliberately left thin for now
   drilling a row nests its direct supports beneath it (outline-style; a shared support
   appears under each branch), a question nests the claims that `answer` it, and a drilled
   claim shows its weld — the exact quote.*
+
+## Open
+
+- [ ] **Citation-wall collapse.** A real paper carries 30–80 citations, so a curated paper's
+  grounds column becomes a wall of stub cards (the example's two-stub column hides this).
+  Spawn a borrowed claim's sources as a single collapsed "▸ N sources" stack, expandable on
+  demand (design doc, "known gaps") — must stay folded even under "expand all".
+
+- [ ] **Cross-paper `answers` edges.** Local answers now drill in place (a question nests
+  its answering claims), but a sharpened `answers` ref into another paper
+  (`Citekey:qN`) still draws nothing. Emit it from build.py and draw it like the other
+  sharpened edges (context-reveal the target question).
+
+- [ ] **Rightward "builds-on" column.** The right side only ever shows broad synthesis
+  nodes; the design sketch also has *newer papers that build on the focus*. Derivable at
+  build time by inverting `grounds`. Related hardening: `_cons` assumes every `leads_to`
+  target is a broad slug — a cross-paper `leads_to` ref would be mis-rendered, and nothing
+  validates against it.
+
+- [ ] **Entry-row rule check after real use.** Entry rows = top-level claims + questions.
+  On first focus a paper can look sparse (Chen's much-cited `c1` sits one drill below `c3`
+  because `c3` builds on it). Deliberate, but revisit once a real paper is curated.
+
+- [ ] **`lit serve`.** PDF hover-preview and click-to-open; the tooltip already stubs
+  "PDF preview/open needs `lit serve`". Convenience, not a correctness gap.
+
+## Beyond the viewer
+
+- [ ] **Curate the first real paper.** Everything above is provisional until a real PDF has
+  been through `lit ingest` + the four-pass CURATION.md sweep — real data decides which
+  viewer gaps actually matter (citation walls, crowding, entry rows).
