@@ -89,6 +89,9 @@ def test_ingest_writes_node_stubs_and_fulltext(workspace):
         assert re.match(r"^[A-Z][A-Za-z'-]*\d{4}\w*$", key), key
         assert f"{key}:" in stubs
 
+    # Abstract: de-inverted from OpenAlex, written into the curated YAML.
+    assert 'abstract: "Cell-generated forces coordinate large-scale tissue behavior"' in body
+
     # PDF renamed + full-text markdown beside it.
     assert (pdf.parent / "Ruppel2023eLife.pdf").exists()
     assert not pdf.exists()  # moved
@@ -128,6 +131,7 @@ def _crossref_focal(doi: str, ref_dois: list[str], *, venue: str, year: int) -> 
             "type": "journal-article",
             "container-title": [venue],
             "DOI": doi,
+            "abstract": "<jats:title>Abstract</jats:title><jats:p>Tissue folds on a chip.</jats:p>",
             "reference": [{"DOI": d} for d in ref_dois] + [{"unstructured": "A book, no DOI (1967)."}],
         }
     }
@@ -165,7 +169,30 @@ def test_crossref_fallback_when_openalex_lacks_focal(workspace):
     # Only the two DOI-bearing references resolve; the DOI-less book is not counted.
     assert r.n_referenced == 2 and r.n_refs == 2
     assert len(r.stubs_added) == 2
-    assert (root / "curated" / "Ruppel2026eLife.yaml").exists()
+    curated = root / "curated" / "Ruppel2026eLife.yaml"
+    assert curated.exists()
+    # Crossref abstract: JATS tags stripped, leading "Abstract" heading dropped
+    assert 'abstract: "Tissue folds on a chip."' in curated.read_text()
+
+
+from litgraph.sources.openalex import _deinvert
+from litgraph.sources.crossref import _plain_abstract
+
+
+def test_openalex_deinvert_rebuilds_word_order():
+    idx = {"Batching": [0], "improves": [1], "throughput": [2, 4], "and": [3]}
+    assert _deinvert(idx) == "Batching improves throughput and throughput"
+    assert _deinvert(None) is None
+    assert _deinvert({}) is None
+
+
+def test_crossref_abstract_strips_jats_and_heading():
+    jats = ("<jats:title>Abstract</jats:title><jats:p>Buffers cost memory.</jats:p>"
+            "<jats:p>Latency too.</jats:p>")
+    assert _plain_abstract(jats) == "Buffers cost memory. Latency too."
+    assert _plain_abstract("Abstract: plain text") == "plain text"
+    assert _plain_abstract(None) is None
+    assert _plain_abstract("   ") is None
 
 
 def test_doi_unresolvable_in_both_raises(workspace):

@@ -173,6 +173,7 @@ def ingest(
         doi=work.doi,
         url=f"https://doi.org/{work.doi}" if work.doi else None,
         pdf=f"{citekey}.pdf",
+        abstract=work.abstract,
         authors=authors,
     )
 

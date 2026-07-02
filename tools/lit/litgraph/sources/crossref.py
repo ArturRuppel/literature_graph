@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import re
 import time
 from collections.abc import Callable
 from urllib.parse import quote
@@ -38,6 +39,17 @@ def _year(msg: dict) -> int | None:
     return None
 
 
+def _plain_abstract(s: str | None) -> str | None:
+    """Crossref abstracts arrive as JATS XML ('<jats:p>…'); strip the tags, collapse
+    whitespace, and drop a leading 'Abstract' heading if the tags carried one."""
+    if not s:
+        return None
+    text = re.sub(r"<[^>]+>", " ", s)
+    text = re.sub(r"\s+", " ", text).strip()
+    text = re.sub(r"^abstract\b[:.\s]*", "", text, flags=re.IGNORECASE)
+    return text or None
+
+
 def normalize_work(msg: dict, fallback_doi: str | None = None) -> Work:
     """Crossref `message` -> Work (DOI-bearing references only)."""
     authors: list[NormAuthor] = []
@@ -57,6 +69,7 @@ def normalize_work(msg: dict, fallback_doi: str | None = None) -> Work:
         venue_display=venue,
         authors=authors,
         referenced_dois=[d for d in ref_dois if d],
+        abstract=_plain_abstract(msg.get("abstract")),
     )
 
 

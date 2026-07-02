@@ -28,9 +28,9 @@
 
   #board{position:absolute;inset:46px 0 0 0;overflow:auto;display:flex;align-items:flex-start;
     gap:54px;padding:34px 40px 80px}
-  svg#edges{position:absolute;top:0;left:0;pointer-events:none;overflow:visible}
-  /* hover isolation: the surviving edges lift above the cards so they run to the row box */
-  svg#edges.top{z-index:10}
+  /* edges paint above the cards so an arrow runs all the way to the slice row it anchors
+     on (never clipped at the container border); hover-isolation is for disentangling */
+  svg#edges{position:absolute;top:0;left:0;z-index:10;pointer-events:none;overflow:visible}
 
   .col{position:relative;z-index:5;display:flex;flex-direction:column;gap:14px;flex:none;width:264px}
   .col .colhd{font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--faint);
@@ -199,24 +199,26 @@ function paperCard(key, level){
     body += `<div class="slices"></div>`;   // filled by renderSlices from the drill state
   }
   el.innerHTML = body;
-  el.addEventListener("mousemove", e => { showTip(e, key); hoverRow(el, e); });
+  el.addEventListener("mousemove", e => { showTip(e, key, el); hoverRow(el, e); });
   el.addEventListener("mouseleave", () => { dropTip(); hoverRow(null); });
   el.addEventListener("click", e => { if (cur) cardClick(e, el, level, key); });
   return el;
 }
 
-// Hover-isolate: hovering a slice row keeps only the edges incident on it — every other
-// arrow disappears, the survivors lift above the cards (svg.top) so they run all the way
-// to the row box, and each counterpart card lights up (.hl), so the paper a claim points
-// at is visible even while its slice is still folded away.
+// Hover-isolate: hovering a slice row (or a broad synthesis node) keeps only the edges
+// incident on it — every other arrow disappears — and each counterpart card lights up
+// (.hl), so the paper an edge touches is visible even while its slice is still folded.
+function setHover(h){
+  if (h ? (hover && h.cardId === hover.cardId && h.sid === hover.sid) : !hover) return;
+  hover = h; redraw();
+}
 function hoverRow(el, e){
   let h = null;
   if (el && el.classList.contains("open")) {
     const row = e.target.closest(".slice");
     if (row) h = {cardId: el.id, sid: row.dataset.sid};
   }
-  if (h ? (hover && h.cardId === hover.cardId && h.sid === hover.sid) : !hover) return;
-  hover = h; redraw();
+  setHover(h);
 }
 const SID_CLASS = {floor: "fl", model: "fl", grounded: "cl", borrowed: "bo",
                    plausible: "cl", question: "q"};
@@ -307,6 +309,9 @@ function broadCard(slug,level){
   el.id="card-"+id; el.dataset.id=id;
   let m = b.meter?`<div class="meter"><span class="s">▲ ${b.meter.s} support</span><span class="c">▼ ${b.meter.c} contradict</span></div>`:'';
   el.innerHTML=`<div class="bkd">${b.kind}</div><div class="btx">${b.text}</div>${m}`;
+  // hovering a broad node isolates its edges and lights up the papers linked into it
+  el.addEventListener("mousemove",()=>setHover({cardId:el.id,sid:null}));
+  el.addEventListener("mouseleave",()=>setHover(null));
   return el;
 }
 
@@ -369,7 +374,7 @@ function addStack(level,owner,wall,label){
     redraw();                                          // anchors move; edges re-route
   });
   for(const row of el.querySelectorAll(".src")){
-    row.addEventListener("mousemove",e=>showTip(e,row.dataset.sid));
+    row.addEventListener("mousemove",e=>showTip(e,row.dataset.sid,row));
     row.addEventListener("mouseleave",dropTip);
   }
   const yr=+el.dataset.year||0;                        // year-sorted, same rule as cards
@@ -540,10 +545,9 @@ function redraw(){
     <marker id="arq" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
       <path d="M0,0 L6,3 L0,6 Z" fill="${cssv('--question')}"/></marker>`;
   svg.appendChild(defs);
-  // hover isolation: only edges incident on the hovered slice row survive, lifted above
-  // the cards; their counterpart cards (paper / stack / broad node) get .hl
+  // hover isolation: only edges incident on the hovered slice row / broad node survive;
+  // their counterpart cards (paper / stack / broad node) get .hl
   const at=(end)=>end.cardId===hover.cardId&&end.sid===hover.sid;
-  svg.classList.toggle("top",!!hover);
   document.querySelectorAll(".hl").forEach(el=>el.classList.remove("hl"));
   for(const e of edges){
     if(hover&&!at(e.from)&&!at(e.to)) continue;
@@ -622,31 +626,34 @@ function dropTip(){
 tip.addEventListener("mouseenter", keepTip);
 tip.addEventListener("mouseleave", () => { tip.style.display = "none"; tip.dataset.key = ""; });
 
-function showTip(e, key){
+function showTip(e, key, el){
   keepTip();
-  if (tip.dataset.key !== key) {       // rebuild only on a new target — repositioning per
-    tip.dataset.key = key;             // mousemove must not reload the <embed>ed PDF
-    const cur = !!(PAPERS[key] && PAPERS[key].cur);
-    const p = PAPERS[key] || STUBS[key];
-    let pdf;
-    if (!cur) pdf = `<div class="nopdf">uncurated stub — bib metadata only</div>`;
-    else if (!LIVE) pdf = `<div class="nopdf">PDF preview/open needs <code>lit serve</code></div>`;
-    else if (!PDFS || !PDFS.has(key)) pdf = `<div class="nopdf">no PDF served (${key}.pdf)</div>`;
-    else pdf = `<div class="pdf live" title="open ${key}.pdf">`
-             + `<img src="preview/${key}.png" alt="first page of ${key}.pdf"></div>`
-             + `<div class="pdfcap">PDF — click the preview to open</div>`;
-    tip.innerHTML = `<h4>${key}</h4>
-      <div class="meta">${p.type || 'stub'} · ${p.year || ''}${cur ? ` · curated${p.pass!=null?` (maturity ${p.pass}/4)`:''}` : ' · stub (maturity 0)'}</div>
-      <div class="abs">${cur ? (p.note || p.title) : p.title}</div>
-      ${pdf}`;
-    const box = tip.querySelector(".pdf.live");
-    if (box) box.addEventListener("click", () => window.open(`pdf/${key}.pdf`, "_blank"));
-  }
   tip.style.display = "block";
-  const pad = 14, w = 300, h = tip.offsetHeight;
-  let x = e.clientX + pad, y = e.clientY + pad;
-  if (x + w > innerWidth) x = e.clientX - w - pad;
-  if (y + h > innerHeight) y = innerHeight - h - pad;
+  if (tip.dataset.key === key) return; // pinned: the tip must hold still while the same
+  tip.dataset.key = key;               // target is hovered, so the preview is clickable
+  const cur = !!(PAPERS[key] && PAPERS[key].cur);
+  const p = PAPERS[key] || STUBS[key];
+  let pdf;
+  if (!cur) pdf = `<div class="nopdf">uncurated stub — bib metadata only</div>`;
+  else if (!LIVE) pdf = `<div class="nopdf">PDF preview/open needs <code>lit serve</code></div>`;
+  else if (!PDFS || !PDFS.has(key)) pdf = `<div class="nopdf">no PDF served (${key}.pdf)</div>`;
+  else pdf = `<div class="pdf live" title="open ${key}.pdf">`
+           + `<img src="preview/${key}.png" alt="first page of ${key}.pdf"></div>`
+           + `<div class="pdfcap">PDF — click the preview to open</div>`;
+  tip.innerHTML = `<h4>${key}</h4>
+    <div class="meta">${p.type || 'stub'} · ${p.year || ''}${cur ? ` · curated${p.pass!=null?` (maturity ${p.pass}/4)`:''}` : ' · stub (maturity 0)'}</div>
+    <div class="abs">${cur ? (p.abs || p.title) : p.title}</div>
+    ${pdf}`;
+  const box = tip.querySelector(".pdf.live");
+  if (box) box.addEventListener("click", () => window.open(`pdf/${key}.pdf`, "_blank"));
+  // pin beside the hovered card — right of it, flipping left when there's no room — NOT
+  // at the cursor, so the pointer can travel into the tip (and onto the preview)
+  const r = ((el && el.closest(".card")) || el || e.target).getBoundingClientRect();
+  const pad = 10, w = 300, h = tip.offsetHeight;
+  let x = r.right + pad;
+  if (x + w > innerWidth) x = r.left - w - pad;
+  x = Math.max(8, Math.min(x, innerWidth - w - 8));
+  const y = Math.max(54, Math.min(e.clientY - 24, innerHeight - h - 8));
   tip.style.left = x + "px"; tip.style.top = y + "px";
 }
 

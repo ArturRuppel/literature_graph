@@ -14,6 +14,7 @@ def test_to_json_dict_shape():
     p = d["papers"]["Chen2021Sys"]
     assert p["cur"] is True and p["pass"] == 4
     assert p["authors"][0] == ["Chen, Mei", "first", False]
+    assert p["abs"].startswith("Stream processors trade latency for throughput")
     c1 = next(s for s in p["slices"] if s["id"] == "c1")
     assert c1["color"] == "grounded" and c1["kind"] == "claim"
     # each slice carries its within-paper support refs (local grounded_in only)

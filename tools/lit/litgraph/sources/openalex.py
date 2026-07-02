@@ -17,6 +17,9 @@ from ..model import NormAuthor, Work
 
 BASE = "https://api.openalex.org"
 _SELECT = "id,doi,title,display_name,publication_year,type,authorships,primary_location,referenced_works"
+# focal lookups also pull the abstract (inverted index); reference batches skip it — stubs
+# don't carry abstracts and the extra field would balloon 50-work pages
+_SELECT_FOCAL = _SELECT + ",abstract_inverted_index"
 
 GetJson = Callable[[str], dict]
 
@@ -33,6 +36,17 @@ def _split_name(display_name: str) -> tuple[str, str]:
     if not parts:
         return "", ""
     return parts[-1], " ".join(parts[:-1])
+
+
+def _deinvert(idx: dict | None) -> str | None:
+    """OpenAlex ships abstracts as {word: [positions]}; rebuild the plain text."""
+    if not idx:
+        return None
+    slots: dict[int, str] = {}
+    for word, positions in idx.items():
+        for pos in positions:
+            slots[pos] = word
+    return " ".join(slots[i] for i in sorted(slots)) or None
 
 
 def normalize_work(raw: dict) -> Work:
@@ -53,6 +67,7 @@ def normalize_work(raw: dict) -> Work:
         venue_display=source.get("display_name"),
         authors=authors,
         referenced_works=list(raw.get("referenced_works") or []),
+        abstract=_deinvert(raw.get("abstract_inverted_index")),
     )
 
 
@@ -83,11 +98,11 @@ class OpenAlex:
 
     # --- API ----------------------------------------------------------------
     def fetch_work(self, doi: str) -> Work | None:
-        raw = self._get_json(f"{BASE}/works/https://doi.org/{quote(doi)}?select={_SELECT}")
+        raw = self._get_json(f"{BASE}/works/https://doi.org/{quote(doi)}?select={_SELECT_FOCAL}")
         return normalize_work(raw) if raw and raw.get("id") else None
 
     def search_by_title(self, title: str) -> Work | None:
-        data = self._get_json(f"{BASE}/works?search={quote(title)}&per-page=1&select={_SELECT}")
+        data = self._get_json(f"{BASE}/works?search={quote(title)}&per-page=1&select={_SELECT_FOCAL}")
         results = data.get("results") or []
         return normalize_work(results[0]) if results else None
 

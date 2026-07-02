@@ -103,6 +103,7 @@ The generator resolves every ref into an edge and **fails the build on a danglin
 | `doi` / `url` / `pdf` | – | str | `pdf` defaults to `<citekey>.pdf` under the config PDF dir |
 | `authors` | ✔ | list | each `{name, position?, corresponding?}`; list order = byline. `position` ∈ `first \| middle \| last` (default `middle`) — an authorship **tier**, so multiple `first`s = co-first. `corresponding: true` is **independent** (any number) |
 | `note` | – | str | free-text curator orientation (e.g. the experimental setup); not a graph element |
+| `abstract` | – | str | verbatim abstract, written by `lit ingest` (OpenAlex/Crossref); shown in the viewer tooltip; not a graph element |
 | `claims` / `questions` / `methods` | – | list | the paper's slices (below) — absent/empty is valid (partial curation is normal) |
 
 **Claim** (item of `claims`):

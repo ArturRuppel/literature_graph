@@ -37,6 +37,7 @@ class Work:
     authors: list[NormAuthor] = field(default_factory=list)
     referenced_works: list[str] = field(default_factory=list)  # OpenAlex ids (focal, from OpenAlex)
     referenced_dois: list[str] = field(default_factory=list)  # DOIs (focal, from Crossref fallback)
+    abstract: str | None = None  # verbatim abstract (focal only; refs are fetched without it)
 
 
 # --- paper type mapping (spec §4 Stage B) -----------------------------------
@@ -87,6 +88,7 @@ class CuratedPaper:
     doi: str | None
     url: str | None
     pdf: str | None
+    abstract: str | None = None
     authors: list[Author] = field(default_factory=list)
 
     def to_yaml(self) -> str:
@@ -104,6 +106,8 @@ class CuratedPaper:
             lines.append(f"url: {self.url}")
         if self.pdf:
             lines.append(f"pdf: {self.pdf}")
+        if self.abstract:
+            lines.append(f"abstract: {_yaml_str(self.abstract)}")
         lines.append("authors:")
         for a in self.authors:
             lines.append(f"  - {_author_flow(a)}")

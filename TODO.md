@@ -87,6 +87,18 @@ Open requests for the `lit build` viewer. Details deliberately left thin for now
   `/pdf/<citekey>.pdf` (flat `<citekey>.<ext>` names only — no traversal). The `lit build`
   file:// output stays inert as before.*
 
+- [x] **Viewer polish (post-`lit serve` review).** — *(1) Edges paint above the cards
+  unconditionally (`svg#edges` z-index), so an arrow reaches the target row/box without
+  hovering — hover-isolation now only disentangles. (2) The tooltip is pinned beside the
+  hovered card (right, flipping left on overflow) instead of following the cursor, so the
+  pointer can travel into the PDF preview and click it. (3) The tooltip shows the paper's
+  abstract, not the curator note: `abstract` is a new curated-YAML field, written by `lit
+  ingest` (OpenAlex inverted-index de-inverted / Crossref JATS stripped), plumbed through
+  `graph` → `build` (`abs`) → tooltip. (4) Hovering a broad synthesis node isolates its
+  incident edges and highlights the papers linked into it — the same treatment as hovering
+  a slice row (limited to focused papers, since a paper's outgoing edges exist only once
+  it's focused).*
+
 ## Open
 
 - [ ] **Entry-row rule check after real use.** Entry rows = top-level claims + questions.

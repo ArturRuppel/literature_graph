@@ -10,6 +10,7 @@ type: original
 year: 2019
 pass: 2
 doi: 10.0000/synth.lopez2019
+abstract: "Buffer sizing drives both memory cost and latency in pipelined systems. Combining a cost microbenchmark, an analytic buffer-cost model and an end-to-end pipeline simulator, we show that buffer memory cost grows superlinearly with buffer size once the working set leaves the last-level cache, and we ask whether larger buffers also carry a latency cost at the tail."
 authors:
   - {name: "Lopez, Sofia", position: first}
   - {name: "Adeyemi, Tunde", position: last, corresponding: true}

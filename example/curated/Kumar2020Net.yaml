@@ -7,6 +7,7 @@ type: original
 year: 2020
 pass: 3
 doi: 10.0000/synth.kumar2020
+abstract: "Fixed batch sizes serve variable load poorly. We present an adaptive batch-sizing controller evaluated on a load-replay testbed: it holds throughput near peak as offered load swings by 4x, while static large batches inflate p99 latency by 3x during bursts. Adaptation, not size, reconciles throughput with tail latency."
 authors:
   - {name: "Kumar, Ravi", position: first, corresponding: true}
   - {name: "Nyberg, Lena", position: last}

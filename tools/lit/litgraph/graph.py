@@ -45,6 +45,7 @@ class Paper:
     pass_: int | None = None        # YAML/JSON key is "pass"; "pass" is a Python keyword
     doi: str | None = None
     note: str | None = None
+    abstract: str | None = None     # verbatim abstract (written by `lit ingest`)
     authors: list[tuple[str, str, bool]] = field(default_factory=list)  # (name, position, corresponding)
     slices: list[Slice] = field(default_factory=list)
     head: list[str] = field(default_factory=list)                 # top-altitude claim texts
@@ -113,7 +114,7 @@ def load_repo(root: Path) -> tuple[dict[str, Paper], dict[str, BroadNode]]:
             citekey=citekey, curated=True,
             title=raw.get("title", ""), type=raw.get("type", "original"),
             year=raw.get("year"), pass_=raw.get("pass"),
-            doi=raw.get("doi"), note=raw.get("note"),
+            doi=raw.get("doi"), note=raw.get("note"), abstract=raw.get("abstract"),
             authors=_authors_from(raw), slices=slices,
         )
 
