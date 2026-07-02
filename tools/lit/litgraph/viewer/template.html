@@ -741,8 +741,10 @@ function boot(){
 boot();
 board.addEventListener("scroll",redraw);
 addEventListener("resize",redraw);
-// a click on empty board space (not a card or broad node) thaws any pinned isolation
-board.addEventListener("click",e=>{ if(pin && !e.target.closest(".card,.bn")){ pin=null; redraw(); } });
+// a click on empty board space (not a card or broad node) thaws any pinned isolation.
+// isConnected guard: a drill/collapse rebuild detaches the clicked row mid-dispatch, so a
+// pinning click bubbles here with a detached target — don't misread that as empty space.
+board.addEventListener("click",e=>{ if(pin && e.target.isConnected && !e.target.closest(".card,.bn")){ pin=null; redraw(); } });
 // read-only introspection for headless tests; not used by the UI
 window.litDebug={get edges(){return edges},get cols(){return cols},open,drill,stacks,
   get ctxOpen(){return ctxOpen},get ctxDrill(){return ctxDrill},get hover(){return hover},
