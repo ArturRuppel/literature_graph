@@ -2,7 +2,7 @@
 import json
 from pathlib import Path
 from litgraph.graph import build_graph, Paper, Slice
-from litgraph.build import to_json_dict, emit, _cons
+from litgraph.build import to_json_dict, emit, _cons, _gen
 
 EXAMPLE = Path(__file__).resolve().parents[3] / "example"
 
@@ -50,6 +50,11 @@ def test_to_json_dict_shape():
     # inverted grounds: Lopez's builds-on lists Chen (m2 grounds in Lopez2019Arch:m2)
     lo = d["papers"]["Lopez2019Arch"]
     assert lo["builds"] == [{"key": "Chen2021Sys", "tid": "m2", "via": "m2"}]
+    # the local generalization ladder rides along per slice: c2/c3 ladder into c1
+    # (leads_to → local), while a broad-slug leads_to stays out of `gen` (it's a cons)
+    assert next(s for s in lo["slices"] if s["id"] == "c2")["gen"] == ["c1"]
+    assert next(s for s in lo["slices"] if s["id"] == "c3")["gen"] == ["c1"]
+    assert next(s for s in lo["slices"] if s["id"] == "c1")["gen"] == []
     assert p["builds"] == []                              # nothing grounds in Chen (yet)
     # the cross-paper answer flips Lopez q1 to answered (emergent, SCHEMA §7)
     assert next(s for s in lo["slices"] if s["id"] == "q1")["answered"] is True
@@ -71,6 +76,13 @@ def test_cons_skips_local_generalization():
     cons = _cons(p)
     assert {"slug": "b-claim", "via": "c1"} in cons
     assert all(co["slug"] != "c3" for co in cons)
+
+
+def test_gen_lists_local_leads_to_only():
+    # the ladder is the local leads_to refs; a broad slug generalizes rightward (_cons)
+    s = Slice(id="c1", kind="claim", text="x", leads_to=["c3", "b-claim"])
+    assert _gen(s) == ["c3"]
+    assert _gen(Slice(id="c3", kind="claim", text="broader")) == []
 
 
 def test_emit_writes_self_contained_viewer(tmp_path):

@@ -53,21 +53,30 @@ Open requests for the `lit build` viewer. Details deliberately left thin for now
   both ways. Hardening became SCHEMA §6.6 kind-coherence validation: `leads_to` → same-kind
   broad slug, `answers` → a question, laterals → claim/container, `floor` → claims only.*
 
-## Open
-
-- [ ] **Draw the local generalization ladder.** A same-paper `leads_to` to a local slice
+- [x] **Draw the local generalization ladder.** A same-paper `leads_to` to a local slice
   (a specific claim laddering up into a broader local claim, e.g. Atia's `c3 <- {c5,c6,c7,c8}`)
   now validates and builds, but the substructure tree is `grounded_in`-only, so the ladder
   is stored yet invisible. Render it in the substructure view (or a gutter bow) so the
-  generalization the curator authored actually shows.
+  generalization the curator authored actually shows. — *Local `leads_to` refs ride into the
+  JSON (`gen`); drilling the broader claim nests the claims that ladder into it beside its
+  supports (⤴-marked, broad-purple accent), each drillable in turn down to its own quote.
+  Laddering claims leave the entry rows (they sit under their parent) and context-reveal
+  climbs the ladder, so a sharpened ref into a rung still surfaces it.*
 
-- [ ] **Hover-isolate edges, drawn to the box.** Hovering a claim should hide every arrow
+- [x] **Hover-isolate edges, drawn to the box.** Hovering a claim should hide every arrow
   except the ones pointing *at* it, and those arrows must run all the way to the claim box —
   they're currently clipped/occluded by the container (z-order or clip-path issue; lift the
-  hovered edges above the cards and anchor on the box edge, not behind it).
+  hovered edges above the cards and anchor on the box edge, not behind it). — *Hovering a
+  slice row keeps only the edges incident on it (incoming and its own outgoing, so stance
+  edges survive too); the survivors lift above the cards (`svg.top` z-order) and run all the
+  way to the row box. Mouse-out restores everything.*
 
-- [ ] **Hover-highlight the cited papers.** Hovering a cross-paper claim should highlight the
+- [x] **Hover-highlight the cited papers.** Hovering a cross-paper claim should highlight the
   paper(s) it points to, so the target container is visible even before its slice is revealed.
+  — *Each surviving edge's counterpart — paper card, source stack or synthesis node — lights
+  up (`.hl`) for the duration of the hover, whether or not its slice is revealed.*
+
+## Open
 
 - [ ] **Entry-row rule check after real use.** Entry rows = top-level claims + questions.
   On first focus a paper can look sparse (Chen's much-cited `c1` sits one drill below `c3`

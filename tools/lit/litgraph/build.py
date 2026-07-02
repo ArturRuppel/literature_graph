@@ -15,6 +15,13 @@ def _up(s: Slice) -> list[str]:
     return [r for r in s.grounded_in if classify_ref(r) == "local"]
 
 
+def _gen(s: Slice) -> list[str]:
+    """Same-paper generalization ladder: the broader local slice(s) this one ladders into
+    (leads_to → local, validated same-kind). Broad slugs go to the synthesis band (_cons);
+    these nest in place — the viewer renders this slice under its broader parent."""
+    return [r for r in s.leads_to if classify_ref(r) == "local"]
+
+
 def _grounds(p: Paper) -> list[dict]:
     """Left-column targets: each grounded_in ref that points at a container (a source paper).
     A sharpened ref keeps its target slice id in `tid` so the viewer can anchor the edge on
@@ -104,7 +111,7 @@ def _paper_json(p: Paper, builds: list[dict]) -> dict:
         "slices": [{"id": s.id, "kind": s.kind, "text": s.text, "color": s.color,
                     "is_floor": s.is_floor, "grounded": s.grounded,
                     "borrowed": s.borrowed, "answered": s.answered, "up": _up(s),
-                    "quote": s.quote, "answers": list(s.answers)}
+                    "gen": _gen(s), "quote": s.quote, "answers": list(s.answers)}
                    for s in p.slices],
         "grounds": _grounds(p), "lateral": _lateral(p), "cons": _cons(p),
         "ans": _answers(p), "builds": builds,
