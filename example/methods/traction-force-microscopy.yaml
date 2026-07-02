@@ -1,5 +1,0 @@
-# Broad Method (SCHEMA §4). Thin `leads_to` target on the method ladder: TFM is-a force
-# microscopy (CONCEPT §7). The origin (Butler2002AmJPhysiol) lives on the per-paper method
-# slice's grounded_in (Ruppel2023NatPhys:m1), not here — so "used by N papers" is just a count.
-text: "Traction force microscopy"
-leads_to: [force-microscopy]

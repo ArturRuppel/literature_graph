@@ -1,0 +1,35 @@
+# Synthetic test paper (fully fictional). Contextualized (pass 3).
+# Key feature: its claims take lateral stance toward SPECIFIC slices of another curated paper
+# (sharpened cross-paper refs Chen2021Sys:c1 / Chen2021Sys:c2) -- exercises "link to the specific claim".
+title: "Adaptive batching under variable load"
+type: original
+year: 2020
+pass: 3
+doi: 10.0000/synth.kumar2020
+authors:
+  - {name: "Kumar, Ravi", position: first, corresponding: true}
+  - {name: "Nyberg, Lena", position: last}
+
+methods:
+  - id: m1
+    text: "load-replay testbed"
+    grounded_in: [Bench2016Tools]
+    leads_to:    [microbenchmark]
+
+questions:
+  - id: q1
+    text: "How should batch size adapt to offered load?"
+    leads_to: [q-resource-scheduling]
+
+claims:
+  - id: c1
+    text:  "Adaptive batch sizing sustains high throughput under variable load."
+    quote: "the controller held throughput near peak as offered load swung by 4x"
+    grounded_in:  [m1]
+    leads_to:     [throughput-scales-with-batching]
+    corroborates: ["Chen2021Sys:c1"]         # sharpened: supports Chen's specific throughput claim
+  - id: c2
+    text:  "Fixed large batches inflate tail latency under bursty load."
+    quote: "static large batches raised p99 latency by 3x during bursts"
+    grounded_in: [m1]
+    contradicts: ["Chen2021Sys:c2"]          # sharpened: clashes with Chen's specific latency claim

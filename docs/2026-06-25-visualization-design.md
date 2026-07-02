@@ -43,32 +43,30 @@ Two orthogonal motions, one per axis:
 
 ## The landing list (the default view)
 
-**All papers in one column**, collapsed cards, **no edges drawn**. Ranked by **curation
-level** — the authored `pass` field (SCHEMA §4): stubs (no `pass`) at the bottom, Pass-3 papers
-at the top, ties broken by year. The list *is* the curation frontier, sorted by how deep we've
-gone.
+**All papers in one column**, *fully* collapsed to a curation circle + citekey, **no edges
+drawn**. Ranked by **curation maturity** — the authored `pass` field (SCHEMA §4): stubs
+(maturity 0) at the bottom, maturity-4 papers at the top, ties broken by year. The list *is*
+the curation frontier, sorted by how far we've matured each paper.
 
-### The card
+### The collapsed card
 
 ```
 ┌──────────────────────────────────────────┐
-│ ●●●○  Ruppel2023NatPhys      original 2023│   ← progress dots (top-left) · type · year
-│       Force propagation in epithelial …    │   ← title
-│       Ruppel · Doe · Balland               │   ← byline (corresponding starred)
-│       ▸ traction rises with stiffness      │   ← top-altitude claim(s): no outgoing leads_to
+│ ◕  Chen2021Sys                             │   ← curation circle (left) · citekey, one line
 └──────────────────────────────────────────┘
 ```
 
-- **Progress dots — `pass` made visible.** Four small circles in the **top-left corner**, filled
-  progressively: `●●●○` = Pass 0–2 done (filled) and Pass 3 not yet; a **stub** shows four empty
-  circles `○○○○`. This is the one place the [authored `pass` field](../SCHEMA.md) surfaces — the
-  depth tier the list ranks on.
-- **Collapsed body** = title · authors (byline order; `corresponding` starred) · `type` · `year`,
-  plus the paper's **top-altitude claims** (those with no outgoing `leads_to` — its headline
-  findings). Everything else stays folded.
-- **Hover → abstract + metadata, and a PDF preview thumbnail.** Click the preview → open the PDF.
-  **Stubs have no PDF** (uncurated) — their hover shows OpenAlex metadata + abstract only, and the
-  empty progress dots read as "nothing to open yet."
+- **Curation circle — `pass` made visible.** A single circle in the **top-left**, filled like a
+  pie to `pass / 4`: an empty ring is a **stub** (maturity 0), a full disk is a fully-curated
+  paper (maturity 4), partials in between (`◔ ◑ ◕`). This is the one place the
+  [authored `pass` field](../SCHEMA.md) surfaces — the maturity tier the list ranks on.
+- **Fully collapsed body = nothing but the circle and citekey** (one line per paper, curated and
+  stub alike). The whole landing column is a scannable frontier; depth is earned by focusing.
+- **Focusing a curated paper expands it** to the full card — `type` · `year` · title · byline
+  (`corresponding` starred) · top-altitude claims — and fans out its columns (below).
+- **Hover → metadata** (and, under `lit serve`, abstract + a PDF preview thumbnail; click to open
+  the PDF). **Stubs have no PDF** (uncurated) — their hover shows bib metadata only, and the empty
+  circle reads as "nothing to open yet."
 
 ## The abstract view — clicking spawns columns
 
@@ -79,9 +77,9 @@ Click a paper and it becomes the **focus**; its connecting papers fan out into n
 ```
         grounds (older, ←)              FOCUS                 builds-on (newer, →)
    ┌──────────────────────┐   ┌──────────────────────┐   ┌──────────────────────┐
-   │  ○○○○ Butler2002      │──▶│ ●●●● Ruppel2023      │──▶│  traction-scales-…    │   broad
-   │  ○○○○ Ramms2013       │──▶│      (focus)          │   │  junctions-bear-load  │   "now"
-   │  ○○○○ Smith2010 ⚡     │   └──────────────────────┘   └──────────────────────┘
+   │  ○○○○ Bench2016       │──▶│ ●●●● Chen2021        │──▶│  throughput-scales-…  │   broad
+   │  ○○○○ Patel2017       │──▶│      (focus)          │   │  batching-adds-latency│   "now"
+   │  ○○○○ West2015 ⚡      │   └──────────────────────┘   └──────────────────────┘
    └──────────────────────┘
 ```
 
@@ -102,21 +100,21 @@ Click a paper and it becomes the **focus**; its connecting papers fan out into n
 Broad slices (`claims/`, `questions/`, `methods/` — the shared `leads_to` targets) have no year.
 They sit in a **synthesis band at the right edge** — the one direction generalization points,
 keeping "new stuff right" true. A broad claim shows its **emergent evidence meter** in place
-(`corroborate` vs `contradict` count, CONCEPT §9) — e.g. `traction-scales-with-stiffness` reads
-*1 support (c1 via `leads_to`) / 1 contradict (c3)*.
+(`corroborate` vs `contradict` count, CONCEPT §9) — e.g. `throughput-scales-with-batching` reads
+*2 support (Chen `c1` + Kumar `c1` via `leads_to`) / 1 contradict (Chen `c3`)*.
 
 ### Lateral edges cross columns
 
 `corroborate` / `contradict` are **not** support (CONCEPT §4) and never part of the left-right
-walk. They draw as a **distinct signed style spanning columns** — e.g. Ruppel2023:c1 ⟷ Jones2018,
-or c3 ⟶∤ Smith2010 — connecting two papers at wherever they already sit.
+walk. They draw as a **distinct signed style spanning columns** — e.g. Chen2021:c1 ⟷ Rao2018,
+or c3 ⟶∤ West2015 — connecting two papers at wherever they already sit.
 
 ## Color = emergent property, never a tag (CONCEPT §3)
 
 The viz **computes** every color from structure, never from a field: grounded (chain reaches a
 floor) vs borrowed (grounds in a citation); measurement floor vs model (layers on measurements);
 question open (no incoming `answers`) vs answered; broad (a `leads_to` target). The only colors
-that come from authored data are `type` (a filter chip) and the `pass` dots.
+that come from authored data are `type` (a filter chip) and the `pass` circle.
 
 ## Levels of detail (the drill-in ladder)
 
@@ -124,7 +122,7 @@ that come from authored data are `type` (a filter chip) and the `pass` dots.
 2. **Focus a paper** — its grounds/consequences fan into columns with aggregate edges.
 3. **Expand a card** — its claim / question / method slices appear as rows (vertical, in place),
    each in its emergent color; aggregate paper→paper edges **disaggregate** to slice→slice
-   (`Butler2002 → m1`, `m1 → c1`).
+   (`Bench2016 → m1`, `m1 → c1`).
 4. **Slice DAG** — fully drilled, slice-level edges everywhere. This is `litgraph-lean.html` — a
    destination, legible only on a thoroughly curated paper.
 

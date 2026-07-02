@@ -41,8 +41,8 @@ commit, one readable diff.
   exists; else it is a *stub* (an entry in `stubs.yaml`). The frontier is the set of stubs —
   no `tier:` field. **Promotion = move the `stubs.yaml` entry into a new `curated/` file** and
   slice it; edges that pointed at the container `P` then sharpen to its slices (CONCEPT §2).
-  This **breadth** tier stays emergent; the orthogonal **depth** tier (how far curation ran,
-  Pass 0–3) is the one thing recorded explicitly — `pass:` on the curated paper (§4, CONCEPT §10.1).
+  This **breadth** tier stays emergent; the orthogonal **maturity** tier (how far curation ran,
+  `0`–`4`) is the one thing recorded explicitly — `pass:` on the curated paper (§4, CONCEPT §10.1).
 - **A slice's home in a container needs no syntax.** A `claims`/`questions`/`methods` entry
   *inside* a paper file *is* that paper containing it — the only implicit edge.
 
@@ -53,7 +53,7 @@ commit, one readable diff.
 ```
 <root>/
   curated/
-    Ruppel2023eLife.yaml     # one curated paper = its whole local subgraph
+    Chen2021Sys.yaml         # one curated paper = its whole local subgraph
     ...
   claims/      <slug>.yaml   # thin broad claims (≥2 children)
   questions/   <slug>.yaml   # thin broad questions
@@ -72,9 +72,9 @@ repo** it lives at the deployment's root (e.g. `literature/`), with the real PDF
 
 | Id | Form | Source |
 |---|---|---|
-| **citekey** | `<Family><Year><Venue>` CamelCase, e.g. `Ruppel2023eLife`; `a/b/c` suffix for same-DOI collisions. `Venue` = ISO-4 abbreviation (+ override map for brand names like `eLife`). Also names the PDF and its `.md` | filename stem of a `curated/` file, **or** a key in `stubs.yaml` |
+| **citekey** | `<Family><Year><Venue>` CamelCase, e.g. `Chen2021Sys`; `a/b/c` suffix for same-DOI collisions. `Venue` = ISO-4 abbreviation (+ override map for brand names like `eLife`). Also names the PDF and its `.md` | filename stem of a `curated/` file, **or** a key in `stubs.yaml` |
 | **slice (local)** | `c1`, `c2` … (claims) / `q1`, `q2` … (questions) / `m1`, `m2` … (methods) — unique within its paper file. **No `a`/`ca` split** — "original vs borrowed" is emergent (§7), not encoded in the id | hand-assigned |
-| **slice (global)** | `<citekey>:<local>`, e.g. `Ruppel2023eLife:c1` | composed by the generator |
+| **slice (global)** | `<citekey>:<local>`, e.g. `Chen2021Sys:c1` | composed by the generator |
 | **broad claim / question / Method** | kebab-case `<slug>`, globally unique | filename stem in `claims/`, `questions/`, `methods/` |
 
 **Ref syntax** — every edge target is one string, and its *form* says what it points at:
@@ -82,9 +82,9 @@ repo** it lives at the deployment's root (e.g. `literature/`), with the real PDF
 | form | refers to | in an edge, means |
 |---|---|---|
 | `m3`, `c2`, `q1` | a **local slice** in the same file | the precise slice |
-| `force-propagation-is-active` | a **broad** `claims/`·`questions/`·`methods/` slug | the shared node |
-| `Liu2010Pnas` | a **container** (curated or stub) | the wildcard — "some slice in here, not yet resolved" (CONCEPT §2) |
-| `Liu2010Pnas:c3` | a **sharpened** cross-paper slice | the precise slice, once that paper is curated |
+| `throughput-scales-with-batching` | a **broad** `claims/`·`questions/`·`methods/` slug | the shared node |
+| `West2015Sigmod` | a **container** (curated or stub) | the wildcard — "some slice in here, not yet resolved" (CONCEPT §2) |
+| `West2015Sigmod:c3` | a **sharpened** cross-paper slice | the precise slice, once that paper is curated |
 
 The generator resolves every ref into an edge and **fails the build on a dangling reference** (§6).
 
@@ -99,7 +99,7 @@ The generator resolves every ref into an edge and **fails the build on a danglin
 | `title` | ✔ | str | |
 | `type` | ✔ | enum | `original \| review \| methods \| perspective \| commentary` — a **filter only**, no evidential weight (CONCEPT §6) |
 | `year` | ✔ | int | |
-| `pass` | – | int | curation **depth tier**: the highest completed CURATION pass, `0`–`3` (0 abstract · 1 framing · 2 results · 3 methods). **Absent on a stub** (breadth tier stays emergent via file presence, §1). The *one* authored process-state field — where curation paused isn't reconstructable from the slices (CONCEPT §10.1) |
+| `pass` | – | int | curation **maturity** of the artifact, `0`–`4`: **0** stub (uncurated container) · **1** ingested (bib skeleton, no slices) · **2** skeleton (claims + their methods sliced) · **3** contextualized (claims wired outward — generalized via `leads_to` into broad nodes and/or given lateral stance) · **4** full (the complete sweep). This is the *maturity of the result*, distinct from the four reading **Passes 0–3** (the *method*, CURATION.md). **Absent on a stub** (= maturity 0; the breadth tier stays emergent via file presence, §1). The *one* authored process-state field — how far curation matured isn't reconstructable from the slices (CONCEPT §10.1) |
 | `doi` / `url` / `pdf` | – | str | `pdf` defaults to `<citekey>.pdf` under the config PDF dir |
 | `authors` | ✔ | list | each `{name, position?, corresponding?}`; list order = byline. `position` ∈ `first \| middle \| last` (default `middle`) — an authorship **tier**, so multiple `first`s = co-first. `corresponding: true` is **independent** (any number) |
 | `note` | – | str | free-text curator orientation (e.g. the experimental setup); not a graph element |
@@ -135,9 +135,9 @@ The generator resolves every ref into an edge and **fails the build on a danglin
 | Field | Req | Type | Notes |
 |---|---|---|---|
 | `id` | ✔ | str | `m1`… |
-| `text` | ✔ | str | the technique (e.g. "traction force microscopy") |
+| `text` | ✔ | str | the technique (e.g. "microbenchmark harness") |
 | `grounded_in` | – | ref list | what this method rests on: the paper(s) that introduced it, **and/or other methods it layers on** (a model `grounded_in` the measurements it consumes — CONCEPT §7). A measurement method grounding only in its source paper is a **floor** |
-| `leads_to` | – | slug list | a broader Method it generalizes into (the method ladder: TFM → force microscopy) |
+| `leads_to` | – | slug list | a broader Method it generalizes into (the method ladder: microbenchmark → performance benchmarking) |
 | `quote` | – | str | methods-section sentence; **optional** (methods prose is boilerplate). Shortening with `[...]` is allowed but must be flagged for curator review |
 
 ### Thin broad slice — `claims/<slug>.yaml`, `questions/<slug>.yaml`, `methods/<slug>.yaml`
@@ -149,15 +149,15 @@ count, never bookkept here).
 | Field | Req | Type | Notes |
 |---|---|---|---|
 | `text` | ✔ | str | the broad statement / question / technique name |
-| `leads_to` | – | slug list | generalizes further up the ladder (a broad claim into a broader one; TFM → force microscopy) |
+| `leads_to` | – | slug list | generalizes further up the ladder (a broad claim into a broader one; microbenchmark → performance benchmarking) |
 
 ### Stub — entry in `stubs.yaml`, keyed by citekey
 
 ```yaml
-Liu2010Pnas:
-  title: "Mechanical tugging force regulates the size of cell–cell junctions"
-  year: 2010
-  doi: 10.1073/pnas.0914547107
+West2015Sigmod:
+  title: "Unbounded throughput scaling in partitioned pipelines"
+  year: 2015
+  doi: 10.0000/synth.west2015
   type: original        # optional
 ```
 
@@ -207,7 +207,7 @@ file or an upstream stub. Author downward edges (to floors / premises / citation
 7. **No emergent fields authored.** `status`, `evidence`, citation `role`, rollup `polarity`
    are **not** valid keys — they are derived (§7), and their presence is an error.
 8. **Enums valid** (`type`, `position` ∈ `first|middle|last`, `corresponding` ∈ `true`/absent,
-   `pass` ∈ `0|1|2|3` and only on a curated paper).
+   `pass` ∈ `0|1|2|3|4` and only on a curated paper).
 
 ---
 

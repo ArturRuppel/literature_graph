@@ -9,7 +9,7 @@ def test_map_type():
 
 
 def test_stub_mapping_omits_empties():
-    s = Stub(citekey="Saha2016BiophysJ", title="T", year=2016, doi="10.1/x", type="original")
+    s = Stub(citekey="Bench2016Tools", title="T", year=2016, doi="10.1/x", type="original")
     assert s.to_mapping() == {"title": "T", "year": 2016, "doi": "10.1/x", "type": "original"}
     s2 = Stub(citekey="X2020", title="T")
     assert s2.to_mapping() == {"title": "T"}
@@ -17,24 +17,24 @@ def test_stub_mapping_omits_empties():
 
 def test_curated_yaml_render():
     p = CuratedPaper(
-        citekey="Ruppel2023eLife",
-        title='Force "propagation" between cells',
+        citekey="Chen2021Sys",
+        title='Batching "improves" throughput',
         type="original",
-        year=2023,
-        doi="10.7554/eLife.83588",
-        url="https://doi.org/10.7554/eLife.83588",
-        pdf="Ruppel2023eLife.pdf",
+        year=2021,
+        doi="10.0000/synth.chen2021",
+        url="https://doi.org/10.0000/synth.chen2021",
+        pdf="Chen2021Sys.pdf",
         authors=[
-            Author("Ruppel, Artur", position="first"),
-            Author("Misiak, Vladimir"),
-            Author("Balland, Martial", position="last", corresponding=True),
+            Author("Chen, Mei", position="first"),
+            Author("Okafor, Ada"),
+            Author("Vidal, Ramon", position="last", corresponding=True),
         ],
     )
     text = p.to_yaml()
-    assert 'title: "Force \\"propagation\\" between cells"' in text
+    assert 'title: "Batching \\"improves\\" throughput"' in text
     assert "type: original" in text
-    assert '  - {name: "Ruppel, Artur", position: first}' in text
-    assert '  - {name: "Misiak, Vladimir"}' in text
-    assert '  - {name: "Balland, Martial", position: last, corresponding: true}' in text
+    assert '  - {name: "Chen, Mei", position: first}' in text
+    assert '  - {name: "Okafor, Ada"}' in text
+    assert '  - {name: "Vidal, Ramon", position: last, corresponding: true}' in text
     # affirmations/questions are not emitted by ingest
     assert "affirmations:" not in text.split("# affirmations")[0]

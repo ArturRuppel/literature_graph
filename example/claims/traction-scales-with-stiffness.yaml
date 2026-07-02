@@ -1,6 +1,0 @@
-# Broad claim (SCHEMA §4). Thin `leads_to` target — incoming edges live on the child slices
-# and are inverted by the generator. Evidence meter is emergent (CONCEPT §9): support from the
-# leads_to children, contradictions from incoming `contradicts` →
-# Ruppel2023NatPhys:c1 (leads_to) supports · Ruppel2023NatPhys:c3 (contradicts) clashes
-# ⇒ 1 support / 1 contradict.
-text: "Cell traction force scales with substrate stiffness."

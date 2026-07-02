@@ -88,7 +88,7 @@ A `leads-to` chain (§4) bottoms out at a **floor** — the two ways knowledge i
 - an **axiom** → *formal* (reasoning from a declared starting point; maths lives here).
 
 A floor is **wherever the curator stops decomposing**, not a metaphysically pure bottom: a
-measurement like traction-force microscopy already embeds theory, but we cite its source and
+measurement like a microbenchmark harness already embeds theory, but we cite its source and
 stop — pragmatic, emergent. A **model** is a Method that does *not* stop: it `grounds in` the
 measurements it consumes and the theory it assumes, layering between data and the claims it
 feeds (§7) — so floor-ness is itself emergent (does *this* slice's grounding bottom out?).
@@ -229,7 +229,7 @@ Method is a **floor** (§3), where an empirical claim's `leads-to` chain bottoms
 The literature braids *"we found **X** (a claim) **via** technique **T** (a method)."* In
 the slice model that braid is **not a new edge** — it's just `leads-to`: a data-grounded
 claim **grounds in** the Method that produced its data. The grounding *is* the how-axis, so
-the graph still answers "everything established via TFM" or "is this finding method-dependent?"
+the graph still answers "everything established via microbenchmarking" or "is this finding method-dependent?"
 
 - **A model is a Method that grounds in other Methods.** Measurements are floors; a
   mathematical model is *not* — it `grounds in` the measurements it consumes *and* the theory
@@ -237,7 +237,7 @@ the graph still answers "everything established via TFM" or "is this finding met
   `m_model grounded_in [m_measurement, …]`. A claim made by *comparing data with a model* just
   grounds in **both branches** — their agreement is the claim, no "comparison" edge needed.
 - **A Method is a slice like any other** — recursively generalizable up the `leads-to`
-  ladder (a use of TFM → *traction force microscopy* → *force microscopy*), exactly as a
+  ladder (a use of a harness → *microbenchmark* → *performance benchmarking*), exactly as a
   narrow claim generalizes to a broad one. No separate "method-use vs Method" machinery:
   same kind, different altitude.
 - **Methods enter the frontier the same way.** A claim grounding in a Method whose
@@ -284,17 +284,19 @@ Because first-class papers are human-curated and **the human supplies the PDF**,
 ## 10. Guiding principles
 
 1. **Curation is the rate limiter** — propose / accept / edit / reject; never flood.
-   A partial graph is valid — and so is a partial *paper*. Curation has **depth tiers**
-   orthogonal to the curated/stub breadth tier (§5): some papers stop at Pass 0 (abstract
-   skeleton), some at Pass 1, some run all the way through Pass 3 (CURATION.md). The
-   **breadth** tier stays emergent (curated vs stub = file presence, §5), but the **depth**
-   tier is recorded in one small authored field — `pass: 0–3` on the curated paper
-   (SCHEMA §4) — because *where curation paused* is process state, not graph structure, and
-   the interim tiers aren't reconstructable from the slices alone: the pass→slice map is
-   lossy both ways (a Pass-3 read may add no method slices; a Pass-1 read may opportunistically
-   grab a floor), so "deepest pass reached" can't be inferred from which slice kinds are
-   present. This is the lone exception to "no authored process fields"; stopping early is a
-   normal resting state, not an unfinished task.
+   A partial graph is valid — and so is a partial *paper*. Curation has a **maturity tier**
+   orthogonal to the curated/stub breadth tier (§5): a paper matures from a bare ingested
+   skeleton, through a sliced support skeleton, to a contextualized and finally fully-curated
+   artifact (CURATION.md). The **breadth** tier stays emergent (curated vs stub = file
+   presence, §5), but the **maturity** tier is recorded in one small authored field —
+   `pass: 0–4` on the curated paper (**0** stub · **1** ingested · **2** skeleton ·
+   **3** contextualized · **4** full; SCHEMA §4) — because *how far curation matured* is
+   process state, not graph structure, and it isn't reconstructable from the slices alone:
+   the read→slice map is lossy both ways (a deep read may add no method slices; a shallow read
+   may opportunistically grab a floor), so maturity can't be inferred from which slice kinds
+   are present. (The field is the *maturity of the result*, distinct from the four reading
+   **Passes 0–3** that are the *method* — CURATION.md.) This is the lone exception to "no
+   authored process fields"; stopping early is a normal resting state, not an unfinished task.
 2. **Generalize, don't merge — but don't duplicate for nesting either.** Never equate two
    claims (lossy); co-parent them under a broader claim via `leads-to` (§4), and the
    paper-specific phrasing and quote are never destroyed. Conversely, a broader claim **earns

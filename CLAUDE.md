@@ -39,7 +39,7 @@ the rate limiter; never flood. A half-finished graph is a normal, valid state.**
 
 ## Conventions this repo enforces
 
-- **citekey = `<Family><Year><Venue>`**, CamelCase, e.g. `Ruppel2023eLife`. This one string
+- **citekey = `<Family><Year><Venue>`**, CamelCase, e.g. `Chen2021Sys`. This one string
   names the PDF, its full-text `.md`, the `curated/<key>.yaml` file, **and** the
   `stubs.yaml` key. Venue is the ISO-4 journal abbreviation (+ an override map for brand
   names like `eLife`).

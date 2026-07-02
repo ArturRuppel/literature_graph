@@ -1,0 +1,52 @@
+# Synthetic test paper (fully fictional). Neutral domain: stream-processing performance.
+# Fully curated (pass 4): methods DAG + claims wired outward + lateral stance + a question answered.
+title: "Batching improves throughput in stream processors"
+type: original
+year: 2021
+pass: 4
+doi: 10.0000/synth.chen2021
+authors:
+  - {name: "Chen, Mei",     position: first}
+  - {name: "Okafor, Ada"}
+  - {name: "Vidal, Ramon",  position: last, corresponding: true}
+
+methods:
+  - id: m1
+    text: "microbenchmark harness"
+    grounded_in: [Bench2016Tools]          # introducing tools paper -> a measurement floor
+    leads_to:    [microbenchmark]
+  - id: m2
+    text: "open-network queueing model"     # a MODEL: layers on the m1 measurements -> not a floor
+    grounded_in: [m1]
+
+questions:
+  - id: q1
+    text: "Does throughput saturate at large batch sizes?"
+    leads_to: [q-resource-scheduling]       # open: nothing answers it
+  - id: q2
+    text: "What sets the latency floor of a pipeline?"
+    # answered by c4 (emergent)
+
+claims:
+  - id: c1
+    text:  "Aggregate throughput rises with batch size."
+    quote: "throughput increased monotonically as batch size grew from 16 to 1024 records"
+    grounded_in:  [m1]
+    leads_to:     [throughput-scales-with-batching]
+    corroborates: [Rao2018Osdi]
+  - id: c2
+    text:  "Per-record latency rises with batch size."
+    quote: "median latency grew roughly linearly with the configured batch size"
+    grounded_in: [m1]
+    leads_to:    [batching-adds-latency]
+  - id: c3
+    text:  "Throughput does not scale without bound — the queueing model predicts a plateau above a critical batch size."
+    quote: "the model yields saturating throughput for batch sizes beyond the service-rate knee"
+    grounded_in: [c1, m2]                    # derivation: measured trend + model
+    contradicts: [West2015Sigmod, throughput-scales-with-batching]
+  - id: c4
+    text:  "Memory bandwidth sets the latency floor of a pipeline."
+    quote: "consistent with Patel et al., bandwidth-bound stages dominated the latency floor"
+    grounded_in: [Patel2017Vldb]             # grounds in a citation container -> borrowed
+    leads_to:    [buffering-has-costs]
+    answers:     [q2]

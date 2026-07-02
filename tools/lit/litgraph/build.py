@@ -6,7 +6,13 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from litgraph.graph import Graph, Paper, classify_ref
+from litgraph.graph import Graph, Paper, Slice, classify_ref
+
+
+def _up(s: Slice) -> list[str]:
+    """Within-paper support refs: the local slices this one is built on (grounded_in).
+    These draw the substructure skeleton inside an expanded card (e.g. m3 builds on m2)."""
+    return [r for r in s.grounded_in if classify_ref(r) == "local"]
 
 
 def _grounds(p: Paper) -> list[dict]:
@@ -45,7 +51,7 @@ def _paper_json(p: Paper) -> dict:
         "note": p.note, "head": p.head,
         "slices": [{"id": s.id, "kind": s.kind, "text": s.text, "color": s.color,
                     "is_floor": s.is_floor, "grounded": s.grounded,
-                    "borrowed": s.borrowed, "answered": s.answered}
+                    "borrowed": s.borrowed, "answered": s.answered, "up": _up(s)}
                    for s in p.slices],
         "grounds": _grounds(p), "lateral": _lateral(p), "cons": _cons(p),
     }

@@ -1,26 +1,30 @@
-# Uncurated papers (un-sliced containers): bib-only, reached by a slice's grounded_in /
-# corroborates / contradicts. Machine-fetchable from OpenAlex/Crossref by DOI. Keys follow
-# <Family><Year><Venue> (SCHEMA §3). Promote → move the entry into a new curated/<citekey>.yaml.
-Ramms2013Pnas:                       # `grounded_in` by Ruppel2023NatPhys:c4 (borrowed claim)
-  title: "Keratins as the main structural component of the epidermal cornified envelope"
-  year: 2013
-  doi: 10.1073/pnas.1313491110
-  type: original
+# Uncurated papers (un-sliced containers), all fully fictional. Reached by slice edges above.
+Bench2016Tools:                      # methods paper: introduced the harness; grounded_in by m1 slices
+  title: "A reproducible harness for streaming microbenchmarks"
+  year: 2016
+  doi: 10.0000/synth.bench2016
+  type: methods
 
-Jones2018BiophysJ:                   # `corroborates` target of Ruppel2023NatPhys:c1
-  title: "Substrate rigidity controls cellular traction in single cells"
+Rao2018Osdi:                         # corroborates target of Chen2021Sys:c1
+  title: "Throughput characterization of dataflow engines"
   year: 2018
-  doi: 10.1016/j.bpj.2018.05.012
+  doi: 10.0000/synth.rao2018
   type: original
 
-Smith2010PhysRevLett:                # `contradicts` target of Ruppel2023NatPhys:c3
-  title: "Unbounded force transmission in stiffening extracellular matrices"
-  year: 2010
-  doi: 10.1103/PhysRevLett.104.168104
+West2015Sigmod:                      # contradicts target of Chen2021Sys:c3
+  title: "Unbounded throughput scaling in partitioned pipelines"
+  year: 2015
+  doi: 10.0000/synth.west2015
   type: original
 
-Butler2002AmJPhysiol:                # methods paper: introduced TFM; `grounded_in` by method slice Ruppel2023NatPhys:m1
-  title: "Traction fields, moments, and strain energy that cells exert on their surroundings"
-  year: 2002
-  doi: 10.1152/ajpcell.00270.2001
-  type: methods                      # a methods-paper stub — promoted, it fleshes out methods/traction-force-microscopy
+Patel2017Vldb:                       # grounded_in by Chen2021Sys:c4 (borrowed claim)
+  title: "Memory bandwidth limits in analytical pipelines"
+  year: 2017
+  doi: 10.0000/synth.patel2017
+  type: original
+
+Zhao2014Nsdi:                        # a pure frontier stub, not yet referenced -- tests bottom-of-list rendering
+  title: "Scheduling policies for shared stream clusters"
+  year: 2014
+  doi: 10.0000/synth.zhao2014
+  type: original

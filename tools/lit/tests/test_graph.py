@@ -7,11 +7,11 @@ def test_classify_ref_forms():
     assert classify_ref("c1") == "local"
     assert classify_ref("m12") == "local"
     assert classify_ref("q3") == "local"
-    assert classify_ref("Liu2010Pnas") == "container"
-    assert classify_ref("Ruppel2023eLife") == "container"
-    assert classify_ref("Liu2010Pnas:c3") == "sharpened"
-    assert classify_ref("force-propagation-is-active") == "broad"
-    assert classify_ref("jamming") == "broad"
+    assert classify_ref("West2015Sigmod") == "container"
+    assert classify_ref("Chen2021Sys") == "container"
+    assert classify_ref("Chen2021Sys:c3") == "sharpened"
+    assert classify_ref("throughput-scales-with-batching") == "broad"
+    assert classify_ref("buffering-has-costs") == "broad"
 
 
 from litgraph.graph import load_repo, Paper, Slice
@@ -21,22 +21,22 @@ EXAMPLE = Path(__file__).resolve().parents[3] / "example"
 
 def test_load_repo_reads_curated_and_stubs():
     papers, broad = load_repo(EXAMPLE)
-    assert "Ruppel2023NatPhys" in papers
-    p = papers["Ruppel2023NatPhys"]
+    assert "Chen2021Sys" in papers
+    p = papers["Chen2021Sys"]
     assert isinstance(p, Paper)
     assert p.curated is True
-    assert p.type == "original" and p.year == 2023 and p.pass_ == 3
-    assert ("Ruppel, Artur", "first", False) in p.authors
+    assert p.type == "original" and p.year == 2021 and p.pass_ == 4
+    assert ("Chen, Mei", "first", False) in p.authors
     # stubs load as un-sliced containers
-    assert papers["Ramms2013Pnas"].curated is False
-    assert papers["Ramms2013Pnas"].slices == []
+    assert papers["Patel2017Vldb"].curated is False
+    assert papers["Patel2017Vldb"].slices == []
     # a curated claim parses its edges
     c1 = next(s for s in p.slices if s.id == "c1")
     assert c1.kind == "claim"
-    assert "traction-scales-with-stiffness" in c1.leads_to
+    assert "throughput-scales-with-batching" in c1.leads_to
     # broad nodes load
-    assert "traction-scales-with-stiffness" in broad
-    assert broad["traction-scales-with-stiffness"].kind == "broad claim"
+    assert "throughput-scales-with-batching" in broad
+    assert broad["throughput-scales-with-batching"].kind == "broad claim"
 
 
 def test_load_repo_rejects_curated_stub_collision(tmp_path):
@@ -55,13 +55,13 @@ from litgraph.graph import method_is_floor
 
 def test_method_floor_vs_model():
     # floor: grounds only in containers (its source papers)
-    floor = Slice(id="m2", kind="method", text="TFM",
-                  grounded_in=["Sabass2007BiophysJ", "Bauer2021PloComputBiology"])
+    floor = Slice(id="m2", kind="method", text="microbenchmark",
+                  grounded_in=["Bench2016Tools", "Rao2018Osdi"])
     assert method_is_floor(floor) is True
     # floor: no grounding at all still bottoms out
     assert method_is_floor(Slice(id="m1", kind="method", text="x")) is True
     # model: layers on another method (a local m-ref)
-    model = Slice(id="m3", kind="method", text="MSM", grounded_in=["m2", "Tambe2011NatMater"])
+    model = Slice(id="m3", kind="method", text="pipeline simulator", grounded_in=["m2", "West2015Sigmod"])
     assert method_is_floor(model) is False
 
 
@@ -69,11 +69,11 @@ from litgraph.graph import claim_is_borrowed, reaches_floor
 
 
 def test_claim_borrowed():
-    borrowed = Slice(id="c4", kind="claim", text="borrowed", grounded_in=["Ramms2013Pnas"])
+    borrowed = Slice(id="c4", kind="claim", text="borrowed", grounded_in=["Patel2017Vldb"])
     assert claim_is_borrowed(borrowed) is True
     original = Slice(id="c1", kind="claim", text="orig", grounded_in=["m1"])
     assert claim_is_borrowed(original) is False
-    sharp = Slice(id="c5", kind="claim", text="x", grounded_in=["Liu2010Pnas:c3"])
+    sharp = Slice(id="c5", kind="claim", text="x", grounded_in=["Chen2021Sys:c3"])
     assert claim_is_borrowed(sharp) is True
 
 
@@ -147,7 +147,7 @@ from litgraph.graph import build_graph, Graph
 def test_build_graph_example():
     g = build_graph(EXAMPLE)
     assert isinstance(g, Graph)
-    p = g.papers["Ruppel2023NatPhys"]
+    p = g.papers["Chen2021Sys"]
     by_id = {s.id: s for s in p.slices}
     # m1 is a floor (grounds only in a container)
     assert by_id["m1"].is_floor is True and by_id["m1"].color == "floor"
@@ -161,12 +161,12 @@ def test_build_graph_example():
     assert by_id["q1"].answered is False
     # top-altitude claims become the head (no outgoing leads_to) -- c3 has only contradicts
     assert p.head  # non-empty
-    # broad-claim meter (example: 1 support via c1 leads_to, 1 contradict via c3)
-    b = g.broad["traction-scales-with-stiffness"]
-    assert (b.support, b.contradict) == (1, 1)
+    # broad-claim meter (example: 2 support via Chen c1 + Kumar c1 leads_to, 1 contradict via Chen c3)
+    b = g.broad["throughput-scales-with-batching"]
+    assert (b.support, b.contradict) == (2, 1)
     # landing order: curated before stubs
-    assert g.order[0] == "Ruppel2023NatPhys"
-    assert g.order.index("Ruppel2023NatPhys") < g.order.index("Ramms2013Pnas")
+    assert g.order[0] == "Chen2021Sys"
+    assert g.order.index("Chen2021Sys") < g.order.index("Patel2017Vldb")
 
 
 def test_build_graph_handles_skeleton_paper(tmp_path):

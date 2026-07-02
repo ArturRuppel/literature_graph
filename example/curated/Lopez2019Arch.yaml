@@ -1,0 +1,30 @@
+# Synthetic test paper (fully fictional). Skeleton (pass 2): claims + their methods sliced.
+# Key feature: a 3-level method dependency hierarchy (m1 -> m2 -> m3) to exercise
+# "make substructure visible" (the grounded_in DAG among a paper's own slices).
+title: "A cost model for buffer sizing"
+type: original
+year: 2019
+pass: 2
+doi: 10.0000/synth.lopez2019
+authors:
+  - {name: "Lopez, Sofia", position: first}
+  - {name: "Adeyemi, Tunde", position: last, corresponding: true}
+
+methods:
+  - id: m1
+    text: "cost microbenchmark"
+    grounded_in: [Bench2016Tools]            # floor
+    leads_to:    [microbenchmark]
+  - id: m2
+    text: "analytic buffer-cost model"        # layers on m1
+    grounded_in: [m1]
+  - id: m3
+    text: "end-to-end pipeline simulator"     # layers on both m2 and m1
+    grounded_in: [m2, m1]
+
+claims:
+  - id: c1
+    text:  "Buffer memory cost grows superlinearly with buffer size."
+    quote: "measured resident memory scaled worse than linearly past the L3 working-set point"
+    grounded_in: [m3]
+    leads_to:    [buffering-has-costs]

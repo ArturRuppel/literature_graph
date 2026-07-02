@@ -21,11 +21,14 @@ edits/accepts. Nothing is "curated" until the human commits it.
   Each pass is a loop: *explain your reading at the pass's granularity → discuss until
   aligned → only then weld the agreed slices into the file.* Realign before the next pass.
 - **Propose, never flood** (CONCEPT §10). A handful of well-welded slices beats a wall of
-  shallow ones. **Curation has depth tiers** — a paper may stop at Pass 0, Pass 1, or run all
-  the way to Pass 3; stopping early is a normal resting state, not an unfinished task.
-  **Record the tier you reach** as `pass: 0–3` on the curated file (SCHEMA §4), bumping it as
-  each pass is tokenized; a stub has no `pass` at all. This is the depth signal the interface
-  ranks and renders (the progress dots in `docs/2026-06-25-visualization-design.md`).
+  shallow ones. **Curation has a maturity tier** — a paper matures from ingested skeleton, to
+  sliced support skeleton, to contextualized, to full; stopping early is a normal resting
+  state, not an unfinished task. **Record the maturity you reach** as `pass: 0–4` on the
+  curated file (**1** ingested · **2** skeleton — claims + methods · **3** contextualized —
+  claims wired to broad nodes / lateral stance · **4** full; a stub is **0** and carries no
+  `pass`), bumping it as the paper matures. This is the maturity signal the interface ranks
+  and renders (the curation circle in `docs/2026-06-25-visualization-design.md`). It is the
+  *maturity of the result*, distinct from the four reading **Passes 0–3** below (the *method*).
 - **The quote is the integrity anchor.** Every claim is welded to a quote grounded in the
   paper's `.md` full text (SCHEMA §6 rule 4). Verbatim substrings are the default; non-
   contiguous passages may be shortened with `[...]` when the curator explicitly accepts the
@@ -121,24 +124,24 @@ is the payload.
 
 ---
 
-## Worked example (Ruppel2023eLife, the lean encoding)
+## Worked example (Chen2021Sys, the lean encoding)
 
-Threaded through [`curated/Ruppel2023eLife.yaml`](example/) — see the data root:
+Threaded through [`curated/Chen2021Sys.yaml`](example/) — see the data root:
 
-- **Pass 0, the approach → method floors.** The abstract's *"optogenetic activation … traction
-  and monolayer stress microscopy … continuum model"* becomes `m1` (opto), `m2` (TFM), `m3`
-  (MSM, `grounded_in: [m2]` — layers on traction), `m5` (continuum model, `grounded_in: [m3,
-  …]` — a model on the measurement). A headline result becomes `c1`, `grounded_in: [m1, m3,
-  m5]` (perturbation + stress data, compared against the model) and `answers: [q1]`.
-- **Pass 1 (framing), a context sentence** *"…cells probe the mechanical and geometrical
-  properties of their environment"* → borrowed claim `c4`, `grounded_in:` the twelve cited
-  papers — one sentence pulled twelve stubs into the frontier (no floor → a restatement).
-  Borrowed consensus that joins a headline claim gets a `leads_to`: `c7`, `c8` →
-  `force-propagation-is-active`, alongside the novel `c1` (≥2 children earn the broad claim).
-- **Pass 2 (results)** sharpens `c1`'s `grounded_in` to the exact methods and relocates its
+- **Pass 0, the approach → method floors.** The abstract's *"a microbenchmark harness … an
+  open-network queueing model"* becomes `m1` (the harness — a measurement floor,
+  `grounded_in: [Bench2016Tools]`) and `m2` (the queueing model, `grounded_in: [m1]` — a model
+  layered on the measurement). A headline result becomes `c1`, `grounded_in: [m1]`.
+- **Pass 1 (framing), a context sentence** *"…memory bandwidth bounds the latency floor of a
+  pipeline"* → borrowed claim `c4`, `grounded_in: [Patel2017Vldb]` — one sentence pulls a stub
+  into the frontier (no floor → a restatement) and `answers: [q2]`. Consensus that generalizes
+  gets a `leads_to`: `c1` → `throughput-scales-with-batching`, which earns its broad claim once
+  a second paper (`Kumar2020Net:c1`) shares it (≥2 children).
+- **Pass 2 (results)** sharpens each claim's `grounded_in` to the exact methods
+  (`c3 grounded_in [c1, m2]` — the measured trend compared against the model) and relocates each
   quote to the tightest results sentence.
-- **Pass 3 (methods)** records the method DAG (`m3 grounded_in [m2]`, `m5 grounded_in [m3]`)
-  and each technique's introducing paper.
+- **Pass 3 (methods)** records the method DAG (`m2 grounded_in [m1]`) and each technique's
+  introducing paper (`m1 grounded_in [Bench2016Tools]`).
 
 ---
 

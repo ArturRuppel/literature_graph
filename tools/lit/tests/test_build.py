@@ -11,21 +11,27 @@ def test_to_json_dict_shape():
     d = to_json_dict(build_graph(EXAMPLE))
     assert set(d) == {"papers", "broad", "stubs", "order"}
     # curated paper carries computed slices + edge lists
-    p = d["papers"]["Ruppel2023NatPhys"]
-    assert p["cur"] is True and p["pass"] == 3
-    assert p["authors"][0] == ["Ruppel, Artur", "first", False]
+    p = d["papers"]["Chen2021Sys"]
+    assert p["cur"] is True and p["pass"] == 4
+    assert p["authors"][0] == ["Chen, Mei", "first", False]
     c1 = next(s for s in p["slices"] if s["id"] == "c1")
     assert c1["color"] == "grounded" and c1["kind"] == "claim"
+    # each slice carries its within-paper support refs (local grounded_in only)
+    assert c1["up"] == ["m1"]          # c1 builds on the floor m1 (substructure)
+    m1 = next(s for s in p["slices"] if s["id"] == "m1")
+    assert m1["up"] == []              # the floor builds on nothing local (grounds in a citation)
+    assert all(ref.startswith(("c", "q", "m")) and ":" not in ref
+               for s in p["slices"] for ref in s["up"])   # local refs only
     assert any(g["via"] == "m1" for g in p["grounds"])          # grounds -> left
-    assert any(co["slug"] == "traction-scales-with-stiffness" for co in p["cons"])
+    assert any(co["slug"] == "throughput-scales-with-batching" for co in p["cons"])
     assert any(l["sign"] in ("corr", "contra") for l in p["lateral"])
     # stubs are separated out (one-line cards), not under papers' slices
-    assert "Ramms2013Pnas" in d["stubs"]
-    assert d["stubs"]["Ramms2013Pnas"]["year"] == 2013
+    assert "Patel2017Vldb" in d["stubs"]
+    assert d["stubs"]["Patel2017Vldb"]["year"] == 2017
     # broad claim carries its meter
-    assert "meter" in d["broad"]["traction-scales-with-stiffness"]
+    assert "meter" in d["broad"]["throughput-scales-with-batching"]
     # order is papers (curated + stubs), curated first
-    assert d["order"][0] == "Ruppel2023NatPhys"
+    assert d["order"][0] == "Chen2021Sys"
 
 
 def test_emit_writes_self_contained_viewer(tmp_path):
@@ -36,10 +42,10 @@ def test_emit_writes_self_contained_viewer(tmp_path):
     assert gj.exists() and html.exists()
     # graph.json round-trips
     data = json.loads(gj.read_text())
-    assert "Ruppel2023NatPhys" in data["papers"]
+    assert "Chen2021Sys" in data["papers"]
     # index.html has the JSON inlined (self-contained) and no leftover token
     text = html.read_text()
-    assert "Ruppel2023NatPhys" in text
+    assert "Chen2021Sys" in text
     assert "__GRAPH_JSON__" not in text
 
 
