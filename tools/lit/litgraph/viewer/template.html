@@ -180,8 +180,9 @@ let ctxDrill=new Map();  // row paths force-expanded to reveal a sharpened targe
 const stacks=new Set();  // source-stack ids the human explicitly unfolded (persists rebuilds)
 let hover=null;          // {cardId,sid} — hovered slice row/broad node: redraw isolates its
                          // edges (bright) and highlights the counterpart papers, transiently
-let pin=null;            // {cardId,sid} — a clicked isolation that persists after the pointer
-                         // leaves. Effective target = hover || pin; neither → all edges dim.
+let pin=[];              // [{cardId,sid}] — clicked isolations that persist after the pointer
+                         // leaves and ACCUMULATE: each click hardens another target. Bright set
+                         // = every pinned target ∪ the current hover; everything else stays dim.
 const SYNTH=1e6;         // synthesis band: broad nodes always sit in the rightmost column
                          // (papers occupy small levels; builds-on growth stays left of it)
 
@@ -246,10 +247,14 @@ function hoverRow(el, e){
   }
   setHover(h);
 }
-// Click-to-pin: persist an isolation target after the pointer leaves. samePin lets a second
-// click on the same broad node release it; a click on empty board space thaws any pin.
+// Click-to-pin: harden a target so it stays bright after the pointer leaves. Pins accumulate;
+// clicking the same target again releases just it, a click on empty board space thaws them all.
 const samePin=(a,b)=>!!a&&!!b&&a.cardId===b.cardId&&a.sid===b.sid;
-function togglePin(t){ pin=samePin(pin,t)?null:t; redraw(); }
+function togglePin(t){
+  const i=pin.findIndex(p=>samePin(p,t));
+  if(i>=0) pin.splice(i,1); else pin.push(t);
+  redraw();
+}
 const SID_CLASS = {floor: "fl", model: "fl", grounded: "cl", borrowed: "bo",
                    plausible: "cl", question: "q"};
 
@@ -259,9 +264,8 @@ function cardClick(e, el, level, key){
   const id = `${level}:${key}`;
   const row = e.target.closest(".slice");
   if (row && el.classList.contains("open")) {
-    pin = {cardId: el.id, sid: row.dataset.sid};        // clicking a row pins its isolation
+    togglePin({cardId: el.id, sid: row.dataset.sid});   // harden/release this row (accumulates)
     if (row.classList.contains("drillable")) toggleDrill(id, row.dataset.path);  // drill + rebuild
-    else redraw();                                      // non-drillable: just apply the pin
     return;
   }
   if (el.classList.contains("open")) {
@@ -613,25 +617,30 @@ function redraw(){
     <marker id="arq" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
       <path d="M0,0 L6,3 L0,6 Z" fill="${cssv('--question')}"/></marker>`;
   svg.appendChild(defs);
-  // Isolation: the effective target is hover (transient) else pin (persisted). Only edges
-  // incident on it survive, bright, and their counterpart cards get .hl. With no target every
-  // edge is drawn dim — faint scaffolding rather than a bright tangle in full expansion.
-  if(pin && !document.getElementById(pin.cardId)) pin=null;   // pinned card gone → release
-  const iso=hover||pin;
-  const at=(end)=>iso&&end.cardId===iso.cardId&&end.sid===iso.sid;
-  const inc=e=>!!iso&&(at(e.from)||at(e.to));      // incident on the isolation target
+  // Isolation: the bright set is every pinned target (persisted, accumulating) ∪ the current
+  // hover (transient). An edge incident on any target is drawn bright and its counterpart card
+  // gets .hl; every other edge stays dim — faint scaffolding rather than a bright tangle.
+  pin=pin.filter(p=>document.getElementById(p.cardId));       // drop pins whose card is gone
+  const targets=hover?[...pin,hover]:pin;
+  const atT=(end,t)=>end.cardId===t.cardId&&end.sid===t.sid;
+  const isTarget=end=>targets.some(t=>atT(end,t));
+  const inc=e=>targets.some(t=>atT(e.from,t)||atT(e.to,t));   // incident on any target
   document.querySelectorAll(".hl").forEach(el=>el.classList.remove("hl"));
-  const bslug=broadIsoSlug(iso);
-  const work=bslug?edges.concat(broadExtraEdges(iso,bslug)):edges.slice();
+  let work=edges.slice();
+  for(const t of targets){                                    // broad target → connect collapsed papers too
+    const slug=broadIsoSlug(t);
+    if(slug) work=work.concat(broadExtraEdges(t,slug));
+  }
   work.sort((a,b)=>(inc(a)?1:0)-(inc(b)?1:0));     // draw incident (bright) last → on top of dim
   for(const e of work){
     const on=inc(e);                               // incident → bright; every other edge stays dim
     const ra=anchorRect(e.from), rb=anchorRect(e.to);
     if(!ra||!rb) continue;                          // no visible endpoint yet
-    if(on){
-      const other=at(e.from)?e.to:e.from;
-      const oc=document.getElementById(other.cardId);
-      if(oc&&other.cardId!==iso.cardId) oc.classList.add("hl");
+    if(on){                                         // light up each non-target endpoint's card
+      for(const end of [e.from,e.to]){
+        const oc=document.getElementById(end.cardId);
+        if(oc&&!isTarget(end)) oc.classList.add("hl");
+      }
     }
     const ya=(ra.top+ra.bottom)/2-bb.top+board.scrollTop;
     const yb=(rb.top+rb.bottom)/2-bb.top+board.scrollTop;
@@ -658,7 +667,7 @@ function redraw(){
     path.setAttribute("stroke-width","1.6");
     if(lat) path.setAttribute("stroke-dasharray","5 4");
     else if(ans) path.setAttribute("stroke-dasharray","2 3");   // dotted: answers ≠ support
-    path.setAttribute("opacity",on?(lat||ans?"0.85":"0.95"):"0.22");    // incident bright, rest dim
+    path.setAttribute("opacity",on?(lat||ans?"0.85":"0.95"):"0.08");    // incident bright, rest very dim
     if(ans) path.setAttribute("marker-end","url(#arq)");
     else if(!lat) path.setAttribute("marker-end","url(#ar)");
     else if(contra) path.setAttribute("marker-end","url(#arx)");
@@ -744,7 +753,7 @@ addEventListener("resize",redraw);
 // a click on empty board space (not a card or broad node) thaws any pinned isolation.
 // isConnected guard: a drill/collapse rebuild detaches the clicked row mid-dispatch, so a
 // pinning click bubbles here with a detached target — don't misread that as empty space.
-board.addEventListener("click",e=>{ if(pin && e.target.isConnected && !e.target.closest(".card,.bn")){ pin=null; redraw(); } });
+board.addEventListener("click",e=>{ if(pin.length && e.target.isConnected && !e.target.closest(".card,.bn")){ pin=[]; redraw(); } });
 // read-only introspection for headless tests; not used by the UI
 window.litDebug={get edges(){return edges},get cols(){return cols},open,drill,stacks,
   get ctxOpen(){return ctxOpen},get ctxDrill(){return ctxDrill},get hover(){return hover},
