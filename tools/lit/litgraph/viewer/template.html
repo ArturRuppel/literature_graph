@@ -216,6 +216,38 @@
   .pw-grip{position:absolute;right:0;bottom:0;width:14px;height:14px;cursor:nwse-resize;
     background:linear-gradient(135deg,transparent 50%,var(--line) 50%,var(--line) 62%,transparent 62%,
     transparent 74%,var(--line) 74%,var(--line) 86%,transparent 86%)}
+
+  /* ── mobile / touch: read-only friendliness ──────────────────────────────────────────────
+     Desktop is fenced off: layout keys off max-width (below ~640px two columns can't fit
+     anyway); input affordances key off (hover:none)+(pointer:coarse). The three unconditional
+     clamps below are desktop-safe (they only bite when a panel would overflow the viewport). */
+  #tip{max-width:calc(100vw - 16px)}
+  #wipPanel{max-width:calc(100vw - 16px)}
+  #board{overscroll-behavior-x:contain}          /* no back/forward-swipe hijack from the h-scroll */
+  .pw-body{overscroll-behavior:contain}          /* nested page-scroll doesn't chain to the board */
+
+  @media (max-width:640px){
+    :root{--col:min(340px,86vw)}                 /* card fits with a gutter; neighbor column peeks */
+    #board{gap:22px;padding:22px max(12px, calc(50vw - var(--col)/2)) 80px}
+    #hud{gap:8px 10px;flex-wrap:wrap}
+    #hud .widthctl{display:none}                 /* column ≈ full width — slider is moot (and ate swipes) */
+    #wipPanel{left:8px;right:8px;width:auto;max-height:60vh}
+    #wipOverlay .wo-bar{flex-wrap:wrap;gap:8px 10px}
+  }
+  @media (hover:none) and (pointer:coarse){
+    /* the movable/resizable quote window becomes a near-fullscreen sheet: no drag, no resize,
+       native scroll, closed by its × (drag/resize/pan are gated in JS on pointerType) */
+    .pw{position:fixed !important;inset:8px !important;width:auto !important;height:auto !important}
+    .pw-grip{display:none}
+    .pw-bar{cursor:default}
+    .card,.slice,.slices .sgrp,.card.stack,.pw-tool,.pw-x,#hud .wip,
+    #wipPanel .wp-row,#wipOverlay .wo-bar button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+    .slice{padding:7px 6px}                       /* fatter tap targets */
+    .slices .sgrp{padding-top:9px;margin:9px 0 4px}
+    #wipPanel .wp-row{padding:11px 10px}
+    .card:active{border-color:#b8c3cc}            /* tap feedback (replaces the lost :hover cue) */
+    .slice.drillable:active{background:#e9eef2}
+  }
 </style>
 </head>
 <body>
@@ -848,6 +880,10 @@ function rowVisible(end){
 // papers have a servable PDF, hovering embeds its first page, clicking the preview opens
 // the full PDF in a new tab. Opened from file:// (`lit build` output) it stays inert.
 const LIVE = location.protocol.startsWith("http");
+// touch/no-hover devices synthesize mouseenter/move on tap (iOS), which would pin a sticky
+// tooltip and latch soft previews. Hover-only affordances are gated on a real hover pointer;
+// the load-bearing actions (tap to open/pin) are click/pointer-based and unaffected.
+const HOVER = matchMedia("(hover: hover)").matches;
 let PDFS = null;                       // Set of citekeys with a PDF (null until fetched)
 if (LIVE) fetch("pdfs.json").then(r => r.ok ? r.json() : [])
   .then(l => { PDFS = new Set(l); }).catch(() => { PDFS = new Set(); });
@@ -863,6 +899,7 @@ tip.addEventListener("mouseenter", keepTip);
 tip.addEventListener("mouseleave", () => { tip.style.display = "none"; tip.dataset.key = ""; });
 
 function showTip(e, key, el){
+  if (!HOVER) return;                  // touch: no sticky synthesized-hover tooltip
   keepTip();
   tip.style.display = "block";
   if (tip.dataset.key === key) return; // pinned: the tip must hold still while the same
@@ -923,6 +960,7 @@ let softEl = null, softReq = null, hoverTimer = null;
 function hideSoftPdf(){ if (softEl) { softEl.remove(); softEl = null; } softReq = null; clearTimeout(hoverTimer); }
 function updateHoverPdf(h){
   clearTimeout(hoverTimer);
+  if (!HOVER) { hideSoftPdf(); return; }   // touch: the pinned window is reached by tap, no hover preview
   const key = h && h.sid ? idKey(h.cardId) : null;
   const s = key ? (PAPERS[key] && PAPERS[key].slices || []).find(x => x.id === h.sid) : null;
   if (!LIVE || !s || !s.quote || pdfWindows.has(`${key}:${h.sid}`)) {
@@ -1055,6 +1093,7 @@ function mountPage(win, key, page, rects, opts){
     zoomTo(view.z * Math.exp(-e.deltaY * 0.0015), e.clientX - rect.left, e.clientY - rect.top);
   }, {passive: false});
   body.addEventListener("pointerdown", e => {    // pan tool: drag scrolls (text tool: browser selects)
+    if (e.pointerType === "touch") return;       // native scroll owns touch; drag-pan is mouse-only
     if (e.button !== 0 || win.dataset.tool !== "pan") return;
     body.classList.add("pan"); body.setPointerCapture(e.pointerId);
     const sx = e.clientX, sy = e.clientY, l0 = body.scrollLeft, t0 = body.scrollTop;
@@ -1168,6 +1207,7 @@ async function mountDoc(win, key, page, rects, opts){
     zoomTo(view.z * Math.exp(-e.deltaY * 0.0015), e.clientX - rect.left, e.clientY - rect.top);
   }, {passive: false});
   body.addEventListener("pointerdown", e => {    // pan tool: drag scrolls (text tool: browser selects)
+    if (e.pointerType === "touch") return;       // native scroll owns touch; drag-pan is mouse-only
     if (e.button !== 0 || win.dataset.tool !== "pan") return;
     body.classList.add("pan"); body.setPointerCapture(e.pointerId);
     const sx = e.clientX, sy = e.clientY, l0 = body.scrollLeft, t0 = body.scrollTop;
@@ -1193,6 +1233,7 @@ async function mountDoc(win, key, page, rects, opts){
 // generic pointer-drag: onMove(dx,dy,base0,base1); base() seeds the deltas; skip if target in `guard`
 function dragBy(handle, onMove, base, guard){
   handle.addEventListener("pointerdown", e => {
+    if (e.pointerType === "touch") return;   // touch scrolls the sheet natively; drag/resize is mouse-only
     if (guard && e.target.closest(guard)) return;
     e.preventDefault(); e.stopPropagation(); handle.setPointerCapture(e.pointerId);
     const sx = e.clientX, sy = e.clientY, [b0, b1] = base();
@@ -1214,7 +1255,7 @@ boot();
 // padding follows via calc(50vw - var(--col)/2). Value readout kept in sync.
 (function(){
   const slider=document.getElementById("colw"), val=slider.nextElementSibling;
-  const apply=()=>{ document.documentElement.style.setProperty("--col",slider.value+"px");
+  const apply=()=>{ document.documentElement.style.setProperty("--col","min("+slider.value+"px, 86vw)");
     val.textContent=slider.value+"px"; redraw(); };
   slider.addEventListener("input",apply); apply();
 })();
