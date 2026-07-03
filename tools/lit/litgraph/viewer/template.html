@@ -279,7 +279,7 @@
 <script>
 const NS="http://www.w3.org/2000/svg";
 // ── data: injected by `lit build` (replaces the mockup's hardcoded literals) ──
-const GRAPH = /*__GRAPH_JSON__*/ {"papers":{},"broad":{},"stubs":{},"order":[]} /*__END__*/;
+const GRAPH = /*__GRAPH_JSON__*/ {"papers":{},"broad":{},"stubs":{},"order":[],"active":[]} /*__END__*/;
 const PAPERS = GRAPH.papers;
 const BROAD = GRAPH.broad;
 const STUBS = GRAPH.stubs;
@@ -1281,14 +1281,14 @@ board.addEventListener("scroll",redraw);
 addEventListener("resize",redraw);
 
 // ── curation-in-progress review lens (serve only) ───────────────────────────────────────────
-// Curated papers not yet at maturity 4 are the frontier of curation. Surface them from the
-// header and inspect each in its isolated `lit preview` view (an iframe of /preview.html?key=…,
-// the server's real isolate() — no drift) without disturbing the graph underneath. LIVE-gated:
-// a static `lit build` needs no server, so the pill stays hidden and the artifact is unchanged.
+// The papers the curator is actively working on — the manual in-progress list (`[curation]
+// active` in config.toml), NOT every unfinished paper. Surface them from the header and inspect
+// each in its isolated `lit preview` view (an iframe of /preview.html?key=…, the server's real
+// isolate() — no drift) without disturbing the graph underneath. LIVE-gated: a static `lit build`
+// carries no active list, so the pill stays hidden and the shared artifact is unchanged.
 (function(){
   const pill = document.getElementById("wip");
-  const inProg = ORDER.filter(k => PAPERS[k] && PAPERS[k].cur
-                                    && (PAPERS[k].pass == null || PAPERS[k].pass < 4));
+  const inProg = (GRAPH.active || []).filter(k => PAPERS[k] && PAPERS[k].cur);
   if (!LIVE || !inProg.length) return;
   pill.innerHTML = `in progress · <span class="n">${inProg.length}</span>`;
   pill.hidden = false;

@@ -61,10 +61,12 @@ def _resolve_paths():
 
 def _payload_dict(root: Path, pdf_dir: Path) -> dict:
     """graph.json as a dict, rebuilt from the repo's YAML, quotes polished against the ``.md``
-    full text. Mirrors ``litgraph.serve._Handler._payload_dict``; may raise ``BuildError``."""
+    full text. Mirrors ``litgraph.serve._Handler._payload_dict``; may raise ``BuildError``. The
+    manual in-progress list (``[curation] active`` in config.toml) is re-read per request too, so
+    editing it is live — the same edit-then-refresh rhythm as the YAML rebuild."""
     graph = build_graph(root)
     polish_graph(graph, pdf_dir)
-    return to_json_dict(graph)
+    return to_json_dict(graph, active=load_config(root).active)
 
 
 def register_litgraph_routes(app, root) -> None:

@@ -119,7 +119,7 @@ def _paper_json(p: Paper, builds: list[dict]) -> dict:
     }
 
 
-def to_json_dict(g: Graph) -> dict:
+def to_json_dict(g: Graph, active: "tuple[str, ...]" = ()) -> dict:
     builds = _builds(g)
     curated = {ck: _paper_json(p, builds.get(ck, [])) for ck, p in g.papers.items() if p.curated}
     stubs = {ck: {"title": p.title, "year": p.year, "type": p.type, "doi": p.doi}
@@ -128,7 +128,12 @@ def to_json_dict(g: Graph) -> dict:
                     "meter": ({"s": b.support, "c": b.contradict}
                               if b.kind == "broad claim" else None)}
              for slug, b in g.broad.items()}
-    return {"papers": curated, "broad": broad, "stubs": stubs, "order": g.order}
+    # `active` is the manual in-progress list (config.toml); keep only citekeys that are actually
+    # curated papers, preserving the given order. Empty for static `lit build` (the WIP panel is
+    # serve-only), so a shared artifact never carries the curator's private worklist.
+    active_curated = [k for k in active if k in curated]
+    return {"papers": curated, "broad": broad, "stubs": stubs, "order": g.order,
+            "active": active_curated}
 
 
 _TEMPLATE = Path(__file__).parent / "viewer" / "template.html"

@@ -9,7 +9,8 @@ EXAMPLE = Path(__file__).resolve().parents[3] / "example"
 
 def test_to_json_dict_shape():
     d = to_json_dict(build_graph(EXAMPLE))
-    assert set(d) == {"papers", "broad", "stubs", "order"}
+    assert set(d) == {"papers", "broad", "stubs", "order", "active"}
+    assert d["active"] == []           # no active list passed → empty (static build carries none)
     # curated paper carries computed slices + edge lists
     p = d["papers"]["Chen2021Sys"]
     assert p["cur"] is True and p["pass"] == 4
@@ -66,6 +67,13 @@ def test_to_json_dict_shape():
     assert "meter" in d["broad"]["throughput-scales-with-batching"]
     # order is papers (curated + stubs), curated first
     assert d["order"][0] == "Chen2021Sys"
+
+
+def test_active_list_filters_to_curated_in_order():
+    g = build_graph(EXAMPLE)
+    # a curated key stays; a stub key and an unknown key are dropped; given order is preserved
+    d = to_json_dict(g, active=("Patel2017Vldb", "Lopez2019Arch", "Nope2099X", "Chen2021Sys"))
+    assert d["active"] == ["Lopez2019Arch", "Chen2021Sys"]
 
 
 def test_cons_skips_local_generalization():

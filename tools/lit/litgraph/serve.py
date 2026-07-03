@@ -25,6 +25,7 @@ import fitz  # pymupdf — already a hard dependency (litgraph.pdf)
 
 from litgraph import pdfview, store
 from litgraph.build import render_html, to_json_dict
+from litgraph.config import load_config
 from litgraph.graph import BuildError, build_graph
 from litgraph.preview import isolate
 from litgraph.quotes import polish_graph
@@ -199,10 +200,12 @@ class _Handler(BaseHTTPRequestHandler):
     def _payload_dict(self) -> dict:
         """graph.json as a dict, rebuilt from the repo's YAML on every request (may raise
         BuildError). Quotes are polished against the `.md` full text in pdf_dir (falls back to
-        the raw anchor when a paper's `.md` is absent)."""
+        the raw anchor when a paper's `.md` is absent). The manual in-progress list
+        (`[curation] active` in config.toml) is re-read per request too, so editing it is live —
+        no restart — like every other refresh-after-edit in the curation loop."""
         graph = build_graph(self.server.root)
         polish_graph(graph, self.server.pdf_dir)
-        return to_json_dict(graph)
+        return to_json_dict(graph, active=load_config(self.server.root).active)
 
     def _payload(self) -> str:
         """`_payload_dict` serialized — the graph.json body served at `/` and `/graph.json`."""
