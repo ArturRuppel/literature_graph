@@ -96,6 +96,9 @@
   .ctitle{display:none;padding:0 11px 2px;font-size:10px;color:var(--dim);line-height:1.32}
   .cauth{display:none;padding:4px 11px 6px;font-size:9px;color:var(--faint)}
   .cauth .star{color:var(--floor)}
+  /* the abstract: on desktop it lives in the hover tip; on touch (no hover) it shows inline in
+     the open card instead (revealed by the coarse-pointer media query below) */
+  .cabs{display:none;padding:0 11px 8px;font-size:10px;color:var(--dim);line-height:1.4}
   .card.open .cyr{display:inline-block}
   .card.open .ctitle,.card.open .cauth{display:block}
   /* open card: body is inert; the header collapses, the slice rows drill */
@@ -247,6 +250,7 @@
     #wipPanel .wp-row{padding:11px 10px}
     .card:active{border-color:#b8c3cc}            /* tap feedback (replaces the lost :hover cue) */
     .slice.drillable:active{background:#e9eef2}
+    .card.open .cabs{display:block}               /* abstract inline (no hover tip on touch) */
   }
 </style>
 </head>
@@ -349,6 +353,7 @@ function paperCard(key, level){
   if (cur) {
     body += `<div class="ctitle">${p.title}</div>`;
     if (p.authors) body += `<div class="cauth">${authLine(p.authors)}</div>`;
+    if (p.abs) body += `<div class="cabs">${p.abs}</div>`;   // shown inline only on touch (CSS); desktop reads it in the hover tip
     body += `<div class="slices"></div>`;   // filled by renderSlices from the drill state
   }
   el.innerHTML = body;
@@ -359,7 +364,12 @@ function paperCard(key, level){
     hoverRow(el, e);
   });
   el.addEventListener("mouseleave", () => { dropTip(); hoverRow(null); });
-  el.addEventListener("click", e => { if (cur) cardClick(e, el, level, key); });
+  // touch has no hover: a curated card opens on tap; a stub (no open action) pins its tip instead,
+  // so its bib metadata stays reachable on a phone (dismissed by the next outside tap).
+  el.addEventListener("click", e => {
+    if (cur) cardClick(e, el, level, key);
+    else if (!HOVER) showTip(e, key, el, true);
+  });
   return el;
 }
 
@@ -897,9 +907,17 @@ function dropTip(){
 }
 tip.addEventListener("mouseenter", keepTip);
 tip.addEventListener("mouseleave", () => { tip.style.display = "none"; tip.dataset.key = ""; });
+// touch: a tap-pinned tip (from a stub) has no mouseleave — dismiss it on the next tap that
+// isn't inside the tip or on another stub (capture, so it beats the stub's own re-show handler).
+addEventListener("click", e => {
+  if (!HOVER && tip.style.display === "block"
+      && !e.target.closest("#tip") && !e.target.closest(".card.stub")) {
+    tip.style.display = "none"; tip.dataset.key = "";
+  }
+}, true);
 
-function showTip(e, key, el){
-  if (!HOVER) return;                  // touch: no sticky synthesized-hover tooltip
+function showTip(e, key, el, force){
+  if (!HOVER && !force) return;        // touch: only the explicit tap-to-pin path (force) shows the tip
   keepTip();
   tip.style.display = "block";
   if (tip.dataset.key === key) return; // pinned: the tip must hold still while the same
