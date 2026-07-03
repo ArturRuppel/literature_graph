@@ -11,7 +11,6 @@ from pathlib import Path
 
 from ruamel.yaml import YAML
 
-from .citekey import _norm_doi
 from .model import CuratedPaper, Stub
 
 _yaml_rt = YAML()  # round-trip (preserves comments)

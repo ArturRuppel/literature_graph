@@ -39,10 +39,6 @@ _PAGE_REQ = re.compile(r"^/page/([A-Za-z0-9]+)/(\d+)\.png$")
 _WORDS_REQ = re.compile(r"^/words/([A-Za-z0-9]+)/(\d+)\.json$")
 _PAGES_REQ = re.compile(r"^/pages/([A-Za-z0-9]+)\.json$")
 
-# rendering widths live in litgraph.pdfview (shared with the ELN plugin); re-exported here
-# because the plugin and tests import them from serve.
-_PREVIEW_WIDTH = pdfview.PREVIEW_WIDTH
-_PAGE_WIDTH = pdfview.PAGE_WIDTH
 _IMG_CACHE = "max-age=600"  # page/preview PNGs are immutable until the PDF's mtime changes
 
 
@@ -133,16 +129,6 @@ def locate_quote(pdf: "Path | str", anchor: str) -> dict | None:
     return None
 
 
-def _search_page(page: "fitz.Page", anchor: str) -> list:
-    """`search_for` an anchor on one page with the needle backoff. Returns a list of Rects
-    (one per line the phrase spans), empty if nothing hits."""
-    for needle in _needles(anchor):
-        hits = page.search_for(needle)
-        if hits:
-            return hits
-    return []
-
-
 def _valid_rects(rects) -> bool:
     """A non-empty list of 4-number boxes, each coordinate a fraction in [0, 1]."""
     if not isinstance(rects, list) or not rects:
@@ -162,25 +148,6 @@ class _Server(ThreadingHTTPServer):
         self.root = Path(root)
         self.pdf_dir = Path(pdf_dir)
         super().__init__(address, _Handler)
-
-    # PDF rendering delegates to litgraph.pdfview (socket-free, module-cached) so `lit serve`
-    # and the ELN plugin render identically. These thin wrappers keep the _Server API stable.
-    def render_page(self, pdf: Path, n: int, width: int) -> bytes:
-        return pdfview.render_page(pdf, n, width)
-
-    def page_sizes(self, pdf: Path) -> list[list[float]]:
-        return pdfview.page_sizes(pdf)
-
-    def page_words(self, pdf: Path, n: int) -> list[dict]:
-        return pdfview.page_words(pdf, n)
-
-    def preview(self, pdf: Path) -> bytes:
-        return pdfview.preview(pdf)
-
-    def resolve_quote(self, pdf: Path, anchor: str) -> dict | None:
-        """Full-coverage PDF location of `anchor` (module-level `locate_quote`, shared with the
-        `lit locate` batch command)."""
-        return locate_quote(pdf, anchor)
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -252,7 +219,7 @@ class _Handler(BaseHTTPRequestHandler):
                     return self._send(HTTPStatus.NOT_FOUND, "text/plain; charset=utf-8",
                                       f"no preview: {name}\n".encode())
                 try:
-                    png = self.server.preview(pdf)
+                    png = pdfview.preview(pdf)
                 except Exception:
                     return self._send(HTTPStatus.INTERNAL_SERVER_ERROR,
                                       "text/plain; charset=utf-8",
@@ -265,7 +232,7 @@ class _Handler(BaseHTTPRequestHandler):
                     return self._send(HTTPStatus.NOT_FOUND, "text/plain; charset=utf-8",
                                       f"no PDF: {m.group(1)}\n".encode())
                 try:
-                    png = self.server.render_page(pdf, int(m.group(2)), _PAGE_WIDTH)
+                    png = pdfview.render_page(pdf, int(m.group(2)), pdfview.PAGE_WIDTH)
                 except Exception:
                     return self._send(HTTPStatus.NOT_FOUND, "text/plain; charset=utf-8",
                                       b"no such page\n")
@@ -277,7 +244,7 @@ class _Handler(BaseHTTPRequestHandler):
                     return self._send(HTTPStatus.NOT_FOUND, "text/plain; charset=utf-8",
                                       f"no PDF: {m.group(1)}\n".encode())
                 try:
-                    sizes = self.server.page_sizes(pdf)
+                    sizes = pdfview.page_sizes(pdf)
                 except Exception:
                     return self._send(HTTPStatus.INTERNAL_SERVER_ERROR, "text/plain; charset=utf-8",
                                       f"page manifest failed: {m.group(1)}\n".encode())
@@ -290,7 +257,7 @@ class _Handler(BaseHTTPRequestHandler):
                     return self._send(HTTPStatus.NOT_FOUND, "text/plain; charset=utf-8",
                                       f"no PDF: {m.group(1)}\n".encode())
                 try:
-                    words = self.server.page_words(pdf, int(m.group(2)))
+                    words = pdfview.page_words(pdf, int(m.group(2)))
                 except Exception:
                     return self._send(HTTPStatus.NOT_FOUND, "text/plain; charset=utf-8",
                                       b"no such page\n")
@@ -316,7 +283,7 @@ class _Handler(BaseHTTPRequestHandler):
                 pdf = self.server.pdf_dir / (key + ".pdf")
                 if not _CITEKEY.match(key) or not pdf.is_file() or not anchor:
                     return self._send(HTTPStatus.NOT_FOUND, "application/json", b"null")
-                loc = self.server.resolve_quote(pdf, anchor)
+                loc = locate_quote(pdf, anchor)
                 return self._send(HTTPStatus.OK, "application/json; charset=utf-8",
                                   json.dumps(loc).encode())
             if path == "/quote_loc":

@@ -94,7 +94,7 @@ class CuratedPaper:
     def to_yaml(self) -> str:
         """Render curated/<citekey>.yaml, matching the example's flow-author style."""
         lines: list[str] = []
-        lines.append(f"# Curated paper skeleton — initialized by `lit ingest` (spec §4).")
+        lines.append("# Curated paper skeleton — initialized by `lit ingest` (spec §4).")
         lines.append(f"# Filename stem `{self.citekey}` IS the citekey (SCHEMA §3).")
         lines.append(f"title: {_yaml_str(self.title)}")
         lines.append(f"type: {self.type}")
