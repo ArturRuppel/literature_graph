@@ -23,7 +23,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 
 import fitz  # pymupdf — already a hard dependency (litgraph.pdf)
 
-from litgraph import store
+from litgraph import pdfview, store
 from litgraph.build import render_html, to_json_dict
 from litgraph.graph import BuildError, build_graph
 from litgraph.preview import isolate
@@ -38,9 +38,10 @@ _PAGE_REQ = re.compile(r"^/page/([A-Za-z0-9]+)/(\d+)\.png$")
 _WORDS_REQ = re.compile(r"^/words/([A-Za-z0-9]+)/(\d+)\.json$")
 _PAGES_REQ = re.compile(r"^/pages/([A-Za-z0-9]+)\.json$")
 
-_PREVIEW_WIDTH = 552  # px (2x the ~276px tooltip box — crisp on retina, still tiny)
-_PAGE_WIDTH = 1600    # px — full-page render for the floating quote window (crisp under zoom)
-_MAX_PX = 4_000_000   # cap rasterized pixels (oversized-mediabox guard)
+# rendering widths live in litgraph.pdfview (shared with the ELN plugin); re-exported here
+# because the plugin and tests import them from serve.
+_PREVIEW_WIDTH = pdfview.PREVIEW_WIDTH
+_PAGE_WIDTH = pdfview.PAGE_WIDTH
 _IMG_CACHE = "max-age=600"  # page/preview PNGs are immutable until the PDF's mtime changes
 
 
@@ -159,73 +160,21 @@ class _Server(ThreadingHTTPServer):
     def __init__(self, address, root: Path, pdf_dir: Path):
         self.root = Path(root)
         self.pdf_dir = Path(pdf_dir)
-        self._pages: dict[tuple, tuple[float, bytes]] = {}  # (name, n, width) -> (mtime, png)
-        self._words: dict[tuple, tuple[float, list]] = {}   # (name, n) -> (mtime, [word,...])
-        self._sizes: dict[str, tuple[float, list]] = {}     # name -> (mtime, [[w,h],...])
         super().__init__(address, _Handler)
 
+    # PDF rendering delegates to litgraph.pdfview (socket-free, module-cached) so `lit serve`
+    # and the ELN plugin render identically. These thin wrappers keep the _Server API stable.
     def render_page(self, pdf: Path, n: int, width: int) -> bytes:
-        """Page `n` of `pdf` rendered to a `width`-px PNG, cached until the file's mtime
-        changes. n=0 + _PREVIEW_WIDTH is the tooltip thumbnail; any page at _PAGE_WIDTH
-        feeds the floating quote window."""
-        mtime = pdf.stat().st_mtime
-        key = (pdf.name, n, width)
-        hit = self._pages.get(key)
-        if hit and hit[0] == mtime:
-            return hit[1]
-        with fitz.open(pdf) as doc:
-            page = doc[n]
-            zoom = width / page.rect.width
-            # clamp total pixels so an oversized mediabox (poster/foldout) can't blow up into a
-            # multi-second render — cap the raster, the window still zooms into the bitmap
-            px = (width) * (page.rect.height * zoom)
-            if px > _MAX_PX:
-                zoom *= (_MAX_PX / px) ** 0.5
-            png = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom)).tobytes("png")
-        self._pages[key] = (mtime, png)
-        return png
+        return pdfview.render_page(pdf, n, width)
 
     def page_sizes(self, pdf: Path) -> list[list[float]]:
-        """Per-page point sizes `[[w, h], ...]` — the whole-document manifest the viewer uses to
-        lay out (and lazily fill) one stacked page box per page. Cached until the PDF's mtime
-        changes."""
-        mtime = pdf.stat().st_mtime
-        hit = self._sizes.get(pdf.name)
-        if hit and hit[0] == mtime:
-            return hit[1]
-        with fitz.open(pdf) as doc:
-            sizes = [[p.rect.width, p.rect.height] for p in doc]
-        self._sizes[pdf.name] = (mtime, sizes)
-        return sizes
+        return pdfview.page_sizes(pdf)
 
     def page_words(self, pdf: Path, n: int) -> list[dict]:
-        """Words of page `n` as page-fraction boxes for the selectable text overlay:
-        `[{t, x0,y0,x1,y1, ln}, ...]` in reading order, `ln` a per-line ordinal so the client
-        can keep line breaks. Same page.rect normalization as the highlight rects (`_match_words`
-        / `resolve_quote`), so the overlay registers on the raster without re-derivation. Cached
-        until the PDF's mtime changes."""
-        mtime = pdf.stat().st_mtime
-        key = (pdf.name, n)
-        hit = self._words.get(key)
-        if hit and hit[0] == mtime:
-            return hit[1]
-        with fitz.open(pdf) as doc:
-            page = doc[n]                         # IndexError on an out-of-range page → 404 upstream
-            w, h = page.rect.width, page.rect.height
-            raw = page.get_text("words")          # (x0, y0, x1, y1, text, block, line, word_no)
-        out = []
-        for x0, y0, x1, y1, t, block, line, _wn in sorted(raw, key=lambda o: (o[5], o[6], o[7])):
-            t = "".join(c for c in t if not unicodedata.category(c).startswith("C"))  # strip control/zero-width (e.g. ﻿) from copied text
-            if not t.strip():                     # nothing visible left → not a selectable word
-                continue
-            out.append({"t": t, "x0": x0 / w, "y0": y0 / h, "x1": x1 / w, "y1": y1 / h,
-                        "ln": block * 10000 + line})
-        self._words[key] = (mtime, out)
-        return out
+        return pdfview.page_words(pdf, n)
 
     def preview(self, pdf: Path) -> bytes:
-        """First page of `pdf` as a PNG for the tooltip thumbnail."""
-        return self.render_page(pdf, 0, _PREVIEW_WIDTH)
+        return pdfview.preview(pdf)
 
     def resolve_quote(self, pdf: Path, anchor: str) -> dict | None:
         """Full-coverage PDF location of `anchor` (module-level `locate_quote`, shared with the
