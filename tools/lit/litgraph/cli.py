@@ -10,6 +10,7 @@ from .config import load_config
 from .ingest import IngestError, Report, ingest
 from .graph import build_graph, BuildError
 from .build import emit
+from .preview import build_preview_graph, emit_preview
 from .quotes import polish_graph
 from .serve import serve
 
@@ -71,6 +72,29 @@ def main(argv: list[str] | None = None) -> int:
     p_build.add_argument("--out", default=None,
                          help="output dir (default: <root>/dist)")
 
+    p_prev = sub.add_parser("preview", help="render one paper's local subgraph in isolation "
+                                            "(curation: see a proposition as it'll look)")
+    p_prev.add_argument("citekey", nargs="?",
+                        help="focal paper citekey (default: --scratch file stem)")
+    p_prev.add_argument("--scratch", default=None,
+                        help="a curated-schema YAML to overlay as the focal paper — propose "
+                             "before tokenizing into curated/")
+    p_prev.add_argument("--root", default=".", help="data root (curated/, stubs.yaml, ...)")
+    p_prev.add_argument("--out", default=None, help="output dir (default: <root>/dist)")
+    p_prev.add_argument("--pdf-dir", default=None,
+                        help="dir holding <citekey>.md for quote polishing "
+                             "(default: config.toml pdf_dir, else <root>/pdfs)")
+
+    p_loc = sub.add_parser("locate", help="resolve each curated quote's place in its PDF and "
+                                          "store it as quote_loc (full-coverage highlight anchors)")
+    p_loc.add_argument("--root", default=".", help="data root (curated/, stubs.yaml, ...)")
+    p_loc.add_argument("--pdf-dir", default=None,
+                       help="dir holding <citekey>.pdf files "
+                            "(default: config.toml pdf_dir, else <root>/pdfs)")
+    p_loc.add_argument("--force", action="store_true",
+                       help="re-resolve quotes that already have a quote_loc (default: keep them)")
+    p_loc.add_argument("--dry-run", action="store_true", help="report what would be located; write nothing")
+
     p_srv = sub.add_parser("serve", help="serve the viewer over HTTP: rebuild on refresh, "
                                          "PDF hover-preview and click-to-open")
     p_srv.add_argument("--root", default=".", help="data root (curated/, stubs.yaml, ...)")
@@ -117,6 +141,66 @@ def main(argv: list[str] | None = None) -> int:
             print(f"quote-flag: {w}", file=sys.stderr)
         emit(graph, out)
         print(f"built {len(graph.papers)} papers -> {out}/index.html")
+        return 0
+
+    if args.command == "preview":
+        citekey = args.citekey or (Path(args.scratch).stem if args.scratch else None)
+        if not citekey:
+            print("error: give a citekey or --scratch <file>", file=sys.stderr)
+            return 2
+        cfg = load_config(args.root)
+        out = Path(args.out) if args.out else cfg.root / "dist"
+        pdf_dir = Path(args.pdf_dir) if args.pdf_dir else (cfg.pdf_dir or cfg.root / "pdfs")
+        scratch = Path(args.scratch) if args.scratch else None
+        if scratch is not None and not scratch.is_file():
+            print(f"error: no such scratch file: {scratch}", file=sys.stderr)
+            return 2
+        try:
+            graph = build_preview_graph(cfg.root, citekey, scratch)
+        except BuildError as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 1
+        for w in polish_graph(graph, pdf_dir):
+            if w.startswith(f"{citekey}:"):        # only the focal paper's quote flags matter here
+                print(f"quote-flag: {w}", file=sys.stderr)
+        html = emit_preview(graph, citekey, out)
+        print(f"preview {citekey} -> {html}")
+        return 0
+
+    if args.command == "locate":
+        from ruamel.yaml import YAML
+        from . import store
+        from .serve import locate_quote
+        cfg = load_config(args.root)
+        pdf_dir = Path(args.pdf_dir) if args.pdf_dir else (cfg.pdf_dir or cfg.root / "pdfs")
+        reader = YAML(typ="safe")
+        located = papers = missing = 0
+        for f in sorted((cfg.root / "curated").glob("*.yaml")):
+            key = f.stem
+            pdf = pdf_dir / f"{key}.pdf"
+            if not pdf.is_file():
+                continue
+            doc = reader.load(f.read_text()) or {}
+            locs: dict[str, dict] = {}
+            for group in ("claims", "questions", "methods"):
+                for s in doc.get(group, []) or []:
+                    q = s.get("quote")
+                    if not q or (s.get("quote_loc") and not args.force):
+                        continue
+                    loc = locate_quote(pdf, q)
+                    if loc:
+                        locs[s["id"]] = loc
+                    else:
+                        missing += 1
+                        print(f"  ⚠ {key}:{s['id']} could not be located", file=sys.stderr)
+            if locs:
+                papers += 1
+                located += len(locs)
+                if not args.dry_run:
+                    store.write_quote_locs(cfg.root, key, locs)
+        tag = "DRY-RUN — nothing written" if args.dry_run else "written"
+        print(f"lit locate ({tag}): {located} quote_loc across {papers} papers"
+              + (f"; {missing} not located" if missing else ""))
         return 0
 
     if args.command == "serve":

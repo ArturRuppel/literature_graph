@@ -20,6 +20,17 @@ edits/accepts. Nothing is "curated" until the human commits it.
 - **Discuss, then tokenize — align after every pass.** Never write slices ahead of agreement.
   Each pass is a loop: *explain your reading at the pass's granularity → discuss until
   aligned → only then weld the agreed slices into the file.* Realign before the next pass.
+- **Render the proposition, don't just describe it — `lit preview`.** Prose is hard to judge.
+  During the *explain* step, write the pass's proposed slices to a **scratch YAML** (the real
+  `curated/` schema, held *outside* `curated/`) and run
+  `lit preview --scratch <file> --root <data>`: it renders that one paper's local subgraph
+  **in isolation** — its slices and every edge, cross-paper endpoints shown as their stub
+  chips / synthesis band — using the exact viewer `lit build` ships, so the preview can't
+  drift from the final graph. The human judges the card as it'll actually look; only on
+  agreement is the scratch draft promoted into `curated/<citekey>.yaml` (that promotion *is*
+  the tokenize step). Preview also polishes the focal quotes, so a `quote-flag` warns you at
+  proposition time if an anchor isn't verbatim in the `.md`. It's a rendering aid, not a
+  shortcut past the reading and judgement — the discussion is still the work.
 - **Propose, never flood** (CONCEPT §10). A handful of well-welded slices beats a wall of
   shallow ones. **Curation has a maturity tier** — a paper matures from ingested skeleton, to
   sliced support skeleton, to contextualized, to full; stopping early is a normal resting
@@ -34,6 +45,13 @@ edits/accepts. Nothing is "curated" until the human commits it.
   contiguous passages may be shortened with `[...]` when the curator explicitly accepts the
   flag. Never paraphrase into a quote. If you can't find the grounded sentence, the claim
   isn't ready.
+- **The quote lives in the PDF, not as inline text.** Under `lit serve` the viewer no longer
+  prints the weld — hovering a claim pops its PDF page with the sentence highlighted, clicking
+  pins it. The highlight comes from `quote_loc` (SCHEMA §6): run **`lit locate`** once to
+  resolve every quote's place in its PDF (full-coverage word-geometry match) and store it in
+  the YAML; review the diff and commit. Quotes without a stored location fall back to a live
+  resolve. `quote_loc` is derived-and-regenerable (re-run `lit locate --force` any time), not a
+  hand-authored judgement.
 - **Generalize, don't merge — and don't duplicate for nesting.** Before creating a broad
   `claims/`, `questions/`, or `methods/` node, **look** for an existing one to `leads_to`;
   co-parent, never equate two claims. A broad target earns its existence only when **≥2

@@ -52,6 +52,17 @@ def get(srv, path, method="GET"):
     return r.status, dict(r.getheaders()), body
 
 
+def post(srv, path, obj):
+    """POST a JSON body to the loopback server; return (status, parsed-or-bytes)."""
+    conn = http.client.HTTPConnection("127.0.0.1", srv.server_address[1], timeout=5)
+    conn.request("POST", path, json.dumps(obj))
+    r = conn.getresponse()
+    body = r.read()
+    conn.close()
+    ctype = r.getheader("Content-Type", "")
+    return r.status, (json.loads(body) if ctype.startswith("application/json") else body)
+
+
 def test_index_serves_viewer_with_live_rebuild_headers(srv):
     status, headers, body = get(srv, "/")
     assert status == 200
@@ -130,6 +141,117 @@ def test_broken_edit_returns_500_and_recovers(srv, repo):
     assert status == 500 and "m99" in body.decode()   # names the offender, server survives
     f.write_text(good)
     assert get(srv, "/")[0] == 200
+
+
+# ── PDF quote windows: any-page render, search_for resolver, quote_loc write-back ─────────
+
+from litgraph.serve import _needles
+
+
+def test_needles_prefers_long_then_backs_off_with_hyphen_variant():
+    ns = _needles("Fast and long- ranged propagation of mechanical force here")
+    # the full phrase (whitespace-normalized) leads; a hyphen-glued variant appears
+    assert ns[0] == "Fast and long- ranged propagation of mechanical force here"
+    assert "Fast and long-ranged propagation of mechanical force here" in ns
+    # leading-window backoff, longest → shortest, down to two words
+    assert ns[-1] == "Fast and"
+    assert ns.index("Fast and long-") < ns.index("Fast and") or "Fast and long-" not in ns
+
+
+def test_locate_quote_covers_a_hyphenated_line_break(tmp_path):
+    # the word-geometry matcher must cover the WHOLE quote even where a word is hyphenated
+    # across a line break — exactly where `search_for` fails and the old resolver boxed only a
+    # leading fragment (SCHEMA §6 full-coverage anchors)
+    from litgraph.serve import locate_quote
+    p = tmp_path / "hyph.pdf"
+    with fitz.open() as doc:
+        pg = doc.new_page()
+        pg.insert_text((72, 100), "mechano-")        # a word split across the line break …
+        pg.insert_text((72, 120), "structural coupling")
+        doc.save(str(p))
+    loc = locate_quote(p, "mechanostructural coupling")   # … re-joined in the .md-derived quote
+    assert loc and loc["page"] == 0
+    assert len(loc["rects"]) == 2                    # both lines boxed, head + tail
+    assert fitz.open(p)[0].search_for("mechanostructural coupling") == []  # search_for alone can't
+
+
+def test_page_render_any_page_and_out_of_range(srv):
+    status, headers, body = get(srv, "/page/Chen2021Sys/0.png")
+    assert status == 200 and headers["Content-Type"] == "image/png"
+    assert body.startswith(b"\x89PNG\r\n")
+    assert get(srv, "/page/Chen2021Sys/9.png")[0] == 404   # one-page fixture: page 9 absent
+    assert get(srv, "/page/Nope2020Xyz/0.png")[0] == 404
+
+
+def test_words_endpoint_serves_page_fraction_boxes(srv):
+    # the selectable text overlay is fed by per-page word geometry, same page.rect normalization
+    # as the highlight rects so it registers on the raster
+    status, headers, body = get(srv, "/words/Chen2021Sys/0.json")
+    assert status == 200 and headers["Content-Type"].startswith("application/json")
+    assert "max-age" in headers["Cache-Control"]            # immutable until the PDF's mtime changes
+    words = json.loads(body)
+    assert [w["t"] for w in words][:2] == ["fixture", "paper"]   # reading order, whitespace dropped
+    for w in words:
+        assert set(w) == {"t", "x0", "y0", "x1", "y1", "ln"}
+        assert all(0 <= w[k] <= 1 for k in ("x0", "y0", "x1", "y1"))
+    assert get(srv, "/words/Chen2021Sys/9.json")[0] == 404   # one-page fixture: page 9 absent
+    assert get(srv, "/words/Nope2020Xyz/0.json")[0] == 404
+
+
+def test_pages_manifest_lists_every_page_size(srv):
+    # the pinned viewer lays out the whole document from this per-page point-size manifest
+    status, headers, body = get(srv, "/pages/Chen2021Sys.json")
+    assert status == 200 and headers["Content-Type"].startswith("application/json")
+    assert "max-age" in headers["Cache-Control"]
+    sizes = json.loads(body)
+    assert len(sizes) == 1                                   # one-page fixture
+    assert all(len(s) == 2 and s[0] > 0 and s[1] > 0 for s in sizes)
+    assert get(srv, "/pages/Nope2020Xyz.json")[0] == 404
+
+
+def test_page_and_preview_are_browser_cacheable_but_html_is_not(srv):
+    # live-rebuilt HTML must never cache; immutable page/preview images should, so reopening a
+    # quote window doesn't refetch/redecode
+    assert get(srv, "/")[1]["Cache-Control"] == "no-store"
+    assert "max-age" in get(srv, "/page/Chen2021Sys/0.png")[1]["Cache-Control"]
+    assert "max-age" in get(srv, "/preview/Chen2021Sys.png")[1]["Cache-Control"]
+
+
+def test_resolve_hits_and_misses(srv):
+    status, loc = post(srv, "/resolve", {"citekey": "Chen2021Sys", "quote": "fixture paper"})
+    assert status == 200 and loc["page"] == 0
+    assert len(loc["rects"]) >= 1
+    assert all(len(r) == 4 and all(0 <= v <= 1 for v in r) for r in loc["rects"])
+    # absent text → null (curator then draws the box by hand)
+    assert post(srv, "/resolve", {"citekey": "Chen2021Sys", "quote": "no such sentence here"})[1] is None
+    assert post(srv, "/resolve", {"citekey": "Nope2020Xyz", "quote": "x"}) == (404, None)
+
+
+def test_quote_loc_writeback_persists_and_shows_in_graph(srv, repo):
+    rects = [[0.1, 0.2, 0.5, 0.23]]
+    status, res = post(srv, "/quote_loc",
+                       {"citekey": "Chen2021Sys", "slice_id": "c1", "page": 0, "rects": rects})
+    assert status == 200 and res == {"ok": True}
+    # written into the YAML, round-tripped
+    from ruamel.yaml import YAML
+    doc = YAML(typ="safe").load((repo / "curated" / "Chen2021Sys.yaml").read_text())
+    c1 = next(s for s in doc["claims"] if s["id"] == "c1")
+    assert c1["quote_loc"] == {"page": 0, "rects": rects}
+    # and surfaced in the rebuilt graph.json
+    g = json.loads(get(srv, "/graph.json")[2])
+    s = next(x for x in g["papers"]["Chen2021Sys"]["slices"] if x["id"] == "c1")
+    assert s["loc"] == {"page": 0, "rects": rects}
+
+
+def test_quote_loc_rejects_bad_payloads(srv):
+    assert post(srv, "/quote_loc",                       # rect out of [0,1]
+                {"citekey": "Chen2021Sys", "slice_id": "c1", "page": 0, "rects": [[0, 0, 2, 1]]})[0] == 400
+    assert post(srv, "/quote_loc",                       # empty rects
+                {"citekey": "Chen2021Sys", "slice_id": "c1", "page": 0, "rects": []})[0] == 400
+    assert post(srv, "/quote_loc",                       # unknown slice
+                {"citekey": "Chen2021Sys", "slice_id": "c9", "page": 0, "rects": [[0, 0, 1, 1]]})[0] == 404
+    assert post(srv, "/quote_loc",                       # bad slice-id form
+                {"citekey": "Chen2021Sys", "slice_id": "../x", "page": 0, "rects": [[0, 0, 1, 1]]})[0] == 400
 
 
 # ── CLI wiring ───────────────────────────────────────────────────────────────────────────

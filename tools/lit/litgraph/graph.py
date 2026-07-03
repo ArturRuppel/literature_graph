@@ -28,6 +28,8 @@ class Slice:
     floor_flag: bool = False        # authored `floor: true` (claim axiom)
     quote: str | None = None
     quote_display: str | None = None  # polished for the viewer (quotes.polish_graph); anchor unchanged
+    quote_loc: dict | None = None     # authored PDF anchor: {page:int, rects:[[x0,y0,x1,y1],...]}
+                                      # rects are fractions (0..1) of the page — DPI-independent
     # computed (filled by build_graph in a later task):
     is_floor: bool = False
     grounded: bool = False
@@ -88,6 +90,7 @@ def _slice_from(raw: dict, kind: str) -> Slice:
         answers=list(raw.get("answers", []) or []),
         floor_flag=bool(raw.get("floor", False)),
         quote=raw.get("quote"),
+        quote_loc=raw.get("quote_loc"),
     )
 
 
@@ -98,6 +101,23 @@ def _authors_from(raw: dict) -> list[tuple[str, str, bool]]:
     return out
 
 
+def paper_from_raw(citekey: str, raw: dict) -> Paper:
+    """Build a curated Paper from a parsed curated/<citekey>.yaml mapping. Shared by
+    load_repo and the `lit preview` scratch overlay so both read a paper identically."""
+    raw = raw or {}
+    slices: list[Slice] = []
+    for group, kind in _SLICE_GROUPS.items():
+        for s in raw.get(group, []) or []:
+            slices.append(_slice_from(s, kind))
+    return Paper(
+        citekey=citekey, curated=True,
+        title=raw.get("title", ""), type=raw.get("type", "original"),
+        year=raw.get("year"), pass_=raw.get("pass"),
+        doi=raw.get("doi"), note=raw.get("note"), abstract=raw.get("abstract"),
+        authors=_authors_from(raw), slices=slices,
+    )
+
+
 def load_repo(root: Path) -> tuple[dict[str, Paper], dict[str, BroadNode]]:
     """Parse curated/*.yaml, claims|questions|methods/*.yaml, and stubs.yaml into
     Papers (curated + stubs) and BroadNodes. No validation/computation yet."""
@@ -105,19 +125,7 @@ def load_repo(root: Path) -> tuple[dict[str, Paper], dict[str, BroadNode]]:
     papers: dict[str, Paper] = {}
 
     for f in sorted((root / "curated").glob("*.yaml")):
-        raw = _yaml.load(f.read_text()) or {}
-        citekey = f.stem
-        slices: list[Slice] = []
-        for group, kind in _SLICE_GROUPS.items():
-            for s in raw.get(group, []) or []:
-                slices.append(_slice_from(s, kind))
-        papers[citekey] = Paper(
-            citekey=citekey, curated=True,
-            title=raw.get("title", ""), type=raw.get("type", "original"),
-            year=raw.get("year"), pass_=raw.get("pass"),
-            doi=raw.get("doi"), note=raw.get("note"), abstract=raw.get("abstract"),
-            authors=_authors_from(raw), slices=slices,
-        )
+        papers[f.stem] = paper_from_raw(f.stem, _yaml.load(f.read_text()) or {})
 
     stubs_path = root / "stubs.yaml"
     if stubs_path.exists():
@@ -333,10 +341,10 @@ def _order(papers: dict[str, Paper]) -> list[str]:
     return [p.citekey for p in curated] + [p.citekey for p in stubs]
 
 
-def build_graph(root) -> Graph:
-    """Load -> validate -> compute emergent properties -> order. The pure core."""
-    papers, broad = load_repo(Path(root))
-    validate(papers, broad)
+def compute_emergent(papers: dict[str, Paper], broad: dict[str, BroadNode]) -> Graph:
+    """Fill emergent properties (SCHEMA §7) + order on already-loaded, already-validated
+    papers/broad, returning the Graph. Split from build_graph so `lit preview` can overlay
+    a scratch paper between load and compute without re-reading the repo."""
     answered = answered_question_ids(papers)
 
     for p in papers.values():
@@ -362,3 +370,10 @@ def build_graph(root) -> Graph:
             b.support, b.contradict = broad_meter(slug, papers)
 
     return Graph(papers=papers, broad=broad, order=_order(papers))
+
+
+def build_graph(root) -> Graph:
+    """Load -> validate -> compute emergent properties -> order. The pure core."""
+    papers, broad = load_repo(Path(root))
+    validate(papers, broad)
+    return compute_emergent(papers, broad)

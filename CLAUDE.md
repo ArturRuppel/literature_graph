@@ -67,7 +67,24 @@ the rate limiter; never flood. A half-finished graph is a normal, valid state.**
   rebuilt from the YAML on every refresh (edit → refresh; a broken edit returns the
   validation error and the server survives), and the tooltip gains PDF hover-preview +
   click-to-open for the `<citekey>.pdf` files in `pdf_dir` (config.toml, else
-  `<root>/pdfs`). `lit build` stays the shareable artifact.
+  `<root>/pdfs`). It also renders **PDF quote windows**: a claim's weld isn't shown as text —
+  hovering it pops its PDF page with the sentence highlighted (full page width, zoomed out),
+  clicking pins that same preview in place as a handy little viewer over the **whole PDF** — the
+  full document as a scroll of pages (lazily rendered as they near view), opened on the highlight,
+  with a real scrollbar, ⌘/ctrl-wheel zoom, a live page indicator, and a pan / text-select toolbar
+  (drag to pan, or switch to select & copy the page's actual text via a transparent word overlay);
+  movable/resizable (click again, or empty board, to close). The location comes from a stored
+  `quote_loc` (SCHEMA §6) when present, else resolved live.
+  `lit build` stays the shareable artifact.
+- **`lit locate`** — resolve every curated quote's place in its PDF (full-coverage word-
+  geometry match) and store it as `quote_loc` in the YAML: run once, review the diff, commit.
+  `--force` re-resolves quotes that already have a location; `--dry-run` reports without writing.
+- **`lit preview <citekey>`** / **`lit preview --scratch <file>`** — render **one paper's**
+  local subgraph *in isolation* (its slices + every edge, cross-paper endpoints as stub
+  chips / synthesis band) via the same viewer `lit build` ships, so it can't drift. Fed a
+  scratch YAML (real `curated/` schema), it renders a **proposition before it's tokenized** —
+  the curation loop's "show it as it'll look" step (CURATION.md). Also flags non-verbatim
+  quotes at proposition time. Emits a self-contained `dist/preview.html`.
 
 ## Curating a paper
 

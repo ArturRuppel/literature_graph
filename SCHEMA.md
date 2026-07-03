@@ -113,6 +113,7 @@ The generator resolves every ref into an edge and **fails the build on a danglin
 | `id` | ✔ | str | `c1`… unique within file |
 | `text` | ✔ | str | the natural-language claim — what you'd write in an intro |
 | `quote` | ✔ | str | supporting text from the paper's `.md`. Normally a verbatim substring; non-contiguous passages may be joined with `[...]` but must be flagged for curator review |
+| `quote_loc` | – | map | derived PDF anchor for the quote — `{page: int (0-based), rects: [[x0,y0,x1,y1], …]}`, each rect a **page fraction** (0..1), one per wrapped line. Written by `lit locate` (not hand-authored); optional and additive; drives the `lit serve` PDF quote windows (see *Quote windows*, §6) |
 | `grounded_in` | – | ref list | **`leads-to` edges *into* this claim** — what it rests on. Heterogeneous; the target's *kind* is the meaning: a **method** ref → empirical floor; a **claim** ref → premise / derivation; a **container/citation** ref → a borrowed (restated) claim (CONCEPT §6.1) |
 | `leads_to` | – | slug list | **`leads-to` edges *out* of this claim** — the broader claim(s) it generalizes into (the old "rollup", unsigned) |
 | `corroborates` / `contradicts` | – | ref list | **lateral** stance toward an independently-grounded claim/paper — the only *signed* edges (CONCEPT §4) |
@@ -209,6 +210,14 @@ file or an upstream stub. Author downward edges (to floors / premises / citation
    are **not** valid keys — they are derived (§7), and their presence is an error.
 8. **Enums valid** (`type`, `position` ∈ `first|middle|last`, `corresponding` ∈ `true`/absent,
    `pass` ∈ `0|1|2|3|4` and only on a curated paper).
+
+**Quote windows — `quote_loc`.** A `quote` may carry an optional `quote_loc` (page + fractional
+rects, one per wrapped line) welding it to its place in the PDF. It is **derived, not authored**:
+`lit locate` resolves it by word-geometry matching (covering the *whole* quote, across line
+breaks and hyphenation) and writes it into the YAML — re-run it (`--force`) any time the matcher
+improves. It is additive and never affects graph structure or emergent properties: it only drives
+the `lit serve` viewer's PDF quote windows (a stored location renders instantly; a quote without
+one is resolved live). `lit build`'s static artifact ignores it.
 
 ---
 

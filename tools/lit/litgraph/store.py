@@ -16,6 +16,8 @@ from .model import CuratedPaper, Stub
 
 _yaml_rt = YAML()  # round-trip (preserves comments)
 _yaml_rt.preserve_quotes = True
+_yaml_rt.width = 4096                       # never re-wrap long scalars (titles, notes)
+_yaml_rt.indent(mapping=2, sequence=4, offset=2)   # match the "  - {…}" sequence style on disk
 _yaml_safe = YAML(typ="safe")
 
 
@@ -109,6 +111,76 @@ def _to_commented(mapping: dict):
     for k, v in mapping.items():
         cm[k] = v
     return cm
+
+
+_SLICE_GROUPS = ("claims", "questions", "methods")
+
+
+def _loc_cm(page: int, rects: list[list[float]]):
+    """A compact `quote_loc` mapping: page + flow-style rects rounded to 4 dp (page fractions)."""
+    from ruamel.yaml.comments import CommentedMap, CommentedSeq
+
+    rects_seq = CommentedSeq()
+    for r in rects:
+        row = CommentedSeq(round(float(v), 4) for v in r)
+        row.fa.set_flow_style()
+        rects_seq.append(row)
+    loc = CommentedMap()
+    loc["page"] = int(page)
+    loc["rects"] = rects_seq
+    return loc
+
+
+def write_quote_loc(root: Path, citekey: str, slice_id: str, page: int,
+                    rects: list[list[float]]) -> Path:
+    """Set (or replace) `quote_loc` on one slice of curated/<citekey>.yaml, round-tripped so
+    the human's comments/formatting survive. `rects` are page fractions (0..1). Raises
+    FileNotFoundError / KeyError if the file or slice id is absent."""
+    path = curated_dir(root) / f"{citekey}.yaml"
+    if not path.is_file():
+        raise FileNotFoundError(f"no curated paper: {citekey}")
+    doc = _yaml_rt.load(path.read_text()) or {}
+
+    target = None
+    for group in _SLICE_GROUPS:
+        for s in doc.get(group, []) or []:
+            if s.get("id") == slice_id:
+                target = s
+                break
+        if target is not None:
+            break
+    if target is None:
+        raise KeyError(f"no slice {slice_id} in {citekey}")
+
+    target["quote_loc"] = _loc_cm(page, rects)
+    with path.open("w") as fh:
+        _yaml_rt.dump(doc, fh)
+    return path
+
+
+def write_quote_locs(root: Path, citekey: str, locs: dict[str, dict]) -> int:
+    """Set `quote_loc` on many slices of curated/<citekey>.yaml in one round-trip (for the
+    batch `lit locate`). `locs` maps slice_id -> {"page":int, "rects":[[...],...]}. Slice ids
+    absent from the file are skipped. Returns the number written; writes nothing if none."""
+    path = curated_dir(root) / f"{citekey}.yaml"
+    if not path.is_file():
+        raise FileNotFoundError(f"no curated paper: {citekey}")
+    doc = _yaml_rt.load(path.read_text()) or {}
+    by_id: dict = {}
+    for group in _SLICE_GROUPS:
+        for s in doc.get(group, []) or []:
+            by_id[s.get("id")] = s
+    n = 0
+    for sid, loc in locs.items():
+        s = by_id.get(sid)
+        if s is None:
+            continue
+        s["quote_loc"] = _loc_cm(loc["page"], loc["rects"])
+        n += 1
+    if n:
+        with path.open("w") as fh:
+            _yaml_rt.dump(doc, fh)
+    return n
 
 
 def rename_pdf(pdf_path: Path, citekey: str, dry_run: bool) -> Path | None:

@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "litgraph-eln"
+version = "0.1.0"
+description = "Serve the litgraph viewer as a tab inside the electronic lab notebook"
+requires-python = ">=3.10"
+# `litgraph` supplies the graph/render functions; `eln` (the labbook) supplies the
+# Plugin dataclass and Flask at runtime. Both are expected already-installed in the
+# labbook venv, so neither is pinned here as a hard install dep.
+dependencies = []
+
+# Discovered by the labbook's plugin loader (eln.plugins.discover_plugins) via this
+# entry-point group — no edit to the electronic_labbook repo required.
+[project.entry-points."eln.plugins"]
+litgraph = "litgraph_eln:plugin"
+
+[tool.setuptools.packages.find]
+include = ["litgraph_eln*"]
