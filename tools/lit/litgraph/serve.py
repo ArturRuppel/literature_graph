@@ -19,13 +19,14 @@ import unicodedata
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import unquote, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 import fitz  # pymupdf — already a hard dependency (litgraph.pdf)
 
 from litgraph import store
 from litgraph.build import render_html, to_json_dict
 from litgraph.graph import BuildError, build_graph
+from litgraph.preview import isolate
 from litgraph.quotes import polish_graph
 
 # strictly <citekey>.<ext> — one flat name, no separators, so /pdf/ can't traverse out
@@ -246,13 +247,17 @@ class _Handler(BaseHTTPRequestHandler):
         if self.command != "HEAD":
             self.wfile.write(body)
 
-    def _payload(self) -> str:
-        """graph.json, rebuilt from the repo's YAML on every request (may raise BuildError).
-        Quotes are polished against the `.md` full text in pdf_dir (falls back to the raw
-        anchor when a paper's `.md` is absent)."""
+    def _payload_dict(self) -> dict:
+        """graph.json as a dict, rebuilt from the repo's YAML on every request (may raise
+        BuildError). Quotes are polished against the `.md` full text in pdf_dir (falls back to
+        the raw anchor when a paper's `.md` is absent)."""
         graph = build_graph(self.server.root)
         polish_graph(graph, self.server.pdf_dir)
-        return json.dumps(to_json_dict(graph), ensure_ascii=False)
+        return to_json_dict(graph)
+
+    def _payload(self) -> str:
+        """`_payload_dict` serialized — the graph.json body served at `/` and `/graph.json`."""
+        return json.dumps(self._payload_dict(), ensure_ascii=False)
 
     def do_GET(self) -> None:  # noqa: N802 (http.server API)
         path = unquote(urlparse(self.path).path)
@@ -263,6 +268,19 @@ class _Handler(BaseHTTPRequestHandler):
             if path == "/graph.json":
                 return self._send(HTTPStatus.OK, "application/json; charset=utf-8",
                                   self._payload().encode())
+            if path == "/preview.html":
+                # one paper's local subgraph in isolation — the exact `lit preview` view
+                # (real `isolate()` + the shared template), for reviewing an in-progress paper
+                # from the main viewer. `.html` (not `/preview/…`, taken by PNG thumbnails)
+                # keeps the base dir at `/` so the isolated page's own live PDF features resolve.
+                key = parse_qs(urlparse(self.path).query).get("key", [""])[0]
+                full = self._payload_dict()
+                if key not in full["papers"]:
+                    return self._send(HTTPStatus.NOT_FOUND, "text/plain; charset=utf-8",
+                                      f"no curated paper to preview: {key}\n".encode())
+                mini = json.dumps(isolate(full, key), ensure_ascii=False)
+                return self._send(HTTPStatus.OK, "text/html; charset=utf-8",
+                                  render_html(mini).encode())
             if path == "/pdfs.json":
                 keys = (sorted(f.stem for f in self.server.pdf_dir.glob("*.pdf"))
                         if self.server.pdf_dir.is_dir() else [])

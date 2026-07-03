@@ -75,7 +75,11 @@ the rate limiter; never flood. A half-finished graph is a normal, valid state.**
   (drag to pan, or switch to select & copy the page's actual text via a transparent word overlay);
   movable/resizable (click again, or empty board, to close). The location comes from a stored
   `quote_loc` (SCHEMA §6) when present, else resolved live.
-  `lit build` stays the shareable artifact.
+  It also gives the **in-progress review lens** a home: an **"in progress · N"** pill in the
+  header surfaces every curated paper not yet at maturity 4 (`pass < 4`), and picking one opens
+  its isolated `lit preview` view (served live at `/preview.html?key=<citekey>` — the real
+  `isolate()`, no drift) in an overlay over the graph, with prev/next to step the set and Esc /
+  back to return. Serve-only; a static `lit build` keeps the pill hidden and stays the shareable artifact.
 - **`lit locate`** — resolve every curated quote's place in its PDF (full-coverage word-
   geometry match) and store it as `quote_loc` in the YAML: run once, review the diff, commit.
   `--force` re-resolves quotes that already have a location; `--dry-run` reports without writing.

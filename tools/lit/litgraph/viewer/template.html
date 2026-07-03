@@ -27,6 +27,36 @@
   #hud .widthctl input{width:150px;accent-color:#5a9fd0;cursor:pointer}
   #hud .widthctl .val{min-width:34px;text-align:right;color:#d7e0e7;letter-spacing:0}
 
+  /* curation-in-progress review lens (serve only) */
+  #hud .wip{display:inline-flex;align-items:center;gap:6px;cursor:pointer;
+    font-size:10px;letter-spacing:1px;text-transform:uppercase;color:#e7cfa6;
+    border:1px solid rgba(231,207,166,.42);border-radius:999px;padding:3px 10px;
+    background:rgba(181,130,47,.15)}
+  #hud .wip:hover{background:rgba(181,130,47,.28);border-color:rgba(231,207,166,.7)}
+  #hud .wip .n{color:#fff;font-weight:600}
+  #hud .wip[hidden]{display:none}
+  #wipPanel{position:fixed;z-index:45;top:44px;left:16px;width:300px;max-height:72vh;overflow:auto;
+    background:var(--panel);border:1px solid var(--line);border-radius:10px;
+    box-shadow:0 12px 34px rgba(38,54,70,.24);padding:6px}
+  #wipPanel[hidden]{display:none}
+  #wipPanel .wp-hd{font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--faint);
+    padding:6px 8px 5px}
+  #wipPanel .wp-row{display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:7px;cursor:pointer}
+  #wipPanel .wp-row:hover{background:var(--bg)}
+  #wipPanel .wp-row .ckey{font-size:12px;color:var(--ink)}
+  #wipPanel .wp-row .stage{margin-left:auto;font-size:9px;color:var(--faint);text-transform:uppercase;letter-spacing:.5px}
+  #wipOverlay{position:absolute;inset:46px 0 0 0;z-index:40;display:flex;flex-direction:column;background:var(--bg)}
+  #wipOverlay[hidden]{display:none}
+  #wipOverlay .wo-bar{display:flex;align-items:center;gap:12px;padding:7px 16px;
+    background:var(--panel);border-bottom:1px solid var(--line)}
+  #wipOverlay .wo-bar button{font:inherit;font-size:11px;color:var(--ink);background:none;
+    border:1px solid var(--line);border-radius:6px;padding:3px 10px;cursor:pointer}
+  #wipOverlay .wo-bar button:hover{background:var(--bg)}
+  #wipOverlay .wo-title{font-size:11px;color:var(--dim)}
+  #wipOverlay .wo-title b{color:var(--ink)}
+  #wipOverlay .wo-nav{margin-left:auto;display:flex;align-items:center;gap:8px;font-size:10px;color:var(--faint)}
+  #wipOverlay iframe{flex:1;width:100%;border:0;background:var(--bg)}
+
   /* side padding centers the landing column on screen when nothing is expanded (half the
      viewport minus half a column), so grounds (←) and builds/synthesis (→) spawn symmetrically;
      it grows into scroll as columns fan out. min 40px keeps a gutter on narrow screens. */
@@ -191,6 +221,7 @@
 <body>
 <div id="hud">
   <b>litgraph</b>
+  <span id="wip" class="wip" hidden></span>
   <label class="widthctl">width
     <input id="colw" type="range" min="220" max="720" step="4" value="340">
     <span class="val"></span>
@@ -198,6 +229,16 @@
 </div>
 <div id="board"><svg id="edges"></svg></div>
 <div id="tip"></div>
+<div id="wipPanel" hidden></div>
+<div id="wipOverlay" hidden>
+  <div class="wo-bar">
+    <button class="wo-back">← back to graph</button>
+    <span class="wo-title"></span>
+    <span class="wo-nav"><button class="wo-prev" title="previous (←)">‹</button>
+      <span class="wo-count"></span><button class="wo-next" title="next (→)">›</button></span>
+  </div>
+  <iframe class="wo-frame" title="in-progress paper preview"></iframe>
+</div>
 
 <script>
 const NS="http://www.w3.org/2000/svg";
@@ -1179,6 +1220,60 @@ boot();
 })();
 board.addEventListener("scroll",redraw);
 addEventListener("resize",redraw);
+
+// ── curation-in-progress review lens (serve only) ───────────────────────────────────────────
+// Curated papers not yet at maturity 4 are the frontier of curation. Surface them from the
+// header and inspect each in its isolated `lit preview` view (an iframe of /preview.html?key=…,
+// the server's real isolate() — no drift) without disturbing the graph underneath. LIVE-gated:
+// a static `lit build` needs no server, so the pill stays hidden and the artifact is unchanged.
+(function(){
+  const pill = document.getElementById("wip");
+  const inProg = ORDER.filter(k => PAPERS[k] && PAPERS[k].cur
+                                    && (PAPERS[k].pass == null || PAPERS[k].pass < 4));
+  if (!LIVE || !inProg.length) return;
+  pill.innerHTML = `in progress · <span class="n">${inProg.length}</span>`;
+  pill.hidden = false;
+
+  const panel = document.getElementById("wipPanel");
+  const overlay = document.getElementById("wipOverlay");
+  const frame = overlay.querySelector(".wo-frame");
+  const titleEl = overlay.querySelector(".wo-title");
+  const countEl = overlay.querySelector(".wo-count");
+  const STAGE = ["stub","ingested","skeleton","contextualized","full"];
+  const stage = k => { const p = PAPERS[k].pass == null ? 0 : PAPERS[k].pass;
+                       return `maturity ${p}/4 · ${STAGE[p] || ""}`; };
+  let at = 0;
+
+  function show(i){
+    at = (i + inProg.length) % inProg.length;
+    const k = inProg[at];
+    frame.src = `preview.html?key=${encodeURIComponent(k)}`;
+    titleEl.innerHTML = `reviewing <b>${k}</b> · ${stage(k)}`;
+    countEl.textContent = inProg.length > 1 ? `${at + 1} / ${inProg.length}` : "";
+    panel.hidden = true; overlay.hidden = false;
+  }
+  function close(){ overlay.hidden = true; frame.src = "about:blank"; }
+
+  panel.innerHTML = `<div class="wp-hd">curation in progress</div>` + inProg.map((k, i) =>
+    `<div class="wp-row" data-i="${i}">${passCircle(PAPERS[k].pass || 0)}`
+    + `<span class="ckey">${k}</span><span class="stage">${stage(k)}</span></div>`).join("");
+  if (inProg.length < 2) overlay.querySelector(".wo-nav").style.display = "none";
+
+  pill.addEventListener("click", () => { if (overlay.hidden) panel.hidden = !panel.hidden; });
+  panel.addEventListener("click", e => { const r = e.target.closest(".wp-row"); if (r) show(+r.dataset.i); });
+  overlay.querySelector(".wo-back").addEventListener("click", close);
+  overlay.querySelector(".wo-prev").addEventListener("click", () => show(at - 1));
+  overlay.querySelector(".wo-next").addEventListener("click", () => show(at + 1));
+  addEventListener("keydown", e => {
+    if (e.key === "Escape") { if (!overlay.hidden) close(); else panel.hidden = true; }
+    else if (!overlay.hidden && e.key === "ArrowLeft") show(at - 1);
+    else if (!overlay.hidden && e.key === "ArrowRight") show(at + 1);
+  });
+  // click outside an open panel dismisses it (capture so it runs before the board's own handler)
+  addEventListener("click", e => {
+    if (!panel.hidden && !e.target.closest("#wipPanel,#wip")) panel.hidden = true;
+  }, true);
+})();
 // a click on empty board space (not a card or broad node) thaws any pinned isolation.
 // isConnected guard: a drill/collapse rebuild detaches the clicked row mid-dispatch, so a
 // pinning click bubbles here with a detached target — don't misread that as empty space.

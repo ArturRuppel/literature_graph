@@ -78,6 +78,20 @@ def test_graph_json_endpoint(srv):
     assert "Chen2021Sys" in json.loads(body)["papers"]
 
 
+def test_preview_html_isolates_one_curated_paper(srv):
+    status, headers, body = get(srv, "/preview.html?key=Chen2021Sys")
+    assert status == 200 and headers["Content-Type"].startswith("text/html")
+    # the same viewer template, inlined with the isolate()'d single-paper payload
+    assert b'"order": ["Chen2021Sys"]' in body
+
+
+def test_preview_html_rejects_unknown_and_stub_keys(srv):
+    # a citekey with no curated file
+    assert get(srv, "/preview.html?key=NoSuchPaper2099")[0] == 404
+    # a stub (uncurated container) is not previewable — only curated papers isolate
+    assert get(srv, "/preview.html?key=Bench2016Tools")[0] == 404
+
+
 def test_pdf_manifest_and_fetch(srv):
     status, _, body = get(srv, "/pdfs.json")
     assert status == 200
