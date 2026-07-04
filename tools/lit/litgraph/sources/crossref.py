@@ -25,8 +25,6 @@ GetJson = Callable[[str], dict]
 def _strip_doi(doi: str | None) -> str | None:
     if not doi:
         return None
-    import re
-
     return re.sub(r"^https?://(dx\.)?doi\.org/", "", doi.strip(), flags=re.IGNORECASE) or None
 
 
