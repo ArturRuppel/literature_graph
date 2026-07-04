@@ -104,3 +104,49 @@ Open requests for the `lit build` viewer. Details deliberately left thin for now
 - [ ] **Entry-row rule check after real use.** Entry rows = top-level claims + questions.
   On first focus a paper can look sparse (Chen's much-cited `c1` sits one drill below `c3`
   because `c3` builds on it). Deliberate, but revisit once a real paper is curated.
+
+# TODO — `tools/lit` maintainability
+
+From the 2026-07-03 maintainability review (`docs/2026-07-03-maintainability-review.md`); the
+applied cleanups landed in PR #6. These are the proposed larger moves, left for review per the
+repo's *propose, don't impose* rule. Ordered high→low leverage.
+
+- [ ] **Collapse the two serving layers behind one endpoint core.** `serve.py`'s stdlib
+  `_Handler` and the Flask ELN plugin implement the same ~11 endpoints twice — same paths,
+  regexes, error→status mapping (~150 lines apiece) — and that routing/validation layer is
+  exactly where they'll silently drift (the ELN side has *no test coverage* in this repo). Lift
+  a framework-neutral `viewer/endpoints.py` (frozen `Request`/`Response` dataclasses, a ~15-line
+  `Router` with validation regexes baked into route patterns, a `dispatch()` owning the error
+  policy); each server becomes a thin bytes-in/bytes-out shim (stdlib `_run(method)`; Flask
+  catch-all Blueprint). Payoff: the whole HTTP surface becomes socket-free unit-testable, so the
+  offline-deterministic test rule finally covers it. **Trigger: do this when the endpoint set
+  next grows** — a few hundred lines reorganized across two files, one currently untested.
+
+- [ ] **Atomic, race-safe quote-loc writes.** `store.write_quote_loc[s]` does read→parse→mutate→
+  dump straight onto the target, and `_Server` is threaded — two concurrent `POST /quote_loc`
+  for one citekey could lose an update, and a crash mid-`dump` truncates the YAML. Near-impossible
+  for a single-curator loopback tool (low priority), but cheap once the endpoint core above lands:
+  a module-level `threading.Lock` around the read-modify-write + temp-file `os.replace`. Fold into
+  the item above.
+
+- [ ] **De-dup the viewer's two PDF-window mounts.** `template.html`'s `mountPage` and `mountDoc`
+  share ~40 near-verbatim lines (the `zoomTo` closure, ctrl/⌘-wheel zoom, pointer-drag pan, the
+  `.pw-tools` toggle, highlight-rect placement, the selectable text layer). Extract
+  `wirePanZoom` / `addHighlights` / `buildTextLayer`; both mounts shrink to their layout
+  difference. No behavior change — but the viewer has no automated tests, so it needs a manual
+  `lit serve` pass.
+
+- [ ] **One polite HTTP-JSON client for OpenAlex + Crossref.** `sources/openalex.py` and
+  `sources/crossref.py` carry byte-identical `__init__` / `_http_get_json` (mailto append,
+  session, 3-try backoff, 404→`{}`), differing only in a `RuntimeError` message. Lift a shared
+  `_PoliteJsonClient` base (or a free `polite_get_json(...)`). ~30 duplicated lines → one; the
+  path is `# pragma: no cover` (network), so verify by hand or add an injected-`get_json` test.
+
+- [ ] **One DOI-prefix helper.** Three near-identical strippers: `citekey._norm_doi`
+  (strip+lowercase) and `openalex._strip_doi` / `crossref._strip_doi` (strip, case-preserving,
+  byte-identical to each other). Consolidate to `doi.strip_prefix()` (case-preserving) with
+  `normalize = strip_prefix().lower()` on top. Small, but kills a fix-it-in-three-places trap.
+
+- [ ] **Centralize the `pdf_dir` default.** `cfg.pdf_dir or cfg.root / "pdfs"` is spelled out
+  ~5 times (three in `cli.py`, once in serve wiring, once in the ELN plugin). A
+  `Config.pdf_dir_or_default` property puts the policy in one place.
