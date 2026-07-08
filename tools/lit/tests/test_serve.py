@@ -268,6 +268,87 @@ def test_quote_loc_rejects_bad_payloads(srv):
                 {"citekey": "Chen2021Sys", "slice_id": "../x", "page": 0, "rects": [[0, 0, 1, 1]]})[0] == 400
 
 
+# ── focus channel: the shared "aim the PDF pane here" wire ────────────────────────────────
+
+
+def test_focus_starts_empty(srv):
+    status, _, body = get(srv, "/focus")
+    assert status == 200
+    assert json.loads(body) == {"seq": 0, "citekey": None, "quote": None, "loc": None}
+
+
+def test_focus_set_resolves_quote_bumps_seq_and_reads_back(srv):
+    status, rec = post(srv, "/focus", {"citekey": "Chen2021Sys", "quote": "fixture paper"})
+    assert status == 200
+    assert rec["citekey"] == "Chen2021Sys" and rec["quote"] == "fixture paper"
+    assert rec["seq"] == 1 and rec["loc"]["page"] == 0 and len(rec["loc"]["rects"]) >= 1
+    assert json.loads(get(srv, "/focus")[2]) == rec        # GET returns the same record
+    # each set bumps seq — the poll's change-detector
+    _, rec2 = post(srv, "/focus", {"citekey": "Chen2021Sys", "quote": "fixture paper"})
+    assert rec2["seq"] == 2
+
+
+def test_focus_unlocated_quote_is_graceful_floor(srv):
+    # quote absent from the page → loc null, but the focus still lands (switch paper, no highlight)
+    status, rec = post(srv, "/focus", {"citekey": "Chen2021Sys", "quote": "no such words here"})
+    assert status == 200 and rec["citekey"] == "Chen2021Sys" and rec["loc"] is None
+
+
+def test_focus_without_quote_just_opens_the_paper(srv):
+    status, rec = post(srv, "/focus", {"citekey": "Chen2021Sys"})
+    assert status == 200 and rec["citekey"] == "Chen2021Sys"
+    assert rec["quote"] == "" and rec["loc"] is None
+
+
+def test_focus_rejects_missing_pdf_and_traversal(srv):
+    assert post(srv, "/focus", {"citekey": "Nope2020Xyz", "quote": "x"}) == (404, None)
+    assert post(srv, "/focus", {"citekey": "../etc", "quote": "x"})[0] == 404
+
+
+def test_default_serve_has_no_cockpit(srv):
+    # a plain `lit serve` (and every static build) must not carry the curate-mode payload
+    assert "cockpit" not in json.loads(get(srv, "/graph.json")[2])
+
+
+def test_curate_mode_injects_cockpit_term_port(repo):
+    s = make_server(repo, repo / "pdfs", curate=True, term_port=7690)
+    threading.Thread(target=s.serve_forever, daemon=True).start()
+    try:
+        assert json.loads(get(s, "/graph.json")[2])["cockpit"] == {"term_port": 7690}
+    finally:
+        s.shutdown()
+        s.server_close()
+
+
+def test_spawn_ttyd_argv_binds_loopback_and_passes_env(repo, monkeypatch):
+    # offline: no real ttyd — assert we'd launch it loopback-bound, writable, with the wrapper and
+    # the three roots the wrapper needs (data root for lit, code root for CURATION.md)
+    from litgraph import serve as sm
+    cap = {}
+
+    class FakePopen:
+        def __init__(self, argv, env=None, **kw):
+            cap["argv"], cap["env"] = argv, env
+    monkeypatch.setattr(sm.shutil, "which", lambda _: "/usr/bin/ttyd")
+    monkeypatch.setattr(sm.subprocess, "Popen", FakePopen)
+    assert sm._spawn_ttyd(7690, repo) is not None
+    argv = cap["argv"]
+    assert argv[0] == "/usr/bin/ttyd"
+    assert argv[argv.index("-i") + 1] == "127.0.0.1"        # never 0.0.0.0
+    assert argv[argv.index("-p") + 1] == "7690"
+    assert "-W" in argv and "--url-arg" in argv             # writable + ?arg=<citekey>
+    assert argv[-1].endswith("curate_session.sh")
+    assert cap["env"]["LIT_DATA_ROOT"] == str(repo.resolve())
+    assert cap["env"]["LIT_SESSIONS"].endswith(".sessions") and cap["env"]["LIT_DOCS"]
+
+
+def test_spawn_ttyd_missing_is_graceful(monkeypatch, capsys):
+    from litgraph import serve as sm
+    monkeypatch.setattr(sm.shutil, "which", lambda _: None)
+    assert sm._spawn_ttyd(7690, Path(".")) is None          # no crash — the rest of the cockpit works
+    assert "ttyd not found" in capsys.readouterr().out
+
+
 # ── CLI wiring ───────────────────────────────────────────────────────────────────────────
 
 from litgraph import cli
@@ -275,14 +356,47 @@ from litgraph import cli
 
 def test_cli_serve_wires_root_port_and_pdf_dir(repo, monkeypatch):
     calls = {}
-    monkeypatch.setattr(cli, "serve", lambda root, pdf_dir, port: calls.update(
-        root=Path(root), pdf_dir=Path(pdf_dir), port=port))
+    monkeypatch.setattr(cli, "serve", lambda root, pdf_dir, port, curate, term_port: calls.update(
+        root=Path(root), pdf_dir=Path(pdf_dir), port=port, curate=curate, term_port=term_port))
     rc = cli.main(["serve", "--root", str(repo), "--port", "0"])
     assert rc == 0
-    # no config.toml + no --pdf-dir -> <root>/pdfs
-    assert calls == {"root": repo, "pdf_dir": repo / "pdfs", "port": 0}
+    # no config.toml + no --pdf-dir -> <root>/pdfs; not curating by default
+    assert calls == {"root": repo, "pdf_dir": repo / "pdfs", "port": 0,
+                     "curate": False, "term_port": 7682}
     rc = cli.main(["serve", "--root", str(repo), "--pdf-dir", str(repo / "elsewhere")])
     assert rc == 0 and calls["pdf_dir"] == repo / "elsewhere" and calls["port"] == 8000
+
+
+def test_cli_serve_curate_flag_wires_through(repo, monkeypatch):
+    calls = {}
+    monkeypatch.setattr(cli, "serve", lambda root, pdf_dir, port, curate, term_port: calls.update(
+        curate=curate, term_port=term_port))
+    rc = cli.main(["serve", "--root", str(repo), "--port", "0", "--curate", "--term-port", "7690"])
+    assert rc == 0 and calls == {"curate": True, "term_port": 7690}
+
+
+def test_cli_focus_posts_to_running_server(srv, capsys):
+    port = srv.server_address[1]
+    rc = cli.main(["focus", "Chen2021Sys", "--quote", "fixture paper", "--port", str(port)])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "Chen2021Sys" in out and "p.1" in out
+    rec = json.loads(get(srv, "/focus")[2])              # the server now holds that focus
+    assert rec["citekey"] == "Chen2021Sys" and rec["loc"]["page"] == 0
+
+
+def test_cli_focus_errors_cleanly_when_no_server(capsys):
+    # nothing listening → clean message, nonzero exit (not a traceback)
+    rc = cli.main(["focus", "Chen2021Sys", "--port", "1"])
+    assert rc == 1
+    assert "no lit serve" in capsys.readouterr().err
+
+
+def test_cli_focus_errors_on_unknown_pdf(srv, capsys):
+    port = srv.server_address[1]
+    rc = cli.main(["focus", "Nope2020Xyz", "--quote", "x", "--port", str(port)])
+    assert rc == 1
+    assert "Nope2020Xyz" in capsys.readouterr().err
 
 
 def test_cli_serve_fails_fast_on_broken_repo(repo, monkeypatch, capsys):

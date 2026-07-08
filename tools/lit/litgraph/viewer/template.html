@@ -253,6 +253,23 @@
     .slice.drillable:active{background:#e9eef2}
     .card.open .cabs{display:block}               /* abstract inline (no hover tip on touch) */
   }
+
+  /* ── curate mode (serve + ?curate) ─────────────────────────────────────────────────────
+     the cockpit layout: cards live in a left strip, the focus PDF docks as a fixed right pane
+     (no floating window to stack, nothing to pile up — CONCEPT: the docked pane by construction).
+     The right-bottom terminal (ttyd) is a later stage; the pane holds the full right for now. */
+  body.curate #board{right:58%;padding:24px 20px 60px;justify-content:flex-start}
+  /* right column splits: PDF pane on top (~58%), terminal iframe below (~42%) */
+  body.curate .pw-dock{left:42% !important;top:46px !important;right:0;bottom:42%;
+    width:auto !important;height:auto !important;border-radius:0;box-shadow:none;
+    border-left:1px solid var(--line);z-index:20}
+  body.curate .pw-dock .pw-grip{display:none}
+  body.curate .pw-dock .pw-bar{cursor:default}
+  #term{display:none}
+  body.curate #term{display:block;position:fixed;left:42%;right:0;top:58%;bottom:0;z-index:20;
+    border-left:1px solid var(--line);border-top:1px solid var(--line);background:#1e1e1e}
+  #term iframe{width:100%;height:100%;border:0;display:block}
+  #term .term-empty{color:#9aa;font-size:11px;padding:10px 12px}
 </style>
 </head>
 <body>
@@ -265,6 +282,7 @@
   </label>
 </div>
 <div id="board"><svg id="edges"></svg></div>
+<div id="term"><div class="term-empty">curation terminal — click a paper to start its session</div></div>
 <div id="tip"></div>
 <div id="wipPanel" hidden></div>
 <div id="wipOverlay" hidden>
@@ -415,7 +433,10 @@ function cardClick(e, el, level, key){
   const row = e.target.closest(".slice");
   if (row && el.classList.contains("open")) {
     togglePin({cardId: el.id, sid: row.dataset.sid});   // harden/release this row (accumulates)
-    if (row.classList.contains("pdf-src")) togglePinnedPdf(key, row.dataset.sid, el.id);  // pin/close its PDF
+    if (row.classList.contains("pdf-src")) {
+      if (CURATE) focusFromClick(key, row.dataset.sid);   // curate: drive the docked pane via the wire
+      else togglePinnedPdf(key, row.dataset.sid, el.id);  // float: pin/close its own PDF window
+    }
     if (row.classList.contains("drillable")) toggleDrill(id, row.dataset.path);  // drill + rebuild
     return;
   }
@@ -905,6 +926,18 @@ const LIVE = location.protocol.startsWith("http");
 // tooltip and latch soft previews. Hover-only affordances are gated on a real hover pointer;
 // the load-bearing actions (tap to open/pin) are click/pointer-based and unaffected.
 const HOVER = matchMedia("(hover: hover)").matches;
+// curate mode (serve + ?curate): the cockpit layout — a left card strip and a docked PDF pane
+// the focus wire drives. Slice clicks set focus instead of stacking a floating pin.
+// `lit serve --curate` injects GRAPH.cockpit ({term_port}); its presence turns on the layout and
+// carries the terminal port. ?curate / ?term=<port> are manual fallbacks for a plain `lit serve`.
+const COCKPIT = GRAPH.cockpit || null;
+const CURATE = LIVE && (!!COCKPIT || new URLSearchParams(location.search).has("curate"));
+if (CURATE) document.body.classList.add("curate");
+// the embedded terminal (ttyd) origin — port from the cockpit payload, else ?term=, else 7682
+// (7681 is often a system login ttyd). The pane loads <origin>/?arg=<citekey>, which ttyd passes
+// to the seed-or-resume wrapper as the paper to curate.
+const TERM_PORT = (COCKPIT && COCKPIT.term_port) || new URLSearchParams(location.search).get("term") || "7682";
+const TERM_ORIGIN = location.protocol + "//" + location.hostname + ":" + TERM_PORT;
 let PDFS = null;                       // Set of citekeys with a PDF (null until fetched)
 if (LIVE) fetch("pdfs.json").then(r => r.ok ? r.json() : [])
   .then(l => { PDFS = new Set(l); }).catch(() => { PDFS = new Set(); });
@@ -989,7 +1022,7 @@ let softEl = null, softReq = null, hoverTimer = null;
 function hideSoftPdf(){ if (softEl) { softEl.remove(); softEl = null; } softReq = null; clearTimeout(hoverTimer); }
 function updateHoverPdf(h){
   clearTimeout(hoverTimer);
-  if (!HOVER) { hideSoftPdf(); return; }   // touch: the pinned window is reached by tap, no hover preview
+  if (!HOVER || CURATE) { hideSoftPdf(); return; }   // touch/curate: no floating soft peek — click drives the docked pane
   const key = h && h.sid ? idKey(h.cardId) : null;
   const s = key ? (PAPERS[key] && PAPERS[key].slices || []).find(x => x.id === h.sid) : null;
   if (!LIVE || !s || !s.quote || pdfWindows.has(`${key}:${h.sid}`)) {
@@ -1036,6 +1069,60 @@ async function togglePinnedPdf(key, sid, cardId){
   pdfWindows.set(qid, win);
 }
 function closeAllPinnedPdfs(){ for (const w of pdfWindows.values()) w.remove(); pdfWindows.clear(); }
+
+// ── focus channel (serve-only) ───────────────────────────────────────────────────────────
+// A shared "aim the PDF here" wire the agent (via `lit focus`) and card clicks both drive: the
+// server holds one {citekey, quote, loc, seq}; we poll it and re-aim ONE reused window instead
+// of stacking a new pin per target (the docked pane in embryo). `seq` is the change-detector —
+// unchanged → do nothing, so an idle session never repaints. Empty citekey (the initial state)
+// shows nothing. A null loc is the graceful floor: open the paper at its top, no highlight.
+let focusWin = null, focusSeq = 0;
+function closeFocusWin(){ if (focusWin) { focusWin.remove(); focusWin = null; } }
+function aimFocus(f){
+  if (!f.citekey) return;
+  const prev = focusWin                              // inherit the last window's place & size…
+    ? {left: focusWin.offsetLeft, top: focusWin.offsetTop, w: focusWin.offsetWidth, h: focusWin.offsetHeight}
+    : {left: Math.round(innerWidth * 0.44), top: 72, w: 0, h: 0};   // …else open on the right
+  closeFocusWin();
+  const loc = (f.loc && f.loc.rects) ? f.loc : {page: 0, rects: []};
+  const win = buildWin(f.citekey, loc.rects.length ? `p.${loc.page + 1}` : "quote not located",
+                       {onClose: closeFocusWin, at: {left: prev.left, top: prev.top}});
+  if (CURATE) win.classList.add("pw-dock");        // fixed right pane (CSS positions it) — add before mount
+  else if (prev.w) { win.style.width = prev.w + "px"; win.style.height = prev.h + "px"; }  // float: keep place/size
+  mountDoc(win, f.citekey, loc.page || 0, loc.rects.slice(), {interactive: true});
+  focusWin = win;
+  setTerm(f.citekey);                              // curate: the terminal follows the paper in view
+}
+// Point the embedded terminal at a paper's session — only on a citekey *change*, so re-highlighting
+// a quote in the same paper (or an agent `lit focus` within it) never reloads the iframe and kills
+// the session you're typing in. A new paper → ttyd runs the wrapper for it (seed or --continue).
+let termKey = null;
+function setTerm(key){
+  if (!CURATE || !key || key === termKey) return;
+  termKey = key;
+  const box = document.getElementById("term");
+  let f = box.querySelector("iframe");
+  if (!f) { box.textContent = ""; f = document.createElement("iframe"); f.title = "curation terminal"; box.appendChild(f); }
+  f.src = TERM_ORIGIN + "/?arg=" + encodeURIComponent(key);
+}
+async function pollFocus(){
+  let f; try { f = await fetch("focus").then(r => r.ok ? r.json() : null); } catch { return; }
+  if (!f || f.seq === focusSeq) return;
+  focusSeq = f.seq;
+  aimFocus(f);
+}
+// A card click driving the wire (curate mode): POST the slice's weld to /focus, then aim from the
+// server's reply — same code path the poll and `lit focus` use, so clicks and the terminal stay in
+// one truth. seq is set from the reply so the next poll sees no change (no double repaint).
+async function focusFromClick(key, sid){
+  const s = (PAPERS[key] && PAPERS[key].slices || []).find(x => x.id === sid);
+  try {
+    const rec = await fetch("focus", {method: "POST",
+      body: JSON.stringify({citekey: key, quote: (s && s.quote) || ""})}).then(r => r.ok ? r.json() : null);
+    if (rec) { focusSeq = rec.seq; aimFocus(rec); }
+  } catch { /* server gone — leave the pane as-is */ }
+}
+if (LIVE) { pollFocus(); setInterval(pollFocus, 500); }
 
 // A window shell: titlebar (key · page · pan/text tools · ×) + a scrollable body holding a sizer
 // (owns the scroll extent) and a stage (image + highlights + text layer, under one scale). A soft

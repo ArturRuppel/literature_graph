@@ -119,7 +119,7 @@ def _paper_json(p: Paper, builds: list[dict]) -> dict:
     }
 
 
-def to_json_dict(g: Graph, active: "tuple[str, ...]" = ()) -> dict:
+def to_json_dict(g: Graph, active: "tuple[str, ...]" = (), cockpit: "dict | None" = None) -> dict:
     builds = _builds(g)
     curated = {ck: _paper_json(p, builds.get(ck, [])) for ck, p in g.papers.items() if p.curated}
     stubs = {ck: {"title": p.title, "year": p.year, "type": p.type, "doi": p.doi}
@@ -132,8 +132,14 @@ def to_json_dict(g: Graph, active: "tuple[str, ...]" = ()) -> dict:
     # curated papers, preserving the given order. Empty for static `lit build` (the WIP panel is
     # serve-only), so a shared artifact never carries the curator's private worklist.
     active_curated = [k for k in active if k in curated]
-    return {"papers": curated, "broad": broad, "stubs": stubs, "order": g.order,
-            "active": active_curated}
+    out = {"papers": curated, "broad": broad, "stubs": stubs, "order": g.order,
+           "active": active_curated}
+    # `cockpit` is serve-only (`lit serve --curate`): its presence flips the viewer into the
+    # three-pane curate layout and carries the embedded terminal's port. Absent for static
+    # `lit build`, so the shared artifact never sprouts a curate UI or a terminal iframe.
+    if cockpit:
+        out["cockpit"] = cockpit
+    return out
 
 
 _TEMPLATE = Path(__file__).parent / "viewer" / "template.html"

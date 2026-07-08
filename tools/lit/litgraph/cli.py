@@ -104,6 +104,19 @@ def main(argv: list[str] | None = None) -> int:
     p_srv.add_argument("--pdf-dir", default=None,
                        help="dir holding <citekey>.pdf files "
                             "(default: config.toml pdf_dir, else <root>/pdfs)")
+    p_srv.add_argument("--curate", action="store_true",
+                       help="serve the three-pane curation cockpit (card strip · docked PDF · "
+                            "embedded per-paper Claude terminal via ttyd)")
+    p_srv.add_argument("--term-port", type=int, default=7682,
+                       help="port for the cockpit's ttyd terminal (default: 7682)")
+
+    p_foc = sub.add_parser("focus", help="aim a running `lit serve` PDF pane at a quote "
+                                         "(curation: mark a passage in the human's view)")
+    p_foc.add_argument("citekey", help="paper whose PDF to show")
+    p_foc.add_argument("--quote", default="",
+                       help="passage to highlight (verbatim; omit to just open the paper)")
+    p_foc.add_argument("--host", default="127.0.0.1", help="lit serve host (default: 127.0.0.1)")
+    p_foc.add_argument("--port", type=int, default=8000, help="lit serve port (default: 8000)")
 
     args = parser.parse_args(argv)
 
@@ -214,10 +227,43 @@ def main(argv: list[str] | None = None) -> int:
             print(f"error: {e}", file=sys.stderr)
             return 1
         try:
-            serve(cfg.root, pdf_dir, port=args.port)
+            serve(cfg.root, pdf_dir, port=args.port,
+                  curate=args.curate, term_port=args.term_port)
         except OSError as e:
             print(f"error: {e}", file=sys.stderr)
             return 1
+        return 0
+
+    if args.command == "focus":
+        import json
+        import urllib.error
+        import urllib.request
+        url = f"http://{args.host}:{args.port}/focus"
+        data = json.dumps({"citekey": args.citekey, "quote": args.quote}).encode()
+        req = urllib.request.Request(url, data=data, method="POST",
+                                     headers={"Content-Type": "application/json"})
+        try:
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                rec = json.loads(resp.read() or b"null")
+        except urllib.error.HTTPError as e:
+            # POST /focus 404s with a JSON `null` for a missing PDF; a plain-text 404 instead
+            # means the route isn't there — an older `lit serve` predating the focus channel.
+            if e.read().decode(errors="replace").strip() == "null":
+                print(f"error: server has no {args.citekey}.pdf to focus", file=sys.stderr)
+            else:
+                print("error: this lit serve has no /focus route — restart it on the current "
+                      "code", file=sys.stderr)
+            return 1
+        except urllib.error.URLError as e:
+            print(f"error: no lit serve at {url} ({e.reason}) — is it running?", file=sys.stderr)
+            return 1
+        loc = rec.get("loc") if rec else None
+        if args.quote and loc:
+            print(f"focus → {rec['citekey']} p.{loc['page'] + 1} ({len(loc['rects'])} rect(s))")
+        elif args.quote:
+            print(f"focus → {rec['citekey']} (quote not located; opened at page top)")
+        else:
+            print(f"focus → {rec['citekey']}")
         return 0
 
     return 2

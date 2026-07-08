@@ -14,7 +14,10 @@ for one curator, not a deployment server."""
 from __future__ import annotations
 
 import json
+import os
 import re
+import shutil
+import subprocess
 import unicodedata
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -144,9 +147,17 @@ def _valid_rects(rects) -> bool:
 class _Server(ThreadingHTTPServer):
     daemon_threads = True
 
-    def __init__(self, address, root: Path, pdf_dir: Path):
+    def __init__(self, address, root: Path, pdf_dir: Path, curate: bool = False,
+                 term_port: int = 7682):
         self.root = Path(root)
         self.pdf_dir = Path(pdf_dir)
+        self.curate = curate            # serve the three-pane cockpit layout + embedded terminal
+        self.term_port = term_port      # port the cockpit's ttyd runs on (injected into the viewer)
+        # the focus channel: the one "what should the PDF pane be aimed at" record, driven by
+        # `lit focus` (the agent) or a card click and polled by the viewer. Serve-only, ephemeral
+        # — never persisted. `seq` is the poll's change-detector; `loc` is the resolved {page,
+        # rects} or None (the graceful floor: switch paper, no highlight).
+        self.focus = {"seq": 0, "citekey": None, "quote": None, "loc": None}
         super().__init__(address, _Handler)
 
 
@@ -172,7 +183,8 @@ class _Handler(BaseHTTPRequestHandler):
         no restart — like every other refresh-after-edit in the curation loop."""
         graph = build_graph(self.server.root)
         polish_graph(graph, self.server.pdf_dir)
-        return to_json_dict(graph, active=load_config(self.server.root).active)
+        cockpit = {"term_port": self.server.term_port} if self.server.curate else None
+        return to_json_dict(graph, active=load_config(self.server.root).active, cockpit=cockpit)
 
     def _payload(self) -> str:
         """`_payload_dict` serialized — the graph.json body served at `/` and `/graph.json`."""
@@ -187,6 +199,11 @@ class _Handler(BaseHTTPRequestHandler):
             if path == "/graph.json":
                 return self._send(HTTPStatus.OK, "application/json; charset=utf-8",
                                   self._payload().encode())
+            if path == "/focus":
+                # the focus wire — what the viewer's PDF pane should aim at right now. Set by
+                # POST /focus (the `lit focus` CLI or a card click); the viewer polls this.
+                return self._send(HTTPStatus.OK, "application/json; charset=utf-8",
+                                  json.dumps(self.server.focus).encode())
             if path == "/preview.html":
                 # one paper's local subgraph in isolation — the exact `lit preview` view
                 # (real `isolate()` + the shared template), for reviewing an in-progress paper
@@ -300,6 +317,21 @@ class _Handler(BaseHTTPRequestHandler):
                     return self._send(HTTPStatus.NOT_FOUND, "text/plain; charset=utf-8",
                                       f"{e}\n".encode())
                 return self._send(HTTPStatus.OK, "application/json", b'{"ok":true}')
+            if path == "/focus":
+                # aim the wire at a quote: resolve its geometry (like /resolve), store it, bump
+                # seq. Quote optional — omit to just switch the pane to a paper (loc stays None,
+                # the graceful floor). A missing PDF is a 404; an unresolvable quote is not (the
+                # focus still lands, sans highlight).
+                body = self._read_json()
+                key, quote = body.get("citekey", ""), body.get("quote", "") or ""
+                pdf = self.server.pdf_dir / (key + ".pdf")
+                if not _CITEKEY.match(key) or not pdf.is_file():
+                    return self._send(HTTPStatus.NOT_FOUND, "application/json", b"null")
+                loc = locate_quote(pdf, quote) if quote.strip() else None
+                self.server.focus = {"seq": self.server.focus["seq"] + 1,
+                                     "citekey": key, "quote": quote, "loc": loc}
+                return self._send(HTTPStatus.OK, "application/json; charset=utf-8",
+                                  json.dumps(self.server.focus).encode())
             return self._send(HTTPStatus.NOT_FOUND, "text/plain; charset=utf-8",
                               b"not found\n")
         except (ValueError, json.JSONDecodeError):
@@ -310,20 +342,47 @@ class _Handler(BaseHTTPRequestHandler):
 
 
 def make_server(root: Path, pdf_dir: Path, host: str = "127.0.0.1",
-                port: int = 0) -> _Server:
+                port: int = 0, curate: bool = False, term_port: int = 7682) -> _Server:
     """Bind (port 0 = ephemeral) but don't serve yet — the caller runs serve_forever()."""
-    return _Server((host, port), root=root, pdf_dir=pdf_dir)
+    return _Server((host, port), root=root, pdf_dir=pdf_dir, curate=curate, term_port=term_port)
 
 
-def serve(root: Path, pdf_dir: Path, host: str = "127.0.0.1", port: int = 8000) -> None:
-    """Serve until interrupted, announcing the URL. Raises OSError if the port is taken."""
-    srv = make_server(root, pdf_dir, host=host, port=port)
+def _spawn_ttyd(term_port: int, data_root: Path) -> "subprocess.Popen | None":
+    """Spawn the cockpit's embedded terminal: ttyd on loopback running the seed-or-resume wrapper
+    (design §5). Returns the process, or None if ttyd isn't installed — the rest of the cockpit
+    still works, the pane just shows a connection error. CURATION.md lives in the code repo while
+    curation runs against the data repo (`--root`), so the wrapper gets both via the environment."""
+    ttyd = shutil.which("ttyd")
+    if not ttyd:
+        print("  ⚠ ttyd not found — terminal pane disabled (install ttyd to enable it)")
+        return None
+    code_root = Path(__file__).resolve().parents[3]     # literature_graph repo (CLAUDE.md, CURATION.md)
+    env = {**os.environ, "LIT_SESSIONS": str(code_root / ".sessions"),
+           "LIT_DATA_ROOT": str(Path(data_root).resolve()), "LIT_DOCS": str(code_root)}
+    wrapper = Path(__file__).parent / "curate_session.sh"
+    proc = subprocess.Popen(
+        [ttyd, "-i", "127.0.0.1", "-p", str(term_port), "-W", "--url-arg", "bash", str(wrapper)],
+        env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    print(f"  terminal pane: ttyd on http://127.0.0.1:{term_port} (per-paper Claude sessions)")
+    return proc
+
+
+def serve(root: Path, pdf_dir: Path, host: str = "127.0.0.1", port: int = 8000,
+          curate: bool = False, term_port: int = 7682) -> None:
+    """Serve until interrupted, announcing the URL. Raises OSError if the port is taken. With
+    `curate=True`, serves the three-pane cockpit and spawns a loopback ttyd for the terminal pane,
+    terminated on exit."""
+    srv = make_server(root, pdf_dir, host=host, port=port, curate=curate, term_port=term_port)
     bound = srv.server_address
-    print(f"serving {Path(root).resolve()} at http://{bound[0]}:{bound[1]}/")
+    print(f"serving {Path(root).resolve()} at http://{bound[0]}:{bound[1]}/"
+          + (" — curate cockpit" if curate else ""))
     print(f"PDFs from {Path(pdf_dir).resolve()} — Ctrl-C to stop")
+    ttyd_proc = _spawn_ttyd(term_port, root) if curate else None
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
         print("\nstopped")
     finally:
         srv.server_close()
+        if ttyd_proc:
+            ttyd_proc.terminate()
