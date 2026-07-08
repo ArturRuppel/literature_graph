@@ -109,8 +109,9 @@
      drilling a row unfolds its branch (quote + direct supports), outline-style */
   .slices{display:none;border-top:1px solid var(--line);padding:6px 9px 9px 12px;background:#f9fbfc}
   .card.open .slices{display:block}
-  /* the paper's entry rows partition into three standing sections — questions, then
-     borrowed (restated) claims, then novel claims — each a labeled sub-container */
+  /* the paper's entry rows partition into standing sections — its own novel claims &
+     questions, then the borrowed (restated) claims, then the open questions it leaves
+     unanswered (at the bottom) — each a labeled sub-container */
   .slices .sgrp{display:flex;align-items:center;gap:4px;cursor:pointer;
     font-size:8px;letter-spacing:1.2px;text-transform:uppercase;color:var(--faint);
     margin:7px 0 3px;padding-top:5px;border-top:1px solid var(--line)}
@@ -466,12 +467,22 @@ function renderSlices(id){
   const entries = p.slices.filter(s =>
     (s.kind === "claim" && !dependents.has(s.id) && !(s.gen || []).length)
     || s.kind === "question");
-  // the entry rows split into three standing groups, in this order: all questions, then
-  // borrowed (restated-from-elsewhere) claims, then the paper's novel claims
+  // a claim that answers a local question already renders nested under that question, so it
+  // must not also stand alone as a top-level entry — that double-render was the old redundancy
+  const answersLocalQ = new Set(Object.values(answeredBy).flat());
+  const claims = entries.filter(s => s.kind === "claim" && !answersLocalQ.has(s.id));
+  // the entry rows split into standing groups. First the paper's own line of inquiry — the
+  // questions it answered (each with its answering claims nested) followed by the novel claims
+  // that don't answer one; then the claims it merely restates from elsewhere; and last, in its
+  // own section at the bottom, the OPEN questions — the ones the paper raises and leaves
+  // unanswered (emergent: no incoming `answers`), the birds-eye "what this paper leaves open"
+  const questions = entries.filter(s => s.kind === "question");
   const groups = [
-    ["questions",       entries.filter(s => s.kind === "question")],
-    ["borrowed claims", entries.filter(s => s.kind === "claim" && s.color === "borrowed")],
-    ["novel claims",    entries.filter(s => s.kind === "claim" && s.color !== "borrowed")],
+    ["novel claims & questions",
+      [...questions.filter(s => s.answered),
+       ...claims.filter(s => s.color !== "borrowed")]],
+    ["borrowed claims", claims.filter(s => s.color === "borrowed")],
+    ["open questions", questions.filter(s => !s.answered)],
   ];
   const paths = new Set([...(drill.get(id) || []), ...(ctxDrill.get(id) || [])]);
   const kidsOf = s => s.kind === "question"
