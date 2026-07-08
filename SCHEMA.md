@@ -126,11 +126,14 @@ The generator resolves every ref into an edge and **fails the build on a danglin
 | Field | Req | Type | Notes |
 |---|---|---|---|
 | `id` | ✔ | str | `q1`… |
-| `text` | ✔ | str | interrogative; no stance, no quote |
+| `text` | ✔ | str | interrogative; no stance (the interrogative asserts nothing) |
+| `quote` | – | str | the paper sentence that **raises** the question — the same integrity weld a claim carries, so an open question is verifiable in the source and findable in the PDF. **Optional** (a purely synthesized question may lack a verbatim anchor), but **expected for open questions**: they are raised by a specific "future work / remains unclear" sentence. Verbatim substring by default; `[...]`-joined passages flagged for review. The `text` is the curator's interrogative rephrasing; the `quote` is the verbatim declarative source — exactly as a claim's `text` rephrases its `quote` |
+| `quote_loc` | – | map | derived PDF anchor for the quote, written by `lit locate` (identical to a claim's, §6) — drives the `lit serve` PDF quote window |
 | `leads_to` | – | slug list | the broader question(s) it generalizes into |
 
 > **open vs answered is emergent** — a question is *answered* iff some claim `answers` it
-> (§7). No `status` field.
+> (§7). No `status` field. Because openness can flip (a later paper's claim may `answer` it),
+> the `quote` weld is a **kind-level** affordance, never gated on open/answered.
 
 **Method** (item of `methods`):
 
@@ -197,7 +200,7 @@ file or an upstream stub. Author downward edges (to floors / premises / citation
    `curated/` file or `stubs.yaml` key (a container), or a `<citekey>:<id>` slice.
 2. **Local ids unique** within each paper file (across `c*` / `q*` / `m*`).
 3. **Slugs / citekeys globally unique**; a citekey is never both curated and a stub.
-4. **Quote integrity.** Every claim `quote` — and every method `quote` when present — must
+4. **Quote integrity.** Every claim `quote` — and every question/method `quote` when present — must
    be grounded in the paper's `.md` full text. Verbatim substrings are the default. A quote
    containing `[...]` is accepted when non-contiguous passages are intentionally shortened,
    but the generator **flags** such quotes for curator review; it never silently treats them

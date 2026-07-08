@@ -108,7 +108,7 @@ authors *claim* and how they *position* it; the data that backs each claim waits
 | you find | it becomes |
 |---|---|
 | the sharpened question(s) and their **hierarchy** | **Question** slices; hierarchy = `leads_to` a broader question (`questions/<slug>.yaml`) |
-| the questions the paper **raises and leaves open** — "future work," "it remains unclear whether," "an open question is" (mostly discussion) | **open Question** slices (`questions:`), **left floating** — no `answers` edge, no anchor to the finding that provoked them; openness is emergent (no incoming `answers`). *Go looking for these:* the birds-eye "what does this paper leave unanswered" is easy to miss when reading for what the authors claim |
+| the questions the paper **raises and leaves open** — "future work," "it remains unclear whether," "an open question is" (mostly discussion) | **open Question** slices (`questions:`), each **welded to the verbatim sentence that raises it** (a `quote`, exactly like a claim — the `text` is your interrogative rephrasing, the `quote` the declarative source) so it's verifiable and findable in the PDF; but **left floating** as edges go — no `answers`, no anchor to the finding that provoked them; openness is emergent (no incoming `answers`). *Go looking for these:* the birds-eye "what does this paper leave unanswered" is easy to miss when reading for what the authors claim |
 | framing sentences sitting on citation walls (mostly intro) | **borrowed Claim** slices — `grounded_in` the cited papers (a citation, not a floor); emergently "restatements" (CONCEPT §6.1) |
 | the authors' headline insights (mostly discussion) | **Claim** slices at high altitude — the paper's contribution; `grounded_in` a method floor (or a premise claim, for a theory claim) |
 | **methods named in the body but not the abstract** (the intro's "we measured … with", the discussion's model) | new **Method** floor slices, and coarse `grounded_in` on the Pass-1 claims sharpened to point at them — the abstract rarely names every technique; the rest surface here (their DAG + provenance still wait for Pass 4) |
@@ -124,11 +124,12 @@ sources are curated. This is the *cheap tier* of the exhaustive-is-an-ambition p
 (CONCEPT §10.4); lateral `corroborates`/`contradicts` are drafted here from the authors'
 words and **confirmed against the data in Pass 3**.
 
-**Open questions stay unwired here.** Harvest them, weld them to the discussion, and stop —
-do *not* try to connect them to the finding that raised them or to a claim elsewhere that
-answers them. Those connections are made in the **meta read**, a separate cross-library pass
-that takes a birds-eye view over the whole graph; per-paper curation just deposits the open
-question as a floating slice. An open question so left renders in its own **"open questions"**
+**Open questions stay unwired here.** Weld each to its verbatim source sentence (the `quote`,
+then `lit locate` for the PDF highlight — same as a claim) and stop. Do *not* connect them by
+edge — no anchor to the finding that raised them, no link to a claim elsewhere that answers
+them. Those connections are made in the **meta read**, a separate cross-library pass that takes
+a birds-eye view over the whole graph; per-paper curation just deposits the open question as a
+floating-but-welded slice. An open question so left renders in its own **"open questions"**
 section at the bottom of the paper's card (the viewer buckets it by the emergent open flag),
 and closes on its own the day some paper's claim `answers` it.
 

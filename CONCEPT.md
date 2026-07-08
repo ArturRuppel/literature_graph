@@ -78,7 +78,7 @@ it), not a slice.
 | Slice | is | terminates a chain? |
 |---|---|---|
 | **Claim** | an assertion — what you'd write in an intro; quote-bound when paper-local | only if it is an **axiom** (a claim declared self-grounding: a definition / postulate) |
-| **Question** | an interrogative — no stance, no quote | n/a |
+| **Question** | an interrogative — no stance; welded to the sentence that *raises* it (a `quote`, like a claim — optional, but expected for open questions) | n/a |
 | **Method** | a technique — a *measurement* or a *model* | a **measurement** is a floor; a **model** is not (§7) |
 
 A `leads-to` chain (§4) bottoms out at a **floor** — the two ways knowledge is grounded:
