@@ -284,19 +284,19 @@ Because first-class papers are human-curated and **the human supplies the PDF**,
 ## 10. Guiding principles
 
 1. **Curation is the rate limiter** — propose / accept / edit / reject; never flood.
-   A partial graph is valid — and so is a partial *paper*. Curation has a **maturity tier**
-   orthogonal to the curated/stub breadth tier (§5): a paper matures from a bare ingested
-   skeleton, through a sliced support skeleton, to a contextualized and finally fully-curated
-   artifact (CURATION.md). The **breadth** tier stays emergent (curated vs stub = file
-   presence, §5), but the **maturity** tier is recorded in one small authored field —
-   `pass: 0–4` on the curated paper (**0** stub · **1** ingested · **2** skeleton ·
-   **3** contextualized · **4** full; SCHEMA §4) — because *how far curation matured* is
+   A partial graph is valid — and so is a partial *paper*. Curation is a **single staircase**
+   orthogonal to the curated/stub breadth tier (§5): a paper climbs one rung at a time from a
+   bare ingested skeleton, through the abstract, the intro+discussion, the results, and finally
+   the methods (CURATION.md). The **breadth** tier stays emergent (curated vs stub = file
+   presence, §5), but the **depth** rung is recorded in one small authored field —
+   `pass: 0–4` on the curated paper (**0** ingested · **1** abstract · **2** intro+discussion ·
+   **3** results · **4** methods; SCHEMA §4) — because *how far curation went* is
    process state, not graph structure, and it isn't reconstructable from the slices alone:
    the read→slice map is lossy both ways (a deep read may add no method slices; a shallow read
-   may opportunistically grab a floor), so maturity can't be inferred from which slice kinds
-   are present. (The field is the *maturity of the result*, distinct from the four reading
-   **Passes 0–3** that are the *method* — CURATION.md.) This is the lone exception to "no
-   authored process fields"; stopping early is a normal resting state, not an unfinished task.
+   may opportunistically grab a floor), so depth can't be inferred from which slice kinds
+   are present. The rung is *both* how far the paper was read and how mature the card is — one
+   number, no second axis. This is the lone exception to "no authored process fields"; stopping
+   early is a normal resting state, not an unfinished task.
 2. **Generalize, don't merge — but don't duplicate for nesting either.** Never equate two
    claims (lossy); co-parent them under a broader claim via `leads-to` (§4), and the
    paper-specific phrasing and quote are never destroyed. Conversely, a broader claim **earns
