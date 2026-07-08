@@ -103,6 +103,32 @@ def merge_stubs(root: Path, stubs: list[Stub], dry_run: bool) -> tuple[list[str]
     return added, deduped
 
 
+def prune_curated_stubs(root: Path, dry_run: bool, extra_keys: tuple[str, ...] = ()) -> list[str]:
+    """Drop from stubs.yaml every key that is now a curated paper (a §6.3 collision).
+
+    A stub is a placeholder for an un-sliced container; the moment a paper is curated
+    (its `curated/<key>.yaml` exists) that placeholder is stale and must go, or the build
+    fails on the curated/stub collision. `extra_keys` lets a caller name a key that is being
+    promoted in the same run (e.g. dry-run, where the curated file isn't on disk yet).
+    Returns the citekeys actually removed; round-trips so comments/formatting survive.
+    """
+    sp = stubs_path(root)
+    if not sp.exists():
+        return []
+    doc = _yaml_rt.load(sp.read_text()) or {}
+    curated_stems = {f.stem for f in curated_dir(root).glob("*.yaml")} if curated_dir(root).is_dir() else set()
+    curated_stems.update(extra_keys)
+    removed = [k for k in list(doc) if k in curated_stems]
+    if not removed:
+        return []
+    if not dry_run:
+        for k in removed:
+            del doc[k]
+        with sp.open("w") as fh:
+            _yaml_rt.dump(doc, fh)
+    return removed
+
+
 def _to_commented(mapping: dict):
     from ruamel.yaml.comments import CommentedMap
 

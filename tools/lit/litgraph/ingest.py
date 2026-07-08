@@ -39,6 +39,7 @@ class Report:
     n_refs: int = 0  # references actually returned by OpenAlex
     stubs_added: list[str] = field(default_factory=list)
     stubs_deduped: list[str] = field(default_factory=list)
+    stubs_pruned: list[str] = field(default_factory=list)  # stubs promoted to curated (§6.3 self-heal)
     refs_skipped: int = 0
     curated_path: str = ""
     pdf_renamed_to: str | None = None
@@ -221,4 +222,8 @@ def ingest(
     added, deduped = store.merge_stubs(root, stubs, dry_run=dry_run)
     report.stubs_added = added
     report.stubs_deduped = deduped
+    # This paper (and any earlier-curated one) is no longer a stub: drop the stale entry so
+    # the build never trips the §6.3 curated/stub collision. `extra_keys` names the focal key
+    # because in a dry run its curated file isn't on disk to be swept up.
+    report.stubs_pruned = store.prune_curated_stubs(root, dry_run=dry_run, extra_keys=(citekey,))
     return report

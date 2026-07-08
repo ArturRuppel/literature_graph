@@ -112,6 +112,23 @@ def test_dry_run_writes_nothing(workspace):
     assert len(r.stubs_added) == 3
 
 
+def test_promoting_a_stub_prunes_it_from_stubs_yaml(workspace):
+    # The focal paper was already a stub (cited by an earlier curated paper). Ingesting it
+    # promotes it to curated; its stale stub must be dropped, or the build trips §6.3.
+    root, pdf = workspace
+    (root / "stubs.yaml").write_text(
+        "Ruppel2023eLife:\n"
+        "  title: Force propagation\n"
+        "  year: 2023\n"
+        "  doi: 10.7554/eLife.83588\n")
+    r = ingest(str(pdf), root=root, openalex=_openalex(), crossref=_crossref())
+    assert r.stubs_pruned == ["Ruppel2023eLife"]
+    from ruamel.yaml import YAML
+    doc = YAML(typ="safe").load((root / "stubs.yaml").read_text())
+    assert "Ruppel2023eLife" not in doc          # promoted -> no longer a stub
+    assert (root / "curated" / "Ruppel2023eLife.yaml").exists()
+
+
 def test_idempotent_dedup_on_reingest(workspace):
     root, pdf = workspace
     ingest(str(pdf), root=root, openalex=_openalex(), crossref=_crossref())

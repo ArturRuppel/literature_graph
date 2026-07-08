@@ -45,6 +45,8 @@ def _print_report(r: Report) -> None:
         refnote = f" of {r.n_referenced} referenced ({r.n_referenced - r.n_refs} not resolved)"
     print(f"  references : {r.n_refs} fetched{refnote} | {len(r.stubs_added)} new stubs | "
           f"{len(r.stubs_deduped)} deduped | {r.refs_skipped} skipped")
+    if r.stubs_pruned:
+        print(f"  promoted   : {', '.join(r.stubs_pruned)} (stub -> curated, dropped from stubs.yaml)")
     print(f"  curated    : {r.curated_path}")
     if r.pdf_renamed_to:
         print(f"  pdf -> {r.pdf_renamed_to}")

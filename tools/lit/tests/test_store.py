@@ -17,6 +17,34 @@ def _paper(root):
     return p
 
 
+def test_prune_curated_stubs_drops_promoted_and_preserves_comments(tmp_path):
+    (tmp_path / "curated").mkdir()
+    (tmp_path / "curated" / "Fuhs2022NatPhys.yaml").write_text('title: "Rigid tumours"\ntype: original\n')
+    (tmp_path / "stubs.yaml").write_text(
+        "# frontier of un-sliced containers\n"
+        "Fuhs2022NatPhys:\n"
+        "  title: Rigid tumours contain soft cancer cells\n"
+        "  year: 2022\n"
+        "Espina2021FEBJ:\n"
+        "  title: Durotaxis\n"
+        "  year: 2021\n")
+    removed = store.prune_curated_stubs(tmp_path, dry_run=False)
+    assert removed == ["Fuhs2022NatPhys"]
+    from ruamel.yaml import YAML
+    text = (tmp_path / "stubs.yaml").read_text()
+    assert "# frontier of un-sliced containers" in text        # comment preserved
+    doc = YAML(typ="safe").load(text)
+    assert list(doc) == ["Espina2021FEBJ"]                      # only the still-a-stub entry remains
+
+
+def test_prune_curated_stubs_dry_run_reports_focal_without_writing(tmp_path):
+    (tmp_path / "curated").mkdir()  # focal file not yet on disk (dry run) -> named via extra_keys
+    (tmp_path / "stubs.yaml").write_text("Fuhs2022NatPhys:\n  title: x\n  year: 2022\n")
+    removed = store.prune_curated_stubs(tmp_path, dry_run=True, extra_keys=("Fuhs2022NatPhys",))
+    assert removed == ["Fuhs2022NatPhys"]
+    assert "Fuhs2022NatPhys" in (tmp_path / "stubs.yaml").read_text()  # nothing written
+
+
 def test_write_quote_loc_round_trips_and_preserves_comments(tmp_path):
     p = _paper(tmp_path)
     store.write_quote_loc(tmp_path, "Chen2021Sys", "c2", 3, [[0.1, 0.2, 0.5, 0.23], [0.1, 0.24, 0.3, 0.27]])
