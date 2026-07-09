@@ -147,12 +147,12 @@ def _valid_rects(rects) -> bool:
 class _Server(ThreadingHTTPServer):
     daemon_threads = True
 
-    def __init__(self, address, root: Path, pdf_dir: Path, curate: bool = False,
+    def __init__(self, address, root: Path, pdf_dir: Path, terminal: bool = False,
                  term_port: int = 7682):
         self.root = Path(root)
         self.pdf_dir = Path(pdf_dir)
-        self.curate = curate            # serve the three-pane cockpit layout + embedded terminal
-        self.term_port = term_port      # port the cockpit's ttyd runs on (injected into the viewer)
+        self.terminal = terminal        # a ttyd is up → the in-progress zone can embed a terminal
+        self.term_port = term_port      # port that ttyd runs on (injected into the viewer)
         # the focus channel: the one "what should the PDF pane be aimed at" record, driven by
         # `lit focus` (the agent) or a card click and polled by the viewer. Serve-only, ephemeral
         # — never persisted. `seq` is the poll's change-detector; `loc` is the resolved {page,
@@ -183,7 +183,9 @@ class _Handler(BaseHTTPRequestHandler):
         no restart — like every other refresh-after-edit in the curation loop."""
         graph = build_graph(self.server.root)
         polish_graph(graph, self.server.pdf_dir)
-        cockpit = {"term_port": self.server.term_port} if self.server.curate else None
+        # cockpit = "terminal features available" (a ttyd is up), not "the whole window is curate
+        # mode": the in-progress zone embeds a per-paper terminal, the browse view stays the graph.
+        cockpit = {"term_port": self.server.term_port} if self.server.terminal else None
         return to_json_dict(graph, active=load_config(self.server.root).active, cockpit=cockpit)
 
     def _payload(self) -> str:
@@ -358,9 +360,9 @@ class _Handler(BaseHTTPRequestHandler):
 
 
 def make_server(root: Path, pdf_dir: Path, host: str = "127.0.0.1",
-                port: int = 0, curate: bool = False, term_port: int = 7682) -> _Server:
+                port: int = 0, terminal: bool = False, term_port: int = 7682) -> _Server:
     """Bind (port 0 = ephemeral) but don't serve yet — the caller runs serve_forever()."""
-    return _Server((host, port), root=root, pdf_dir=pdf_dir, curate=curate, term_port=term_port)
+    return _Server((host, port), root=root, pdf_dir=pdf_dir, terminal=terminal, term_port=term_port)
 
 
 def _spawn_ttyd(term_port: int, data_root: Path) -> "subprocess.Popen | None":
@@ -384,16 +386,17 @@ def _spawn_ttyd(term_port: int, data_root: Path) -> "subprocess.Popen | None":
 
 
 def serve(root: Path, pdf_dir: Path, host: str = "127.0.0.1", port: int = 8000,
-          curate: bool = False, term_port: int = 7682) -> None:
-    """Serve until interrupted, announcing the URL. Raises OSError if the port is taken. With
-    `curate=True`, serves the three-pane cockpit and spawns a loopback ttyd for the terminal pane,
-    terminated on exit."""
-    srv = make_server(root, pdf_dir, host=host, port=port, curate=curate, term_port=term_port)
+          term_port: int = 7682) -> None:
+    """Serve until interrupted, announcing the URL. Raises OSError if the port is taken. Always
+    spawns a loopback ttyd (when installed) so the in-progress zone can embed a per-paper terminal;
+    if ttyd is absent the zone still works, just without its terminal pane. ttyd is terminated on
+    exit."""
+    ttyd_proc = _spawn_ttyd(term_port, root)
+    srv = make_server(root, pdf_dir, host=host, port=port,
+                      terminal=ttyd_proc is not None, term_port=term_port)
     bound = srv.server_address
-    print(f"serving {Path(root).resolve()} at http://{bound[0]}:{bound[1]}/"
-          + (" — curate cockpit" if curate else ""))
+    print(f"serving {Path(root).resolve()} at http://{bound[0]}:{bound[1]}/")
     print(f"PDFs from {Path(pdf_dir).resolve()} — Ctrl-C to stop")
-    ttyd_proc = _spawn_ttyd(term_port, root) if curate else None
     try:
         srv.serve_forever()
     except KeyboardInterrupt:

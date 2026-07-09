@@ -1,6 +1,6 @@
 # Curation cockpit — redesign delta (curation is a *place*, not a mode)
 
-**Status:** approved — supersedes the global-mode framing of
+**Status:** shipped (all three slices on `main`, 2026-07-09) — supersedes the global-mode framing of
 [the cockpit design](2026-07-09-curation-cockpit-design.md) · **Date:** 2026-07-09 · companion to
 [CURATION.md](../CURATION.md)
 
@@ -119,6 +119,13 @@ docked-pane CSS (→ both the collapsible viewer and the zone's PDF pane) · the
 
 Dependency is one-directional: slice 1 is standalone; 2 needs no viewer work from 1; 3 composes 2's
 zone with the parent doc's terminal. Each is a clean stopping point.
+
+**All three shipped** (2026-07-09): (1) `eeafad8`, (2) `35c82ab`, (3) this commit. The global
+`--curate` flag and `?curate` toggle are retired — `lit serve` always offers the terminal (via ttyd
+when installed) and the cockpit renders only when you enter a paper's zone. The zone's left card is a
+`/preview.html?key=…&drive=1` iframe whose quote-clicks POST `/focus`; the parent polls `/focus` while
+the zone is open and re-aims a `.pw-zone` pane re-parented into the overlay's top-right cell; the
+terminal stays pinned to the zone's paper even as the pane roams to a cited paper.
 
 ---
 

@@ -66,20 +66,28 @@ the rate limiter; never flood. A half-finished graph is a normal, valid state.**
 - **`lit serve`** — the same viewer over loopback HTTP, for a curation session: the graph is
   rebuilt from the YAML on every refresh (edit → refresh; a broken edit returns the
   validation error and the server survives), and the tooltip gains PDF hover-preview +
-  click-to-open for the `<citekey>.pdf` files in `pdf_dir` (config.toml, else
-  `<root>/pdfs`). It also renders **PDF quote windows**: a claim's weld isn't shown as text —
-  hovering it pops its PDF page with the sentence highlighted (full page width, zoomed out),
-  clicking pins that same preview in place as a handy little viewer over the **whole PDF** — the
-  full document as a scroll of pages (lazily rendered as they near view), opened on the highlight,
-  with a real scrollbar, ⌘/ctrl-wheel zoom, a live page indicator, and a pan / text-select toolbar
-  (drag to pan, or switch to select & copy the page's actual text via a transparent word overlay);
-  movable/resizable (click again, or empty board, to close). The location comes from a stored
-  `quote_loc` (SCHEMA §6) when present, else resolved live.
-  It also gives the **in-progress review lens** a home: an **"in progress · N"** pill in the
-  header surfaces every curated paper not yet at maturity 4 (`pass < 4`), and picking one opens
-  its isolated `lit preview` view (served live at `/preview.html?key=<citekey>` — the real
-  `isolate()`, no drift) in an overlay over the graph, with prev/next to step the set and Esc /
-  back to return. Serve-only; a static `lit build` keeps the pill hidden and stays the shareable artifact.
+  click-to-open for the `<citekey>.pdf` files in `pdf_dir` (config.toml, else `<root>/pdfs`).
+  **Two surfaces** (design: `docs/2026-07-09-cockpit-redesign-in-progress-zone.md`):
+  - *Browse view* — the graph, plus one **collapsible PDF viewer** docked right, toggled by the
+    header's **📄 PDF** pill. Open, hovering a quote-slice aims it at that claim's citation — the
+    **whole PDF** as a lazily-rendered scroll of pages, opened on the highlight, with a real
+    scrollbar, ⌘/ctrl-wheel zoom, a live page indicator, and a pan / text-select toolbar (drag to
+    pan, or select & copy the page's real text via a transparent word overlay). The location comes
+    from a stored `quote_loc` (SCHEMA §6) when present, else resolved live.
+  - *In-progress zone* — **right-click a curated card → "Curate this paper"** *moves* it out of the
+    graph into the **"in progress · N"** worklist (`[curation] active` in config.toml). The pill
+    opens a picker; entering a paper opens its **three-pane cockpit**: the isolated subgraph as the
+    left card, the focus-wire PDF pane top-right, and that paper's **ttyd terminal** (embedded
+    Claude session) bottom-right. **"Return to graph"** finishes it back into the graph. `lit serve`
+    spawns the terminal's ttyd when installed (loopback, default port 7682 — **7681 is often a
+    system login ttyd**; `--term-port` overrides); absent ttyd, the zone still works sans terminal.
+  Serve-only; a static `lit build` keeps the pill/toggle hidden and stays the shareable artifact.
+- **`lit curate <citekey>`** / **`lit curate --done <citekey>`** — the same move from the terminal:
+  add (or remove) a curated paper to the in-progress worklist. Drives the same `[curation] active`
+  that the right-click move and the "in progress" pill share.
+- **`lit focus <citekey> [--quote "…"]`** — aim a running `lit serve` in-progress zone's PDF pane
+  at a quote (my hand during curation): resolves the quote and re-aims the docked pane. The zone's
+  left-card quote-clicks drive the same wire, so agent and human stay in one truth.
 - **`lit locate`** — resolve every curated quote's place in its PDF (full-coverage word-
   geometry match) and store it as `quote_loc` in the YAML: run once, review the diff, commit.
   `--force` re-resolves quotes that already have a location; `--dry-run` reports without writing.

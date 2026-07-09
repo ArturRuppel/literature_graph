@@ -334,13 +334,13 @@ def test_active_move_rejects_non_curated_and_bad_payloads(srv, repo):
     assert post(srv, "/active", {"citekey": "Nope2099X", "active": False})[0] == 200
 
 
-def test_default_serve_has_no_cockpit(srv):
-    # a plain `lit serve` (and every static build) must not carry the curate-mode payload
+def test_serve_without_terminal_has_no_cockpit(srv):
+    # make_server defaults terminal=False (no ttyd) → no cockpit payload; a static build carries none
     assert "cockpit" not in json.loads(get(srv, "/graph.json")[2])
 
 
-def test_curate_mode_injects_cockpit_term_port(repo):
-    s = make_server(repo, repo / "pdfs", curate=True, term_port=7690)
+def test_terminal_available_injects_cockpit_term_port(repo):
+    s = make_server(repo, repo / "pdfs", terminal=True, term_port=7690)
     threading.Thread(target=s.serve_forever, daemon=True).start()
     try:
         assert json.loads(get(s, "/graph.json")[2])["cockpit"] == {"term_port": 7690}
@@ -385,23 +385,22 @@ from litgraph import cli
 
 def test_cli_serve_wires_root_port_and_pdf_dir(repo, monkeypatch):
     calls = {}
-    monkeypatch.setattr(cli, "serve", lambda root, pdf_dir, port, curate, term_port: calls.update(
-        root=Path(root), pdf_dir=Path(pdf_dir), port=port, curate=curate, term_port=term_port))
+    monkeypatch.setattr(cli, "serve", lambda root, pdf_dir, port, term_port: calls.update(
+        root=Path(root), pdf_dir=Path(pdf_dir), port=port, term_port=term_port))
     rc = cli.main(["serve", "--root", str(repo), "--port", "0"])
     assert rc == 0
-    # no config.toml + no --pdf-dir -> <root>/pdfs; not curating by default
-    assert calls == {"root": repo, "pdf_dir": repo / "pdfs", "port": 0,
-                     "curate": False, "term_port": 7682}
+    # no config.toml + no --pdf-dir -> <root>/pdfs; default terminal port
+    assert calls == {"root": repo, "pdf_dir": repo / "pdfs", "port": 0, "term_port": 7682}
     rc = cli.main(["serve", "--root", str(repo), "--pdf-dir", str(repo / "elsewhere")])
     assert rc == 0 and calls["pdf_dir"] == repo / "elsewhere" and calls["port"] == 8000
 
 
-def test_cli_serve_curate_flag_wires_through(repo, monkeypatch):
+def test_cli_serve_term_port_wires_through(repo, monkeypatch):
     calls = {}
-    monkeypatch.setattr(cli, "serve", lambda root, pdf_dir, port, curate, term_port: calls.update(
-        curate=curate, term_port=term_port))
-    rc = cli.main(["serve", "--root", str(repo), "--port", "0", "--curate", "--term-port", "7690"])
-    assert rc == 0 and calls == {"curate": True, "term_port": 7690}
+    monkeypatch.setattr(cli, "serve", lambda root, pdf_dir, port, term_port: calls.update(
+        term_port=term_port))
+    rc = cli.main(["serve", "--root", str(repo), "--port", "0", "--term-port", "7690"])
+    assert rc == 0 and calls == {"term_port": 7690}
 
 
 def test_cli_focus_posts_to_running_server(srv, capsys):

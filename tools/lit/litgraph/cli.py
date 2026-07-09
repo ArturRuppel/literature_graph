@@ -104,11 +104,9 @@ def main(argv: list[str] | None = None) -> int:
     p_srv.add_argument("--pdf-dir", default=None,
                        help="dir holding <citekey>.pdf files "
                             "(default: config.toml pdf_dir, else <root>/pdfs)")
-    p_srv.add_argument("--curate", action="store_true",
-                       help="serve the three-pane curation cockpit (card strip · docked PDF · "
-                            "embedded per-paper Claude terminal via ttyd)")
     p_srv.add_argument("--term-port", type=int, default=7682,
-                       help="port for the cockpit's ttyd terminal (default: 7682)")
+                       help="port for the in-progress zone's ttyd terminal (default: 7682; "
+                            "7681 is often a system login ttyd)")
 
     p_foc = sub.add_parser("focus", help="aim a running `lit serve` PDF pane at a quote "
                                          "(curation: mark a passage in the human's view)")
@@ -234,8 +232,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"error: {e}", file=sys.stderr)
             return 1
         try:
-            serve(cfg.root, pdf_dir, port=args.port,
-                  curate=args.curate, term_port=args.term_port)
+            serve(cfg.root, pdf_dir, port=args.port, term_port=args.term_port)
         except OSError as e:
             print(f"error: {e}", file=sys.stderr)
             return 1
