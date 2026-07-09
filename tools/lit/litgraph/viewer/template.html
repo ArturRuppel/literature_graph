@@ -35,6 +35,15 @@
   #hud .wip:hover{background:rgba(181,130,47,.28);border-color:rgba(231,207,166,.7)}
   #hud .wip .n{color:#fff;font-weight:600}
   #hud .wip[hidden]{display:none}
+
+  /* collapsible PDF viewer toggle (serve only, browse view) */
+  #hud .pdfbtn{display:inline-flex;align-items:center;gap:6px;cursor:pointer;font:inherit;
+    font-size:10px;letter-spacing:1px;text-transform:uppercase;color:#bcd2e4;
+    border:1px solid rgba(120,170,210,.42);border-radius:999px;padding:3px 10px;
+    background:rgba(90,159,208,.14)}
+  #hud .pdfbtn:hover{background:rgba(90,159,208,.26);border-color:rgba(150,195,225,.7)}
+  #hud .pdfbtn.on{background:rgba(90,159,208,.34);border-color:rgba(170,205,230,.85);color:#fff}
+  #hud .pdfbtn[hidden]{display:none}
   #wipPanel{position:fixed;z-index:45;top:44px;left:16px;width:300px;max-height:72vh;overflow:auto;
     background:var(--panel);border:1px solid var(--line);border-radius:10px;
     box-shadow:0 12px 34px rgba(38,54,70,.24);padding:6px}
@@ -133,7 +142,7 @@
   /* a slice whose weld is a PDF quote: its page pops on hover, pins on click (no inline text) */
   .slice.pdf-src{cursor:pointer}
   .slice.pdf-src .stx{border-bottom:1px dotted #b9a55f}
-  .slice.pdf-src:hover .stx,.slice.pdf-open .stx{border-bottom-color:var(--borrowed)}
+  .slice.pdf-src:hover .stx{border-bottom-color:var(--borrowed)}
   /* the generalization ladder: a row that ladders (leads_to) into the broader claim above */
   .slice.gen{border-left:2px solid var(--broad)}
   .gmk{flex:none;color:var(--broad);font-size:8px;margin-top:1px}
@@ -182,7 +191,6 @@
   .pw{position:fixed;z-index:60;width:440px;height:520px;display:flex;flex-direction:column;
     border:1px solid var(--line);border-radius:9px;background:var(--panel);overflow:hidden;
     user-select:none;box-shadow:0 14px 50px rgba(38,54,70,.22)}
-  .pw-soft{z-index:55;pointer-events:none;opacity:.98;box-shadow:0 10px 34px rgba(38,54,70,.28)}
   .pw-bar{flex:none;display:flex;align-items:center;gap:6px;height:22px;padding:0 4px 0 8px;
     background:#f3f6f8;border-bottom:1px solid var(--line);cursor:move;user-select:none;
     font-size:9px;color:var(--dim)}
@@ -198,7 +206,6 @@
   .pw-x:hover{color:#24313d}
   .pw-body{flex:1;position:relative;overflow:auto;background:#e0e5e9;
     scrollbar-width:thin;scrollbar-gutter:stable}
-  .pw-soft .pw-body{overflow:hidden}
   .pw[data-tool=pan]  .pw-body{cursor:grab}
   .pw[data-tool=pan]  .pw-body.pan{cursor:grabbing}
   .pw[data-tool=text] .pw-body{cursor:text}
@@ -270,18 +277,38 @@
     border-left:1px solid var(--line);border-top:1px solid var(--line);background:#1e1e1e}
   #term iframe{width:100%;height:100%;border:0;display:block}
   #term .term-empty{color:#9aa;font-size:11px;padding:10px 12px}
+
+  /* ── collapsible PDF viewer (browse view) ───────────────────────────────────────────────
+     Toggled from the HUD. One docked pane on the right the graph makes room for; hovering a
+     quote-slice aims it (JS). Empty until the first hover — the placeholder sits behind and is
+     painted over once a page mounts. Curate mode has its own docked focus pane, so this is
+     gated on :not(.curate). */
+  body.dock-open:not(.curate) #board{right:44%}
+  #dockEmpty{display:none}
+  body.dock-open:not(.curate) #dockEmpty{display:flex;position:fixed;right:0;top:46px;bottom:0;
+    width:44%;z-index:15;align-items:center;justify-content:center;text-align:center;
+    padding:0 32px;border-left:1px solid var(--line);background:var(--bg);
+    color:var(--faint);font-size:11px;line-height:1.6}
+  body.dock-open:not(.curate) .pw-side{position:fixed !important;right:0 !important;
+    left:auto !important;top:46px !important;bottom:0 !important;width:44% !important;
+    height:auto !important;border-radius:0;box-shadow:none;border-left:1px solid var(--line);
+    z-index:16}
+  body.dock-open:not(.curate) .pw-side .pw-grip{display:none}
+  body.dock-open:not(.curate) .pw-side .pw-bar{cursor:default}
 </style>
 </head>
 <body>
 <div id="hud">
   <b>litgraph</b>
   <span id="wip" class="wip" hidden></span>
+  <button id="pdfToggle" class="pdfbtn" hidden>📄 PDF</button>
   <label class="widthctl">width
     <input id="colw" type="range" min="220" max="720" step="4" value="340">
     <span class="val"></span>
   </label>
 </div>
 <div id="board"><svg id="edges"></svg></div>
+<div id="dockEmpty">hover a claim to preview its source · toggle this pane with 📄 PDF</div>
 <div id="term"><div class="term-empty">curation terminal — click a paper to start its session</div></div>
 <div id="tip"></div>
 <div id="wipPanel" hidden></div>
@@ -333,7 +360,6 @@ let ctxDrill=new Map();  // row paths force-expanded to reveal a sharpened targe
 const stacks=new Set();  // source-stack ids the human explicitly unfolded (persists rebuilds)
 let hover=null;          // {cardId,sid} — hovered slice row/broad node: redraw isolates its
                          // edges (bright) and highlights the counterpart papers, transiently
-const pdfWindows=new Map();  // "citekey:sid" -> floating PDF quote window element (toggle open)
 let pin=[];              // [{cardId,sid}] — clicked isolations that persist after the pointer
                          // leaves and ACCUMULATE: each click hardens another target. Bright set
                          // = every pinned target ∪ the current hover; everything else stays dim.
@@ -398,7 +424,7 @@ function paperCard(key, level){
 function setHover(h){
   if (h ? (hover && h.cardId === hover.cardId && h.sid === hover.sid) : !hover) return;
   hover = h; redraw();
-  updateHoverPdf(h);            // a hovered quote-slice pops its PDF (like its edges brightening)
+  aimDockFromHover(h);          // if the docked PDF viewer is open, aim it at this claim's source
 }
 function hoverRow(el, e){
   let h = null;
@@ -433,10 +459,9 @@ function cardClick(e, el, level, key){
   const row = e.target.closest(".slice");
   if (row && el.classList.contains("open")) {
     togglePin({cardId: el.id, sid: row.dataset.sid});   // harden/release this row (accumulates)
-    if (row.classList.contains("pdf-src")) {
-      if (CURATE) focusFromClick(key, row.dataset.sid);   // curate: drive the docked pane via the wire
-      else togglePinnedPdf(key, row.dataset.sid, el.id);  // float: pin/close its own PDF window
-    }
+    // curate: a quote-slice click drives the docked pane via the focus wire. Browse view: the
+    // click just pins the edge — the docked viewer follows hover, not clicks, so nothing pops.
+    if (CURATE && row.classList.contains("pdf-src")) focusFromClick(key, row.dataset.sid);
     if (row.classList.contains("drillable")) toggleDrill(id, row.dataset.path);  // drill + rebuild
     return;
   }
@@ -517,7 +542,7 @@ function renderSlices(id){
     const isOpen = can && paths.has(path);
     const ans = s.kind === "question" && s.answered ? " ans" : "";
     // a slice whose weld is a quote: no inline quote text — its PDF pops on hover / pins on click
-    const pdf = (LIVE && s.quote) ? " pdf-src" + (pdfWindows.has(`${key}:${s.id}`) ? " pdf-open" : "") : "";
+    const pdf = (LIVE && s.quote) ? " pdf-src" : "";   // quote-bearing → hover aims the docked viewer
     html += `<div class="slice${can ? ' drillable' : ''}${pdf}${lad ? ' gen' : ''}" data-sid="${s.id}" data-path="${path}"`
           + ` style="margin-left:${depth * 14}px"${lad ? ' title="generalizes into the claim above (leads_to)"' : ''}>`
           + `<span class="car">${can ? (isOpen ? "▾" : "▸") : "·"}</span>`
@@ -659,7 +684,7 @@ function rebuild(){
       const el=document.getElementById(`card-0:${k}`); if(el) el.remove();
     }
   });
-  edges=[]; edgeSeen.clear(); hover=null; hideSoftPdf();   // rows re-render; next mousemove re-isolates
+  edges=[]; edgeSeen.clear(); hover=null;   // rows re-render; next mousemove re-isolates (docked viewer rests)
   document.querySelectorAll(".card.open,.card.focus").forEach(c=>c.classList.remove("open","focus"));
   ctxOpen=new Set(); ctxDrill=new Map();
   const done=new Set();
@@ -938,6 +963,13 @@ if (CURATE) document.body.classList.add("curate");
 // to the seed-or-resume wrapper as the paper to curate.
 const TERM_PORT = (COCKPIT && COCKPIT.term_port) || new URLSearchParams(location.search).get("term") || "7682";
 const TERM_ORIGIN = location.protocol + "//" + location.hostname + ":" + TERM_PORT;
+// the collapsible PDF viewer lives in the browse view only — curate mode has its own docked
+// focus pane, and a static build has no page-render endpoints to feed it.
+const pdfToggle = document.getElementById("pdfToggle");
+if (pdfToggle && LIVE && !CURATE) {
+  pdfToggle.hidden = false;
+  pdfToggle.addEventListener("click", toggleDock);
+}
 let PDFS = null;                       // Set of citekeys with a PDF (null until fetched)
 if (LIVE) fetch("pdfs.json").then(r => r.ok ? r.json() : [])
   .then(l => { PDFS = new Set(l); }).catch(() => { PDFS = new Set(); });
@@ -992,13 +1024,10 @@ function showTip(e, key, el, force){
   tip.style.left = x + "px"; tip.style.top = y + "px";
 }
 
-// ── floating PDF quote windows ───────────────────────────────────────────────────────────
-// A slice's weld is no longer shown as text — the PDF *is* the link. Hovering a quote-slice
-// pops a soft preview of its page (like its edges brightening); clicking pins an interactive
-// window (like pinning the edges), and clicking again — or an empty-board click — closes it.
-// The quote's location is resolved live server-side (/resolve → page + highlight rects) and
-// cached per session; the page is rendered by /page/<key>/<n>.png. Every window opens zoomed
-// out to full page width with the highlight in view, then pans (drag) and zooms (wheel).
+// ── PDF quote location resolution ────────────────────────────────────────────────────────
+// A slice's weld is no longer shown as text — the PDF *is* the link. The quote's location is
+// resolved from its stored quote_loc (lit locate) or live server-side (/resolve → page +
+// highlight rects) and cached per session; the page is rendered by /page/<key>/<n>.png.
 // Live only — needs `lit serve`.
 const locCache = new Map();                        // "key:sid" -> {page,rects} | null (a miss)
 async function resolveLoc(key, sid){
@@ -1017,58 +1046,49 @@ async function resolveLoc(key, sid){
 }
 const idKey = cardId => cardId.slice(cardId.indexOf(":") + 1);
 
-// hover → soft preview (a single, non-interactive window that follows the hovered row)
-let softEl = null, softReq = null, hoverTimer = null;
-function hideSoftPdf(){ if (softEl) { softEl.remove(); softEl = null; } softReq = null; clearTimeout(hoverTimer); }
-function updateHoverPdf(h){
-  clearTimeout(hoverTimer);
-  if (!HOVER || CURATE) { hideSoftPdf(); return; }   // touch/curate: no floating soft peek — click drives the docked pane
+// ── collapsible PDF viewer (browse view, live-only) ──────────────────────────────────────
+// One docked pane on the right, toggled from the HUD. While OPEN, hovering a quote-slice aims
+// it at that claim's citation (resolveLoc → mountDoc, the same full-document viewer a curate
+// focus uses); while collapsed, hover is inert. No floating windows and no /focus round-trip —
+// the browse view has no terminal to keep in sync, so hover drives mountDoc directly. The pane
+// rests on the last-hovered claim when the pointer leaves; a non-quote row leaves it put.
+let dockOpen = false, dockWin = null, dockShown = null, dockReq = null, dockTimer = null;
+function openDock(){
+  if (dockOpen) return;
+  dockOpen = true; document.body.classList.add("dock-open");
+  if (pdfToggle) pdfToggle.classList.add("on");
+}
+function closeDock(){
+  dockOpen = false; document.body.classList.remove("dock-open");
+  if (pdfToggle) pdfToggle.classList.remove("on");
+  clearTimeout(dockTimer);
+  if (dockWin) { dockWin.remove(); dockWin = null; }
+  dockShown = null; dockReq = null;
+}
+function toggleDock(){ dockOpen ? closeDock() : openDock(); }
+
+// hover a quote-slice → aim the open dock at it (debounced so pass-through hovers don't thrash)
+function aimDockFromHover(h){
+  clearTimeout(dockTimer);
+  if (!dockOpen || !HOVER) return;
   const key = h && h.sid ? idKey(h.cardId) : null;
   const s = key ? (PAPERS[key] && PAPERS[key].slices || []).find(x => x.id === h.sid) : null;
-  if (!LIVE || !s || !s.quote || pdfWindows.has(`${key}:${h.sid}`)) {
-    hoverTimer = setTimeout(hideSoftPdf, 150); return;   // nothing to show (or already pinned)
-  }
-  hoverTimer = setTimeout(() => showSoftPdf(key, h.sid, h.cardId), 200);  // debounce pass-throughs
+  if (!LIVE || !s || !s.quote) return;             // non-quote row / card body: leave the pane put
+  dockTimer = setTimeout(() => aimDock(key, h.sid), 180);
 }
-async function showSoftPdf(key, sid, cardId){
-  const qid = `${key}:${sid}`; softReq = qid;
-  const loc = await resolveLoc(key, sid);
-  if (softReq !== qid) return;                     // hover moved on while resolving
-  hideSoftPdf(); softReq = qid;
-  softEl = buildWin(key, loc ? `p.${loc.page + 1}` : "quote not located", {soft: true});
-  softEl.dataset.qid = qid;                        // click can harden this preview in place (§spatial)
-  mountPage(softEl, key, loc ? loc.page : 0, loc ? loc.rects.slice() : [], {interactive: false});
-  positionBeside(softEl, cardId, sid);
-}
-function positionBeside(win, cardId, sid){
-  const card = document.getElementById(cardId);
-  const rowEl = card && card.querySelector(`.slice[data-sid="${sid}"]`);
-  const cr = (card || win).getBoundingClientRect(), rr = (rowEl || card || win).getBoundingClientRect();
-  const ww = win.offsetWidth || 440, wh = win.offsetHeight || 360;
-  let x = cr.right + 12;
-  if (x + ww > innerWidth) x = cr.left - ww - 12;
-  x = Math.max(8, Math.min(x, innerWidth - ww - 8));
-  const y = Math.max(54, Math.min(rr.top - 16, innerHeight - wh - 8));
-  win.style.left = x + "px"; win.style.top = y + "px";
-}
-
-// click → pin an interactive window (toggle). It hardens *where the hover preview already is*
-// (same rect, same cached page) so the preview appears to freeze in place rather than jump.
-async function togglePinnedPdf(key, sid, cardId){
+async function aimDock(key, sid){
   const qid = `${key}:${sid}`;
-  const open = pdfWindows.get(qid);
-  if (open) { open.remove(); pdfWindows.delete(qid); return; }
-  const at = (softEl && softEl.dataset.qid === qid)      // hover-then-click: pin at the soft rect
-    ? {left: softEl.offsetLeft, top: softEl.offsetTop} : null;
-  hideSoftPdf();
+  if (qid === dockShown) return;                    // already parked on this claim
+  dockReq = qid;
   const loc = await resolveLoc(key, sid) || {page: 0, rects: []};
-  if (pdfWindows.has(qid)) return;                 // a second click landed while resolving
-  const win = buildWin(key, `p.${loc.page + 1}`,
-                       {onClose: () => togglePinnedPdf(key, sid, cardId), at, cardId, sid});
-  mountDoc(win, key, loc.page, (loc.rects || []).slice(), {interactive: true});
-  pdfWindows.set(qid, win);
+  if (dockReq !== qid || !dockOpen) return;         // hover moved on / dock closed while resolving
+  if (dockWin) dockWin.remove();
+  dockWin = buildWin(key, loc.rects.length ? `p.${loc.page + 1}` : "quote not located",
+                     {onClose: closeDock});
+  dockWin.classList.add("pw-side");                 // fixed right pane (CSS positions it) — before mount
+  mountDoc(dockWin, key, loc.page || 0, loc.rects.slice(), {interactive: true});
+  dockShown = qid;
 }
-function closeAllPinnedPdfs(){ for (const w of pdfWindows.values()) w.remove(); pdfWindows.clear(); }
 
 // ── focus channel (serve-only) ───────────────────────────────────────────────────────────
 // A shared "aim the PDF here" wire the agent (via `lit focus`) and card clicks both drive: the
@@ -1125,40 +1145,29 @@ async function focusFromClick(key, sid){
 if (LIVE) { pollFocus(); setInterval(pollFocus, 500); }
 
 // A window shell: titlebar (key · page · pan/text tools · ×) + a scrollable body holding a sizer
-// (owns the scroll extent) and a stage (image + highlights + text layer, under one scale). A soft
-// preview is inert (pointer-events:none) and just follows the hovered row.
-function buildWin(key, sub, {soft = false, onClose, at, cardId, sid} = {}){
+// (owns the scroll extent) and a stage (image + highlights + text layer, under one scale). Both
+// callers dock it via CSS (curate focus pane / browse viewer); `at` seeds a free-floating place
+// for any future caller, but a docked pane's !important rules win over it.
+function buildWin(key, sub, {onClose, at} = {}){
   const win = document.createElement("div");
-  win.className = "pw" + (soft ? " pw-soft" : "");
-  if (!soft) win.dataset.tool = "pan";
+  win.className = "pw";
+  win.dataset.tool = "pan";
   win.innerHTML =
     `<div class="pw-bar"><b>${key}</b><span class="pw-sub">${sub}</span><span class="sp"></span>`
-    + (soft ? "" : `<span class="pw-tools"><button class="pw-tool" data-t="pan" title="pan (drag)">✥</button>`
-                 + `<button class="pw-tool" data-t="text" title="select text">I</button></span>`
-                 + `<span class="pw-x" title="close">×</span>`)
+    + `<span class="pw-tools"><button class="pw-tool" data-t="pan" title="pan (drag)">✥</button>`
+    + `<button class="pw-tool" data-t="text" title="select text">I</button></span>`
+    + `<span class="pw-x" title="close">×</span>`
     + `</div><div class="pw-body"><div class="pw-loading">rendering page…</div>`
     + `<div class="pw-sizer"><div class="pw-stage"></div></div></div>`
-    + (soft ? "" : `<div class="pw-grip"></div>`);
+    + `<div class="pw-grip"></div>`;
   document.body.appendChild(win);
-  if (!soft) {
-    if (at) { win.style.left = at.left + "px"; win.style.top = at.top + "px"; }
-    else if (cardId) positionBeside(win, cardId, sid);   // no live preview → where it would have been
-    else { const n = pdfWindows.size; win.style.left = (120 + n * 26) + "px"; win.style.top = (86 + n * 26) + "px"; }
-    nudgeIfColliding(win);                                // stacked pins fan out instead of overlapping
-    dragBy(win.querySelector(".pw-bar"), (dx, dy, l, t) => { win.style.left = l + dx + "px"; win.style.top = t + dy + "px"; },
-           () => [win.offsetLeft, win.offsetTop], ".pw-x,.pw-tool");
-    dragBy(win.querySelector(".pw-grip"), (dx, dy, w, h) => { win.style.width = Math.max(240, w + dx) + "px"; win.style.height = Math.max(160, h + dy) + "px"; },
-           () => [win.offsetWidth, win.offsetHeight]);
-    win.querySelector(".pw-x").addEventListener("click", onClose);
-  }
+  if (at) { win.style.left = at.left + "px"; win.style.top = at.top + "px"; }
+  dragBy(win.querySelector(".pw-bar"), (dx, dy, l, t) => { win.style.left = l + dx + "px"; win.style.top = t + dy + "px"; },
+         () => [win.offsetLeft, win.offsetTop], ".pw-x,.pw-tool");
+  dragBy(win.querySelector(".pw-grip"), (dx, dy, w, h) => { win.style.width = Math.max(240, w + dx) + "px"; win.style.height = Math.max(160, h + dy) + "px"; },
+         () => [win.offsetWidth, win.offsetHeight]);
+  win.querySelector(".pw-x").addEventListener("click", onClose);
   return win;
-}
-// keep a fresh pin from landing exactly on an existing one (it isn't in pdfWindows yet)
-function nudgeIfColliding(win){
-  let l = win.offsetLeft, t = win.offsetTop, tries = 0;
-  const clash = () => { for (const w of pdfWindows.values()) if (Math.abs(w.offsetLeft - l) < 12 && Math.abs(w.offsetTop - t) < 12) return true; return false; };
-  while (clash() && tries++ < 20) { l += 26; t += 26; }
-  win.style.left = l + "px"; win.style.top = t + "px";
 }
 
 // Render page `page` into `win`'s scroll body: the page image + highlight overlays (page
@@ -1434,7 +1443,7 @@ addEventListener("resize",redraw);
 // a click on empty board space (not a card or broad node) thaws any pinned isolation.
 // isConnected guard: a drill/collapse rebuild detaches the clicked row mid-dispatch, so a
 // pinning click bubbles here with a detached target — don't misread that as empty space.
-board.addEventListener("click",e=>{ if(pin.length && e.target.isConnected && !e.target.closest(".card,.bn")){ pin=[]; closeAllPinnedPdfs(); redraw(); } });
+board.addEventListener("click",e=>{ if(pin.length && e.target.isConnected && !e.target.closest(".card,.bn")){ pin=[]; redraw(); } });
 // read-only introspection for headless tests; not used by the UI
 window.litDebug={get edges(){return edges},get cols(){return cols},open,drill,stacks,
   get ctxOpen(){return ctxOpen},get ctxDrill(){return ctxDrill},get hover(){return hover},
