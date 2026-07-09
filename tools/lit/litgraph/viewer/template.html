@@ -173,17 +173,16 @@
   #tip{position:fixed;z-index:50;width:300px;border:1px solid var(--line);border-radius:10px;
     background:rgba(255,255,255,.97);box-shadow:0 12px 40px rgba(38,54,70,.18);padding:11px 13px;display:none;backdrop-filter:blur(8px);
     max-height:88vh;overflow-y:auto}
-  #tip h4{margin:0 0 3px;font-size:11px}
+  /* metadata card: title · all authors · journal · year · non-clickable first-page preview */
+  #tip .ttitle{margin:0 0 4px;font-size:11px;font-weight:700;color:var(--ink);line-height:1.3}
+  #tip .tauth{font-size:9.5px;color:var(--dim);line-height:1.4;margin-bottom:6px}
   #tip .meta{font-size:9px;color:var(--faint);margin-bottom:7px}
-  /* abstract shown in full, above the clickable preview — read it without opening the PDF */
-  #tip .abs{font-size:10px;color:var(--dim);line-height:1.4}
   #tip .pdf{margin-top:9px;height:70px;border:1px dashed var(--line);border-radius:6px;
     display:flex;align-items:center;justify-content:center;font-size:9px;color:var(--faint);
     background:repeating-linear-gradient(180deg,#f3f6f8,#f3f6f8 6px,#e9eef2 6px,#e9eef2 12px)}
-  #tip .pdf.live{color:var(--borrowed);border-color:var(--borrowed);cursor:pointer;
-    height:170px;padding:0;overflow:hidden;background:#fff;align-items:flex-start}
+  #tip .pdf.live{border-color:var(--line);height:210px;padding:0;overflow:hidden;
+    background:#fff;align-items:flex-start;border-style:solid}
   #tip .pdf.live img{width:100%;display:block}
-  #tip .pdfcap{margin-top:4px;font-size:8.5px;color:var(--borrowed)}
   #tip .nopdf{margin-top:9px;font-size:9px;color:var(--faint);font-style:italic}
   .hint{position:fixed;bottom:12px;left:16px;font-size:10px;color:var(--faint);z-index:30}
 
@@ -273,18 +272,26 @@
      Toggled from the HUD. One docked pane on the right the graph makes room for; hovering a
      quote-slice aims it (JS). Empty until the first hover — the placeholder sits behind and is
      painted over once a page mounts. */
-  body.dock-open #board{right:44%}
+  body{--dock-w:44%}                              /* dock width — JS-driven, persisted, resizable */
+  body.dock-open #board{right:var(--dock-w)}
   #dockEmpty{display:none}
   body.dock-open #dockEmpty{display:flex;position:fixed;right:0;top:46px;bottom:0;
-    width:44%;z-index:15;align-items:center;justify-content:center;text-align:center;
+    width:var(--dock-w);z-index:15;align-items:center;justify-content:center;text-align:center;
     padding:0 32px;border-left:1px solid var(--line);background:var(--bg);
     color:var(--faint);font-size:11px;line-height:1.6}
   body.dock-open .pw-side{position:fixed !important;right:0 !important;
-    left:auto !important;top:46px !important;bottom:0 !important;width:44% !important;
+    left:auto !important;top:46px !important;bottom:0 !important;width:var(--dock-w) !important;
     height:auto !important;border-radius:0;box-shadow:none;border-left:1px solid var(--line);
     z-index:16}
   body.dock-open .pw-side .pw-grip{display:none}
   body.dock-open .pw-side .pw-bar{cursor:default}
+  /* drag handle on the dock's left seam — Hyprland-style width resize (persisted) */
+  #dockGrip{display:none}
+  body.dock-open #dockGrip{display:block;position:fixed;top:46px;bottom:0;right:var(--dock-w);
+    width:8px;margin-right:-4px;z-index:17;cursor:ew-resize;background:transparent;transition:background .12s}
+  #dockGrip:hover,body.dock-resizing #dockGrip{background:#6ea8d8}
+  body.dock-resizing{cursor:ew-resize;user-select:none}
+  body.dock-resizing .pw-side{pointer-events:none}
 
   /* ── in-progress zone = the cockpit ─────────────────────────────────────────────────────
      Entering an in-progress paper (from the "in progress" pill) opens its three-pane cockpit
@@ -330,7 +337,8 @@
   </label>
 </div>
 <div id="board"><svg id="edges"></svg></div>
-<div id="dockEmpty">hover a claim to preview its source · toggle this pane with 📄 PDF</div>
+<div id="dockEmpty">open a card to load its PDF · hover a claim to jump to its quote · toggle with 📄 PDF</div>
+<div id="dockGrip"></div>
 <div id="tip"></div>
 <div id="ctxmenu"></div>
 <div id="wipPanel" hidden></div>
@@ -412,6 +420,9 @@ function passCircle(pass){
 }
 function authLine(a){return a.map(([n, pos, corr]) =>
   corr ? `<span class="star">${n}*</span>` : n).join(' · ');}
+// citekey = <Family><Year><Venue>; the venue token is the journal (ISO-4 abbrev / brand). Used as
+// the journal until a real `journal` field is stored end-to-end (then p.journal wins).
+const venueFromKey = k => { const m = String(k).match(/\d{4}([A-Za-z][A-Za-z0-9]*)$/); return m ? m[1] : ""; };
 
 function paperCard(key, level){
   const p = PAPERS[key] || STUBS[key];
@@ -503,12 +514,12 @@ function cardClick(e, el, level, key){
         open.delete(id); drill.delete(id);
         for (const g of [...grpCollapsed]) if (g.startsWith(id + "::")) grpCollapsed.delete(g);
       }
-      else open.add(id);                 // context-opened card → promote to focused
+      else { open.add(id); loadDock(key); }   // context-opened card → promote to focused + load its PDF
       rebuild();
     }
     return;
   }
-  open.add(id); rebuild();
+  open.add(id); loadDock(key); rebuild();      // collapsed card clicked open → load its PDF into the dock
 }
 
 function toggleDrill(id, path){
@@ -563,8 +574,20 @@ function renderSlices(id){
     ["open questions", questions.filter(s => !s.answered)],
   ];
   const paths = new Set([...(drill.get(id) || []), ...(ctxDrill.get(id) || [])]);
+  // a question's direct answers are only the *un-subsumed* ones: an answer that grounds (up) or
+  // ladders (gen) into another answer of the SAME question nests under that sibling when it's
+  // drilled, so listing it flat here too would render it twice (the umbrella + its supports).
+  // This mirrors the top-level `dependents`/`gen` entry filter, which the answer list bypassed.
+  const qKids = qid => {
+    const ans = answeredBy[qid] || [], set = new Set(ans), sub = new Set();
+    ans.forEach(a => {
+      (byId[a].up || []).forEach(u => { if (set.has(u)) sub.add(u); });
+      (genBy[a] || []).forEach(u => { if (set.has(u)) sub.add(u); });
+    });
+    return ans.filter(a => !sub.has(a)).map(k => ({s: byId[k], lad: false}));
+  };
   const kidsOf = s => s.kind === "question"
-    ? (answeredBy[s.id] || []).map(k => ({s: byId[k], lad: false}))
+    ? qKids(s.id)
     : [...(s.up || []).map(u => ({s: byId[u], lad: false})),
        ...(genBy[s.id] || []).map(u => ({s: byId[u], lad: true}))].filter(k => k.s);
   let html = "";
@@ -1029,29 +1052,28 @@ addEventListener("click", e => {
   }
 }, true);
 
+// The hover preview is a pure metadata card now — title · all authors · journal · year · a
+// (non-clickable) first-page thumbnail. Opening the PDF is the docked viewer's job (a card click
+// loads it), so the tip no longer opens anything; it's a bib peek that holds still under the pointer.
 function showTip(e, key, el, force){
   if (!HOVER && !force) return;        // touch: only the explicit tap-to-pin path (force) shows the tip
   keepTip();
   tip.style.display = "block";
-  if (tip.dataset.key === key) return; // pinned: the tip must hold still while the same
-  tip.dataset.key = key;               // target is hovered, so the preview is clickable
+  if (tip.dataset.key === key) return; // pinned: hold still while the same target is hovered
+  tip.dataset.key = key;
   const cur = !!(PAPERS[key] && PAPERS[key].cur);
   const p = PAPERS[key] || STUBS[key];
-  let pdf;
-  if (!cur) pdf = `<div class="nopdf">uncurated stub — bib metadata only</div>`;
-  else if (!LIVE) pdf = `<div class="nopdf">PDF preview/open needs <code>lit serve</code></div>`;
-  else if (!PDFS || !PDFS.has(key)) pdf = `<div class="nopdf">no PDF served (${key}.pdf)</div>`;
-  else pdf = `<div class="pdf live" title="open ${key}.pdf">`
-           + `<img src="preview/${key}.png" alt="first page of ${key}.pdf"></div>`
-           + `<div class="pdfcap">PDF — click the preview to open</div>`;
-  tip.innerHTML = `<h4>${key}</h4>
-    <div class="meta">${p.type || 'stub'} · ${p.year || ''}${cur ? ` · curated${p.pass!=null?` (maturity ${p.pass}/4)`:''}` : ' · stub (maturity 0)'}</div>
-    <div class="abs">${cur ? (p.abs || p.title) : p.title}</div>
-    ${pdf}`;
-  const box = tip.querySelector(".pdf.live");
-  if (box) box.addEventListener("click", () => window.open(`pdf/${key}.pdf`, "_blank"));
+  let thumb;
+  if (!cur) thumb = `<div class="nopdf">uncurated stub — bib metadata only</div>`;
+  else if (!LIVE) thumb = `<div class="nopdf">PDF preview needs <code>lit serve</code></div>`;
+  else if (!PDFS || !PDFS.has(key)) thumb = `<div class="nopdf">no PDF served (${key}.pdf)</div>`;
+  else thumb = `<div class="pdf live"><img src="preview/${key}.png" alt="first page of ${key}.pdf"></div>`;
+  const auth = (cur && p.authors && p.authors.length) ? `<div class="tauth">${authLine(p.authors)}</div>` : "";
+  const bib = [p.journal || venueFromKey(key), p.year].filter(Boolean).join(" · ");
+  tip.innerHTML = `<div class="ttitle">${p.title || key}</div>${auth}`
+                + `<div class="meta">${bib}</div>${thumb}`;
   // pin beside the hovered card — right of it, flipping left when there's no room — NOT
-  // at the cursor, so the pointer can travel into the tip (and onto the preview)
+  // at the cursor, so the pointer can travel into the tip to read a long author list
   const r = ((el && el.closest(".card")) || el || e.target).getBoundingClientRect();
   const pad = 10, w = 300, h = tip.offsetHeight;
   let x = r.right + pad;
@@ -1090,6 +1112,7 @@ const idKey = cardId => cardId.slice(cardId.indexOf(":") + 1);
 // the browse view has no terminal to keep in sync, so hover drives mountDoc directly. The pane
 // rests on the last-hovered claim when the pointer leaves; a non-quote row leaves it put.
 let dockOpen = false, dockWin = null, dockShown = null, dockReq = null, dockTimer = null;
+let dockDoc = null, dockRefitTimer = null;             // dockDoc = last mount {key,page,rects} (for refit)
 function openDock(){
   if (dockOpen) return;
   dockOpen = true; document.body.classList.add("dock-open");
@@ -1100,9 +1123,33 @@ function closeDock(){
   if (pdfToggle) pdfToggle.classList.remove("on");
   clearTimeout(dockTimer);
   if (dockWin) { dockWin.remove(); dockWin = null; }
-  dockShown = null; dockReq = null;
+  dockShown = null; dockReq = null; dockDoc = null;
 }
 function toggleDock(){ dockOpen ? closeDock() : openDock(); }
+// (re)mount the dock's remembered doc at the current width — buildWin is fresh each time so
+// listeners never stack. Used by aimDock/loadDock and by the resize re-fit.
+function mountDockDoc(){
+  if (!dockDoc) return;
+  const d = dockDoc;
+  if (dockWin) dockWin.remove();
+  dockWin = buildWin(d.key, d.rects.length ? `p.${d.page + 1}` : "full paper", {onClose: closeDock});
+  dockWin.classList.add("pw-side");                    // fixed right pane (CSS) — before mount
+  mountDoc(dockWin, d.key, d.page, d.rects.slice(), {interactive: true});
+}
+function scheduleDockRefit(){ clearTimeout(dockRefitTimer);
+  dockRefitTimer = setTimeout(() => { if (dockOpen && dockDoc) mountDockDoc(); }, 140); }
+// Opening a card loads its whole PDF into the dock (page 1, no highlight) — the coarse "show me
+// this paper" entry; hovering a quote-slice still fine-aims the open dock at that exact quote.
+function loadDock(key){
+  if (DRIVE || !LIVE || !(PDFS && PDFS.has(key))) return;   // DRIVE card has no dock; nothing servable → skip
+  openDock();
+  const qid = `${key}:__paper__`;
+  if (qid === dockShown) return;
+  clearTimeout(dockTimer); dockReq = qid;
+  dockDoc = {key, page: 0, rects: []};
+  mountDockDoc();
+  dockShown = qid;
+}
 
 // hover a quote-slice → aim the open dock at it (debounced so pass-through hovers don't thrash)
 function aimDockFromHover(h){
@@ -1119,12 +1166,34 @@ async function aimDock(key, sid){
   dockReq = qid;
   const loc = await resolveLoc(key, sid) || {page: 0, rects: []};
   if (dockReq !== qid || !dockOpen) return;         // hover moved on / dock closed while resolving
-  if (dockWin) dockWin.remove();
-  dockWin = buildWin(key, loc.rects.length ? `p.${loc.page + 1}` : "quote not located",
-                     {onClose: closeDock});
-  dockWin.classList.add("pw-side");                 // fixed right pane (CSS positions it) — before mount
-  mountDoc(dockWin, key, loc.page || 0, loc.rects.slice(), {interactive: true});
+  dockDoc = {key, page: loc.page || 0, rects: loc.rects.slice()};
+  mountDockDoc();
   dockShown = qid;
+}
+// dock width resize (persisted): the grip sits on the dock's left seam; drag sets --dock-w, and the
+// PDF re-fits on release / window resize (same baked-W0 re-mount the cockpit uses).
+if (LIVE && !DRIVE) {
+  const grip = document.getElementById("dockGrip");
+  const DW_KEY = "lit.dock.w";
+  try { const v = parseFloat(localStorage.getItem(DW_KEY));
+        if (v > 0.15 && v < 0.85) document.body.style.setProperty("--dock-w", (v * 100) + "%"); } catch {}
+  if (grip) grip.addEventListener("pointerdown", e => {
+    e.preventDefault();
+    document.body.classList.add("dock-resizing");
+    const move = ev => {
+      const f = Math.min(0.75, Math.max(0.2, (innerWidth - ev.clientX) / innerWidth));
+      document.body.style.setProperty("--dock-w", (f * 100) + "%");
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up);
+      document.body.classList.remove("dock-resizing");
+      const cur = parseFloat(getComputedStyle(document.body).getPropertyValue("--dock-w"));
+      try { localStorage.setItem(DW_KEY, (cur / 100).toString()); } catch {}
+      scheduleDockRefit();
+    };
+    window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
+  });
+  addEventListener("resize", () => { if (dockOpen) scheduleDockRefit(); });
 }
 
 // ── the move: right-click a curated card → curate it (serve, browse view) ─────────────────
