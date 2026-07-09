@@ -10,6 +10,7 @@ requires-python = ">=3.10"
 dependencies = [
     "pymupdf4llm>=0.0.20",   # PDF -> deterministic Markdown (pulls pymupdf/fitz)
     "ruamel.yaml>=0.17",     # round-trip YAML (preserves stubs.yaml comments)
+    "tomlkit>=0.12",         # round-trip TOML (preserves config.toml comments on `active` writes)
     "iso4>=0.0.2",           # ISO-4 journal abbreviation (needs nltk wordnet)
     "requests>=2.28",        # OpenAlex / Crossref HTTP
 ]

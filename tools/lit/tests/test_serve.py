@@ -305,6 +305,35 @@ def test_focus_rejects_missing_pdf_and_traversal(srv):
     assert post(srv, "/focus", {"citekey": "../etc", "quote": "x"})[0] == 404
 
 
+# ── the move: POST /active writes the in-progress worklist ────────────────────────────────
+
+
+def test_active_move_writes_config_and_shows_in_graph(srv, repo):
+    from litgraph.config import load_config
+    status, res = post(srv, "/active", {"citekey": "Chen2021Sys", "active": True})
+    assert status == 200 and res == {"ok": True, "active": ["Chen2021Sys"]}
+    # persisted to config.toml (curator state, deployment-local)
+    assert load_config(repo).active == ("Chen2021Sys",)
+    # and the rebuilt graph.json carries it (re-read per request), so the viewer filters it out
+    assert json.loads(get(srv, "/graph.json")[2])["active"] == ["Chen2021Sys"]
+    # symmetric removal
+    _, res = post(srv, "/active", {"citekey": "Chen2021Sys", "active": False})
+    assert res == {"ok": True, "active": []}
+    assert load_config(repo).active == ()
+
+
+def test_active_move_rejects_non_curated_and_bad_payloads(srv, repo):
+    # a stub / unknown key has no local subgraph to curate → 404 (curated-only for now)
+    assert post(srv, "/active", {"citekey": "Patel2017Vldb", "active": True})[0] == 404
+    assert post(srv, "/active", {"citekey": "Nope2099X", "active": True})[0] == 404
+    # malformed: missing / non-bool `active`, or a traversal citekey
+    assert post(srv, "/active", {"citekey": "Chen2021Sys"})[0] == 400
+    assert post(srv, "/active", {"citekey": "Chen2021Sys", "active": "yes"})[0] == 400
+    assert post(srv, "/active", {"citekey": "../etc", "active": True})[0] == 400
+    # a non-curated key can still be *removed* (idempotent cleanup — no curated-file check)
+    assert post(srv, "/active", {"citekey": "Nope2099X", "active": False})[0] == 200
+
+
 def test_default_serve_has_no_cockpit(srv):
     # a plain `lit serve` (and every static build) must not carry the curate-mode payload
     assert "cockpit" not in json.loads(get(srv, "/graph.json")[2])
@@ -397,6 +426,21 @@ def test_cli_focus_errors_on_unknown_pdf(srv, capsys):
     rc = cli.main(["focus", "Nope2020Xyz", "--quote", "x", "--port", str(port)])
     assert rc == 1
     assert "Nope2020Xyz" in capsys.readouterr().err
+
+
+def test_cli_curate_moves_paper_in_and_out(repo, capsys):
+    from litgraph.config import load_config
+    rc = cli.main(["curate", "Chen2021Sys", "--root", str(repo)])
+    assert rc == 0 and "moved into" in capsys.readouterr().out
+    assert load_config(repo).active == ("Chen2021Sys",)
+    rc = cli.main(["curate", "Chen2021Sys", "--done", "--root", str(repo)])
+    assert rc == 0 and "returned to the graph" in capsys.readouterr().out
+    assert load_config(repo).active == ()
+
+
+def test_cli_curate_rejects_non_curated(repo, capsys):
+    rc = cli.main(["curate", "Patel2017Vldb", "--root", str(repo)])   # a stub, not curated
+    assert rc == 1 and "not a curated paper" in capsys.readouterr().err
 
 
 def test_cli_serve_fails_fast_on_broken_repo(repo, monkeypatch, capsys):

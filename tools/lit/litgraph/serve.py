@@ -26,7 +26,7 @@ from urllib.parse import parse_qs, unquote, urlparse
 
 import fitz  # pymupdf — already a hard dependency (litgraph.pdf)
 
-from litgraph import pdfview, store
+from litgraph import config, pdfview, store
 from litgraph.build import render_html, to_json_dict
 from litgraph.config import load_config
 from litgraph.graph import BuildError, build_graph
@@ -332,6 +332,22 @@ class _Handler(BaseHTTPRequestHandler):
                                      "citekey": key, "quote": quote, "loc": loc}
                 return self._send(HTTPStatus.OK, "application/json; charset=utf-8",
                                   json.dumps(self.server.focus).encode())
+            if path == "/active":
+                # the move: add/remove a paper from the in-progress worklist (`[curation] active`
+                # in config.toml). Curated-only for now — a stub has no local subgraph to curate
+                # (stub promotion is a later item). The write is picked up on the next rebuild.
+                body = self._read_json()
+                key, active = body.get("citekey", ""), body.get("active")
+                curated = self.server.root / "curated" / f"{key}.yaml"
+                if not _CITEKEY.match(key) or not isinstance(active, bool):
+                    return self._send(HTTPStatus.BAD_REQUEST, "text/plain; charset=utf-8",
+                                      b"bad active payload\n")
+                if active and not curated.is_file():
+                    return self._send(HTTPStatus.NOT_FOUND, "text/plain; charset=utf-8",
+                                      f"not a curated paper: {key}\n".encode())
+                new_active = config.set_active(self.server.root, key, active)
+                return self._send(HTTPStatus.OK, "application/json; charset=utf-8",
+                                  json.dumps({"ok": True, "active": list(new_active)}).encode())
             return self._send(HTTPStatus.NOT_FOUND, "text/plain; charset=utf-8",
                               b"not found\n")
         except (ValueError, json.JSONDecodeError):

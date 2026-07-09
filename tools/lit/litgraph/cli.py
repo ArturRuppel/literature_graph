@@ -118,6 +118,13 @@ def main(argv: list[str] | None = None) -> int:
     p_foc.add_argument("--host", default="127.0.0.1", help="lit serve host (default: 127.0.0.1)")
     p_foc.add_argument("--port", type=int, default=8000, help="lit serve port (default: 8000)")
 
+    p_cur = sub.add_parser("curate", help="move a paper into (or out of) the in-progress worklist "
+                                          "(`[curation] active` in config.toml)")
+    p_cur.add_argument("citekey", help="curated paper to move")
+    p_cur.add_argument("--done", action="store_true",
+                       help="return the paper to the graph (remove from the worklist)")
+    p_cur.add_argument("--root", default=".", help="data root (curated/, stubs.yaml, config.toml)")
+
     args = parser.parse_args(argv)
 
     if args.command == "ingest":
@@ -264,6 +271,21 @@ def main(argv: list[str] | None = None) -> int:
             print(f"focus → {rec['citekey']} (quote not located; opened at page top)")
         else:
             print(f"focus → {rec['citekey']}")
+        return 0
+
+    if args.command == "curate":
+        from .config import set_active
+        cfg = load_config(args.root)
+        key = args.citekey
+        add = not args.done
+        if add and not (cfg.root / "curated" / f"{key}.yaml").is_file():
+            print(f"error: not a curated paper: {key}", file=sys.stderr)
+            return 1
+        active = set_active(cfg.root, key, add)
+        if add:
+            print(f"curate → {key} moved into the in-progress zone ({len(active)} in progress)")
+        else:
+            print(f"curate → {key} returned to the graph ({len(active)} in progress)")
         return 0
 
     return 2

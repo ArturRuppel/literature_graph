@@ -187,6 +187,14 @@
   #tip .nopdf{margin-top:9px;font-size:9px;color:var(--faint);font-style:italic}
   .hint{position:fixed;bottom:12px;left:16px;font-size:10px;color:var(--faint);z-index:30}
 
+  /* right-click "Curate this paper" menu (serve only, browse view) */
+  #ctxmenu{position:fixed;z-index:70;display:none;min-width:150px;padding:4px;
+    background:var(--panel);border:1px solid var(--line);border-radius:8px;
+    box-shadow:0 12px 40px rgba(38,54,70,.20)}
+  #ctxmenu button{display:block;width:100%;text-align:left;border:0;background:transparent;
+    font:inherit;font-size:11px;color:var(--ink);padding:6px 10px;border-radius:5px;cursor:pointer}
+  #ctxmenu button:hover{background:var(--bg)}
+
   /* floating PDF quote window: the page rendered, the quote highlighted, movable/zoomable */
   .pw{position:fixed;z-index:60;width:440px;height:520px;display:flex;flex-direction:column;
     border:1px solid var(--line);border-radius:9px;background:var(--panel);overflow:hidden;
@@ -311,6 +319,7 @@
 <div id="dockEmpty">hover a claim to preview its source · toggle this pane with 📄 PDF</div>
 <div id="term"><div class="term-empty">curation terminal — click a paper to start its session</div></div>
 <div id="tip"></div>
+<div id="ctxmenu"></div>
 <div id="wipPanel" hidden></div>
 <div id="wipOverlay" hidden>
   <div class="wo-bar">
@@ -409,6 +418,8 @@ function paperCard(key, level){
     hoverRow(el, e);
   });
   el.addEventListener("mouseleave", () => { dropTip(); hoverRow(null); });
+  // right-click a curated card (browse view) → "Curate this paper" → move it into the zone
+  if (cur && LIVE && !CURATE) el.addEventListener("contextmenu", e => showCurateMenu(e, key));
   // touch has no hover: a curated card opens on tap; a stub (no open action) pins its tip instead,
   // so its bib metadata stays reachable on a phone (dismissed by the next outside tap).
   el.addEventListener("click", e => {
@@ -958,6 +969,10 @@ const HOVER = matchMedia("(hover: hover)").matches;
 const COCKPIT = GRAPH.cockpit || null;
 const CURATE = LIVE && (!!COCKPIT || new URLSearchParams(location.search).has("curate"));
 if (CURATE) document.body.classList.add("curate");
+// the move (delta §3): papers on the in-progress worklist are pulled OUT of the browse view —
+// they live in the in-progress zone, not the graph. Curate mode still draws everything (its
+// zone rework is a later slice); a static build carries no active list, so this is empty there.
+const ACTIVE = new Set(CURATE ? [] : (GRAPH.active || []));
 // the embedded terminal (ttyd) origin — port from the cockpit payload, else ?term=, else 7682
 // (7681 is often a system login ttyd). The pane loads <origin>/?arg=<citekey>, which ttyd passes
 // to the seed-or-resume wrapper as the paper to curate.
@@ -1089,6 +1104,36 @@ async function aimDock(key, sid){
   mountDoc(dockWin, key, loc.page || 0, loc.rects.slice(), {interactive: true});
   dockShown = qid;
 }
+
+// ── the move: right-click a curated card → curate it (serve, browse view) ─────────────────
+// "Curate this paper" adds the citekey to [curation] active (POST /active); the paper then
+// leaves the browse view (filtered at boot, above) and lives in the in-progress set. Curated-
+// only for now — a stub has no local subgraph to curate. A reload settles the graph without it.
+const ctxmenu = document.getElementById("ctxmenu");
+function hideCtxMenu(){ ctxmenu.style.display = "none"; ctxmenu.onclick = null; }
+function showCurateMenu(e, key){
+  e.preventDefault();
+  ctxmenu.innerHTML = `<button data-act="curate">Curate this paper</button>`;
+  ctxmenu.style.display = "block";
+  const w = ctxmenu.offsetWidth || 150, h = ctxmenu.offsetHeight || 34;
+  ctxmenu.style.left = Math.min(e.clientX, innerWidth - w - 8) + "px";
+  ctxmenu.style.top = Math.min(e.clientY, innerHeight - h - 8) + "px";
+  ctxmenu.onclick = ev => {
+    const b = ev.target.closest("button"); if (!b) return;
+    hideCtxMenu();
+    if (b.dataset.act === "curate") moveToCurate(key);
+  };
+}
+async function moveToCurate(key){
+  try {
+    const r = await fetch("active", {method: "POST",
+      body: JSON.stringify({citekey: key, active: true})}).then(r => r.ok ? r.json() : null);
+    if (r && r.ok) location.reload();          // the paper leaves the graph; reload settles the view
+    else alert(`could not move ${key} into curation`);
+  } catch { alert("server unreachable — is lit serve running?"); }
+}
+addEventListener("click", hideCtxMenu);          // any left-click dismisses the menu
+addEventListener("scroll", hideCtxMenu, true);   // scrolling the board dismisses it too
 
 // ── focus channel (serve-only) ───────────────────────────────────────────────────────────
 // A shared "aim the PDF here" wire the agent (via `lit focus`) and card clicks both drive: the
@@ -1371,7 +1416,7 @@ function dragBy(handle, onMove, base, guard){
 // ── boot: the landing list (column 0), ranked by pass desc, then year desc ───────────────
 function boot(){
   ensureCol(0,"all papers · ranked by curation");
-  ORDER.forEach(k=>addPaper(0,k));
+  ORDER.forEach(k=>{ if(!ACTIVE.has(k)) addPaper(0,k); });   // in-progress papers live in the zone, not here
   ensureBroadBand();                                 // synthesis band present from the landing view
   redraw();
 }
