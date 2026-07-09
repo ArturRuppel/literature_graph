@@ -1,9 +1,11 @@
 # Curation cockpit — design direction (the focus channel + curate mode)
 
-**Status:** building — **stage 1 shipped & browser-verified** (focus channel + docked curate-mode
-pane + `lit focus` + card-click→focus); **stage 3 in progress** (terminal pane, wrapper verified,
-blocked on installing ttyd) · **Date:** 2026-07-09 · companion to
-[CURATION.md](../CURATION.md) and the
+**Status:** shipped & browser-verified (focus channel + docked pane + `lit focus` + card-click +
+terminal + `lit serve --curate`), then **reframed** — the global-mode framing here is superseded by
+[the in-progress-zone redesign](2026-07-09-cockpit-redesign-in-progress-zone.md) (curation becomes a
+per-paper *place*, not a whole-window mode). The *mechanisms* below (focus wire, docked pane,
+terminal, wrapper) all carry over; only their framing/triggers change. · **Date:** 2026-07-09 ·
+companion to [CURATION.md](../CURATION.md) and the
 [visualization design](2026-06-25-visualization-design.md)
 
 Turn curation from a **three-window shuffle** into one cockpit. Today a proposition lives in
