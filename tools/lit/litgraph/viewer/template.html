@@ -291,17 +291,29 @@
      inside the review overlay: the isolated subgraph as the left card, the focus-wire PDF pane
      top-right, the paper's ttyd terminal bottom-right. The focus pane (.pw) is re-parented into
      .wo-pdf and absolute-filled; the terminal iframe mounts in .wo-term. */
+  /* two-column × two-row tiling: the left card spans full height; the right column stacks the
+     focus-wire PDF pane over the terminal. Thin gutter tracks (col 2 / row 2) carry the drag
+     handles; the fr weights are driven by JS and persisted — Hyprland-style divider resize. */
   #wipOverlay .wo-body{flex:1;position:relative;display:grid;min-height:0;
-    grid-template-columns:42% 58%;grid-template-rows:58% 42%}
-  #wipOverlay .wo-frame{grid-row:1 / 3;grid-column:1;width:100%;height:100%;border:0;
+    grid-template-columns:0.42fr 6px 0.58fr;grid-template-rows:0.58fr 6px 0.42fr}
+  #wipOverlay .wo-frame{grid-column:1;grid-row:1 / 4;width:100%;height:100%;border:0;
     border-right:1px solid var(--line);background:var(--bg)}
-  #wipOverlay .wo-pdf{grid-row:1;grid-column:2;position:relative;min-height:0;overflow:hidden}
-  #wipOverlay .wo-term{grid-row:2;grid-column:2;position:relative;min-height:0;
+  #wipOverlay .wo-pdf{grid-column:3;grid-row:1;position:relative;min-height:0;overflow:hidden}
+  #wipOverlay .wo-term{grid-column:3;grid-row:3;position:relative;min-height:0;
     border-top:1px solid var(--line);background:#1e1e1e}
+  #wipOverlay .wo-rs{position:relative;z-index:3;background:transparent;transition:background .12s}
+  #wipOverlay .wo-rs-c{grid-column:2;grid-row:1 / 4;cursor:ew-resize}
+  #wipOverlay .wo-rs-r{grid-column:3;grid-row:2;cursor:ns-resize}
+  #wipOverlay .wo-rs-x{grid-column:2;grid-row:2;z-index:4;cursor:nwse-resize}
+  #wipOverlay .wo-rs:hover,#wipOverlay .wo-body.resizing .wo-rs{background:#6ea8d8}
+  /* during a divider drag, let pointer moves pass through the iframes/pane to the window listener */
+  #wipOverlay .wo-body.resizing iframe,#wipOverlay .wo-body.resizing .wo-pdf{pointer-events:none}
   #wipOverlay .wo-term iframe{width:100%;height:100%;border:0;display:block}
   #wipOverlay .wo-term .term-empty{color:#9aa;font-size:11px;padding:10px 12px}
   #wipOverlay .wo-return{margin-left:8px;color:var(--grounded) !important}
-  .pw-zone{position:absolute !important;inset:0 !important;left:auto !important;top:auto !important;
+  /* fill the .wo-pdf cell: inset:0 pins all four edges; width/height:auto let those edges (not the
+     base .pw's 440×520) drive the size, so .pw-body becomes a bounded scroll viewport (scroll/pan). */
+  .pw-zone{position:absolute !important;inset:0 !important;
     width:auto !important;height:auto !important;border-radius:0;box-shadow:none;z-index:1}
   .pw-zone .pw-grip{display:none}
   .pw-zone .pw-bar{cursor:default}
@@ -334,6 +346,9 @@
     <iframe class="wo-frame" title="in-progress paper subgraph"></iframe>
     <div class="wo-pdf"></div>
     <div class="wo-term"><div class="term-empty">terminal unavailable — no ttyd on this serve</div></div>
+    <div class="wo-rs wo-rs-c" title="drag to resize"></div>
+    <div class="wo-rs wo-rs-r" title="drag to resize"></div>
+    <div class="wo-rs wo-rs-x" title="drag to resize both"></div>
   </div>
 </div>
 
@@ -1149,10 +1164,11 @@ addEventListener("scroll", hideCtxMenu, true);   // scrolling the board dismisse
 // unchanged → do nothing, so an idle session never repaints. A null loc is the graceful floor:
 // open the paper at its top, no highlight. Polling runs ONLY inside the zone (zoneOpen); the
 // browse view and the DRIVE card never poll — the browse view has no pane to aim.
-let focusWin = null, focusSeq = 0, zoneOpen = false;
+let focusWin = null, focusSeq = 0, zoneOpen = false, lastFocus = null;
 function closeFocusWin(){ if (focusWin) { focusWin.remove(); focusWin = null; } }
 function aimFocus(f){
   if (!f.citekey || !zoneOpen) return;
+  lastFocus = f;                                       // remember it so a resize can re-fit (re-mount)
   closeFocusWin();
   const loc = (f.loc && f.loc.rects) ? f.loc : {page: 0, rects: []};
   const win = buildWin(f.citekey, loc.rects.length ? `p.${loc.page + 1}` : "quote not located",
@@ -1191,6 +1207,56 @@ async function focusFromClick(key, sid){
     await fetch("focus", {method: "POST",
       body: JSON.stringify({citekey: key, quote: (s && s.quote) || ""})});
   } catch { /* server gone — leave the pane as-is */ }
+}
+
+// ── zone panes: keep the docked PDF fit to its cell + Hyprland-style divider resize ──────────
+// mountDoc bakes its fit-width (W0) at mount, so a re-fit means a cheap re-mount at the current
+// width. One debounced re-fit serves all triggers; the ResizeObserver below fires it on first
+// layout (fixes an initial under-fill), window resize, AND a divider drag — no manual plumbing.
+let refitTimer = null;
+function scheduleRefit(){ clearTimeout(refitTimer);
+  refitTimer = setTimeout(() => { if (zoneOpen && lastFocus) aimFocus(lastFocus); }, 140); }
+if (LIVE && !DRIVE) {
+  const woBody = document.querySelector("#wipOverlay .wo-body");
+  const pdfCell = woBody.querySelector(".wo-pdf");
+  // divider state (persisted): cL = left column's share of the two columns; rT = the PDF row's share.
+  const RS_KEY = "lit.zone.split";
+  let split = {cL: 0.42, rT: 0.58};
+  try { const s = JSON.parse(localStorage.getItem(RS_KEY) || "null"); if (s && s.cL > 0 && s.rT > 0) split = s; } catch {}
+  const applySplit = () => {
+    woBody.style.gridTemplateColumns = `${split.cL}fr 6px ${1 - split.cL}fr`;
+    woBody.style.gridTemplateRows = `${split.rT}fr 6px ${1 - split.rT}fr`;
+  };
+  applySplit();
+  const beginResize = (e, axisX, axisY) => {           // the divider follows the pointer (abs, not delta)
+    e.preventDefault();
+    const r = woBody.getBoundingClientRect();
+    woBody.classList.add("resizing");
+    const prevCur = document.body.style.cursor;
+    document.body.style.cursor = axisX && axisY ? "nwse-resize" : axisX ? "ew-resize" : "ns-resize";
+    document.body.style.userSelect = "none";
+    const move = ev => {
+      if (axisX) split.cL = Math.min(0.85, Math.max(0.15, (ev.clientX - r.left) / r.width));
+      if (axisY) split.rT = Math.min(0.85, Math.max(0.15, (ev.clientY - r.top) / r.height));
+      applySplit();
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up);
+      woBody.classList.remove("resizing");
+      document.body.style.cursor = prevCur; document.body.style.userSelect = "";
+      try { localStorage.setItem(RS_KEY, JSON.stringify(split)); } catch {}
+    };
+    window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
+  };
+  woBody.querySelector(".wo-rs-c").addEventListener("pointerdown", e => beginResize(e, true, false));
+  woBody.querySelector(".wo-rs-r").addEventListener("pointerdown", e => beginResize(e, false, true));
+  woBody.querySelector(".wo-rs-x").addEventListener("pointerdown", e => beginResize(e, true, true));
+  let lastW = 0;                                        // re-fit only on a real width change
+  new ResizeObserver(() => {
+    const w = pdfCell.clientWidth;
+    if (Math.abs(w - lastW) < 2) return;
+    lastW = w; scheduleRefit();
+  }).observe(pdfCell);
 }
 
 // A window shell: titlebar (key · page · pan/text tools · ×) + a scrollable body holding a sizer
@@ -1478,7 +1544,7 @@ if (LIVE && !DRIVE) (function(){
     if (!pollStarted) { setInterval(pollFocus, 500); pollStarted = true; }   // pick up `lit focus`
   }
   function leave(){                                // ← back to graph: keep the paper in progress
-    zoneOpen = false; overlay.hidden = true;
+    zoneOpen = false; overlay.hidden = true; lastFocus = null;
     frame.src = "about:blank"; closeFocusWin();
     const box = overlay.querySelector(".wo-term"); box.textContent = ""; termKey = null;
     box.innerHTML = `<div class="term-empty">terminal unavailable — no ttyd on this serve</div>`;
