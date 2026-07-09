@@ -22,12 +22,21 @@ dir="$sess/$key"
 mkdir -p "$dir"
 cd "$dir"
 
+# Resume this paper's session if one exists; otherwise start it with the curation preamble.
+# The `.seeded` marker skips the resume attempt on a paper's first-ever open (no "no
+# conversation" flash). But the marker can go stale — written here before Claude's first
+# reply is what actually persists a conversation, so a pane opened then closed too early
+# leaves a marker with nothing to resume. Guard against that: if `--continue` finds nothing
+# it exits non-zero, and we fall through and (re)seed rather than loop on a dead resume.
 if [[ -e .seeded ]]; then
-  exec claude --continue
-else
-  : > .seeded
-  exec claude "We are curating $key. Data root: $data (pass --root there to every lit command). \
-Read $docs/CURATION.md and follow its four-pass protocol — one pass at a time, explain your \
-reading and discuss before tokenizing into curated/$key.yaml. Mark passages in my PDF pane with: \
-lit focus $key --quote \"<verbatim sentence>\". Pick up from wherever curated/$key.yaml leaves off."
+  claude --continue && exit 0
 fi
+: > .seeded
+exec claude "We are curating $key. Data root: $data (pass --root there to every lit command). \
+First read $docs/CURATION.md for the protocol, then read the paper in full and work out its \
+structure on your own. Do NOT propose, summarise, list, or tokenize anything yet — when you have \
+finished reading and are oriented, reply with exactly: I'm ready. — and nothing else. Then we go \
+through the paper together, one claim at a time: you raise a single claim, we discuss it, and only \
+once we agree do you tokenize that one claim into curated/$key.yaml before moving to the next. As \
+each claim comes up, mark its passage in my PDF pane with: lit focus $key --quote \"<verbatim \
+sentence>\". Pick up from wherever curated/$key.yaml leaves off."
