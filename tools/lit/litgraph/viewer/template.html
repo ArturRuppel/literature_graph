@@ -327,6 +327,21 @@
   #dockGrip:hover,body.dock-resizing #dockGrip{background:#6ea8d8}
   body.dock-resizing{cursor:ew-resize;user-select:none}
   body.dock-resizing .pw-side{pointer-events:none}
+  /* ── detached PDF window (index.html?detached=1) ─────────────────────────────────────────
+     The browse view's PDF pane popped into its own OS window: hide all graph chrome, let the
+     PDF pane fill the whole window. Same .pw markup as the dock, restyled to be borderless. */
+  #detachPane{display:none}
+  body.detached{overflow:hidden}
+  body.detached #hud,body.detached #board,body.detached #searchResults,body.detached #dockEmpty,
+  body.detached #dockGrip,body.detached #tip,body.detached #ctxmenu,
+  body.detached #wipPanel,body.detached #wipOverlay{display:none!important}
+  body.detached #detachPane{display:block;position:fixed;inset:0;z-index:5;background:#e0e5e9}
+  body.detached #detachEmpty{position:absolute;inset:0;display:flex;align-items:center;
+    justify-content:center;text-align:center;padding:24px;color:var(--faint);font-size:12px}
+  body.detached #detachPane .pw{position:absolute!important;inset:0!important;
+    width:auto!important;height:auto!important;border:0;border-radius:0;box-shadow:none}
+  body.detached #detachPane .pw-grip{display:none}
+  body.detached #detachPane .pw-bar{cursor:default}
 
   /* ── in-progress zone = the cockpit ─────────────────────────────────────────────────────
      Entering an in-progress paper (from the "in progress" pill) opens its three-pane cockpit
@@ -377,6 +392,7 @@
 <div id="board"><svg id="edges"></svg></div>
 <div id="dockEmpty">open a card to load its PDF · hover a claim to jump to its quote · toggle with 📄 PDF</div>
 <div id="dockGrip"></div>
+<div id="detachPane"><div id="detachEmpty">waiting for the graph — hover a claim or open a card to load its PDF here</div></div>
 <div id="tip"></div>
 <div id="ctxmenu"></div>
 <div id="wipPanel" hidden></div>
@@ -1058,6 +1074,11 @@ const COCKPIT = GRAPH.cockpit || null;
 // mode a quote-click POSTs the weld to the focus wire (aiming the PARENT zone's PDF pane); it mounts
 // no pane and polls nothing itself. The top-level browse document is never DRIVE.
 const DRIVE = LIVE && new URLSearchParams(location.search).has("drive");
+// DETACHED: this document is the browse view's PDF pane popped into its own OS window
+// (window.open of index.html?detached=1). It renders no graph — just a full-bleed PDF pane it
+// mirrors from the parent over the "lit-pdf" BroadcastChannel. Implies LIVE and not DRIVE.
+const DETACHED = LIVE && new URLSearchParams(location.search).has("detached");
+if (DETACHED) document.body.classList.add("detached");   // hide graph chrome before it paints
 // the move (delta §3): papers on the in-progress worklist are pulled OUT of the browse view —
 // they live in the in-progress zone, not the graph. The DRIVE card shows one isolated (active)
 // paper, so it must not filter; a static build carries no active list, so this is empty there.
@@ -1194,6 +1215,50 @@ const idKey = cardId => cardId.slice(cardId.indexOf(":") + 1);
 // rests on the last-hovered claim when the pointer leaves; a non-quote row leaves it put.
 let dockOpen = false, dockWin = null, dockShown = null, dockReq = null, dockTimer = null;
 let dockDoc = null, dockRefitTimer = null;             // dockDoc = last mount {key,page,rects} (for refit)
+// ── detachable PDF pane ──────────────────────────────────────────────────────────────────
+// The dock can DETACH into its own OS window (window.open of index.html?detached=1) so the PDF
+// can live on a second monitor. The child runs this same viewer in "detached" mode: no graph,
+// just a full-bleed PDF pane. Parent and child stay in sync over a BroadcastChannel — the parent
+// broadcasts {t:"aim",key,page,rects} on the SAME hover that would aim the in-page dock, and the
+// child mounts it. `dockDoc` stays the single source of truth for what's shown; `renderCurrent`
+// paints it wherever the PDF currently lives (in-page dock, or broadcast to the detached child).
+let pdfDetached = false, pdfWin = null, pdfWatch = null;
+const pdfChan = (LIVE && !DRIVE && !DETACHED && "BroadcastChannel" in window) ? new BroadcastChannel("lit-pdf") : null;
+const pdfActive = () => dockOpen || pdfDetached;       // hover aims the PDF while EITHER home is live
+function broadcastAim(){ if (pdfChan && dockDoc) pdfChan.postMessage({t: "aim", ...dockDoc}); }
+function renderCurrent(){ if (pdfDetached) broadcastAim(); else if (dockOpen) mountDockDoc(); }
+function pdfDetachTeardown(){                           // the detached window is gone (closed / re-attached)
+  pdfDetached = false; pdfWin = null;
+  if (pdfWatch) { clearInterval(pdfWatch); pdfWatch = null; }
+}
+if (pdfChan) pdfChan.onmessage = e => {                 // messages FROM the detached child
+  const m = e.data; if (!m) return;
+  if (m.t === "ready") broadcastAim();                 // child booted → (re)send the current aim
+  else if (m.t === "closed") pdfDetachTeardown();      // child window closed → drop detached state
+};
+// reopen THIS exact URL with ?detached=1 — robust to whatever path the viewer is mounted under
+// (a hardcoded "index.html" resolves relative to the base and breaks under a prefix / no-slash mount).
+function detachedUrl(){ const u = new URL(location.href); u.searchParams.set("detached", "1"); u.hash = ""; return u.href; }
+function detachDock(){
+  if (!pdfChan) { window.open(detachedUrl(), "litpdf"); return; }   // no channel: fire-and-forget
+  const keep = dockDoc, keepShown = dockShown;         // collapse the in-page dock but KEEP what's shown
+  dockOpen = false; document.body.classList.remove("dock-open");
+  if (pdfToggle) pdfToggle.classList.remove("on");
+  if (dockWin) { dockWin.remove(); dockWin = null; }
+  pdfDetached = true; dockDoc = keep; dockShown = keepShown;
+  if (pdfWin && !pdfWin.closed) { pdfWin.focus(); broadcastAim(); return; }
+  pdfWin = window.open(detachedUrl(), "litpdf",
+                       "popup,width=880,height=1040,left=120,top=60");
+  pdfWatch = setInterval(() => { if (!pdfWin || pdfWin.closed) pdfDetachTeardown(); }, 1000);
+  broadcastAim();                                       // child re-asks on ready; this covers a warm reuse
+}
+function reattachDock(){                                // bring the PDF back into the page (📄 while detached)
+  const keep = dockDoc;
+  if (pdfWin && !pdfWin.closed) pdfWin.close();
+  pdfDetachTeardown();
+  dockDoc = keep; openDock();
+  if (keep) mountDockDoc();
+}
 function openDock(){
   if (dockOpen) return;
   dockOpen = true; document.body.classList.add("dock-open");
@@ -1206,14 +1271,18 @@ function closeDock(){
   if (dockWin) { dockWin.remove(); dockWin = null; }
   dockShown = null; dockReq = null; dockDoc = null;
 }
-function toggleDock(){ dockOpen ? closeDock() : openDock(); }
+function toggleDock(){
+  if (pdfDetached) return reattachDock();              // detached → the pill re-docks it here
+  dockOpen ? closeDock() : openDock();
+}
 // (re)mount the dock's remembered doc at the current width — buildWin is fresh each time so
 // listeners never stack. Used by aimDock/loadDock and by the resize re-fit.
 function mountDockDoc(){
   if (!dockDoc) return;
   const d = dockDoc;
   if (dockWin) dockWin.remove();
-  dockWin = buildWin(d.key, d.rects.length ? `p.${d.page + 1}` : "full paper", {onClose: closeDock});
+  dockWin = buildWin(d.key, d.rects.length ? `p.${d.page + 1}` : "full paper",
+                     {onClose: closeDock, onDetach: detachDock});
   dockWin.classList.add("pw-side");                    // fixed right pane (CSS) — before mount
   mountDoc(dockWin, d.key, d.page, d.rects.slice(), {interactive: true});
 }
@@ -1223,19 +1292,20 @@ function scheduleDockRefit(){ clearTimeout(dockRefitTimer);
 // this paper" entry; hovering a quote-slice still fine-aims the open dock at that exact quote.
 function loadDock(key){
   if (DRIVE || !LIVE || !(PDFS && PDFS.has(key))) return;   // DRIVE card has no dock; nothing servable → skip
-  openDock();
+  if (!pdfDetached) openDock();                             // detached: the child is the pane, not the dock
   const qid = `${key}:__paper__`;
-  if (qid === dockShown) return;
+  if (qid === dockShown) { if (pdfDetached && pdfWin && !pdfWin.closed) pdfWin.focus(); return; }
   clearTimeout(dockTimer); dockReq = qid;
   dockDoc = {key, page: 0, rects: []};
-  mountDockDoc();
+  renderCurrent();
+  if (pdfDetached && pdfWin && !pdfWin.closed) pdfWin.focus();   // card click brings the detached window forward
   dockShown = qid;
 }
 
 // hover a quote-slice → aim the open dock at it (debounced so pass-through hovers don't thrash)
 function aimDockFromHover(h){
   clearTimeout(dockTimer);
-  if (!dockOpen || !HOVER) return;
+  if (!pdfActive() || !HOVER) return;
   const key = h && h.sid ? idKey(h.cardId) : null;
   const s = key ? (PAPERS[key] && PAPERS[key].slices || []).find(x => x.id === h.sid) : null;
   if (!LIVE || !s || !s.quote) return;             // non-quote row / card body: leave the pane put
@@ -1246,9 +1316,9 @@ async function aimDock(key, sid){
   if (qid === dockShown) return;                    // already parked on this claim
   dockReq = qid;
   const loc = await resolveLoc(key, sid) || {page: 0, rects: []};
-  if (dockReq !== qid || !dockOpen) return;         // hover moved on / dock closed while resolving
+  if (dockReq !== qid || !pdfActive()) return;      // hover moved on / PDF closed while resolving
   dockDoc = {key, page: loc.page || 0, rects: loc.rects.slice()};
-  mountDockDoc();
+  renderCurrent();
   dockShown = qid;
 }
 // dock width resize (persisted): the grip sits on the dock's left seam; drag sets --dock-w, and the
@@ -1413,14 +1483,15 @@ if (LIVE && !DRIVE) {
 // (owns the scroll extent) and a stage (image + highlights + text layer, under one scale). Both
 // callers dock it via CSS (curate focus pane / browse viewer); `at` seeds a free-floating place
 // for any future caller, but a docked pane's !important rules win over it.
-function buildWin(key, sub, {onClose, at} = {}){
+function buildWin(key, sub, {onClose, at, onDetach} = {}){
   const win = document.createElement("div");
   win.className = "pw";
   win.dataset.tool = "pan";
+  const detach = onDetach ? `<button class="pw-tool" data-t="detach" title="detach to its own window">⧉</button>` : "";
   win.innerHTML =
     `<div class="pw-bar"><b>${key}</b><span class="pw-sub">${sub}</span><span class="sp"></span>`
     + `<span class="pw-tools"><button class="pw-tool" data-t="pan" title="pan (drag)">✥</button>`
-    + `<button class="pw-tool" data-t="text" title="select text">I</button></span>`
+    + `<button class="pw-tool" data-t="text" title="select text">I</button>${detach}</span>`
     + `<span class="pw-x" title="close">×</span>`
     + `</div><div class="pw-body"><div class="pw-loading">rendering page…</div>`
     + `<div class="pw-sizer"><div class="pw-stage"></div></div></div>`
@@ -1432,6 +1503,7 @@ function buildWin(key, sub, {onClose, at} = {}){
   dragBy(win.querySelector(".pw-grip"), (dx, dy, w, h) => { win.style.width = Math.max(240, w + dx) + "px"; win.style.height = Math.max(160, h + dy) + "px"; },
          () => [win.offsetWidth, win.offsetHeight]);
   win.querySelector(".pw-x").addEventListener("click", onClose);
+  if (onDetach) win.querySelector('.pw-tool[data-t=detach]').addEventListener("click", onDetach);
   return win;
 }
 
@@ -1493,6 +1565,7 @@ function mountPage(win, key, page, rects, opts){
   });
   win.querySelector(".pw-tools").addEventListener("click", e => {   // pan / text-select toggle
     const b = e.target.closest(".pw-tool"); if (!b) return;
+    if (b.dataset.t !== "pan" && b.dataset.t !== "text") return;    // e.g. ⧉ detach — not a viewer tool
     win.dataset.tool = b.dataset.t;
     if (b.dataset.t === "text") ensureTextLayer(win, key, page, view);
   });
@@ -1613,6 +1686,7 @@ async function mountDoc(win, key, page, rects, opts){
   }, {passive: true});
   win.querySelector(".pw-tools").addEventListener("click", e => {   // pan / text-select toggle
     const b = e.target.closest(".pw-tool"); if (!b) return;
+    if (b.dataset.t !== "pan" && b.dataset.t !== "text") return;    // e.g. ⧉ detach — not a viewer tool
     win.dataset.tool = b.dataset.t;
     if (b.dataset.t === "text") {                 // build overlay for every page currently on screen
       const br = body.getBoundingClientRect();
@@ -1640,7 +1714,35 @@ function boot(){
   ensureBroadBand();                                 // synthesis band present from the landing view
   redraw();
 }
-boot();
+if (!DETACHED) boot();                                // the detached PDF window renders no graph
+
+// ── detached PDF window (child of the browse view) ───────────────────────────────────────
+// index.html?detached=1 in its own OS window: nothing but a full-bleed PDF pane, mirroring the
+// parent's dock. The parent broadcasts {t:"aim",…} on the same hover that aims the in-page dock;
+// we mount it here with the same buildWin/mountDoc the dock uses, so the two can't drift. We
+// announce {t:"ready"} on boot so a parent that opened us first still hands over the current aim.
+if (DETACHED) {
+  document.title = "litgraph · PDF";
+  const pane = document.getElementById("detachPane");
+  const chan = "BroadcastChannel" in window ? new BroadcastChannel("lit-pdf") : null;
+  let win = null, lastAim = null;
+  function mount(m){
+    lastAim = m;
+    const empty = document.getElementById("detachEmpty"); if (empty) empty.remove();
+    if (win) win.remove();
+    win = buildWin(m.key, (m.rects && m.rects.length) ? `p.${m.page + 1}` : "full paper",
+                   {onClose: () => window.close()});
+    pane.appendChild(win);                           // re-parent out of <body> into the full-bleed host
+    mountDoc(win, m.key, m.page || 0, (m.rects || []).slice(), {interactive: true});
+  }
+  if (chan) {
+    chan.onmessage = e => { const m = e.data; if (m && m.t === "aim") mount(m); };
+    chan.postMessage({t: "ready"});
+    addEventListener("beforeunload", () => chan.postMessage({t: "closed"}));
+  }
+  let rt = null;                                      // re-fit the page to the new window width (mountDoc bakes W0)
+  addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(() => { if (lastAim) mount(lastAim); }, 140); });
+}
 // width slider: drive --col live; columns resize (edges re-anchor on redraw), centering
 // padding follows via calc(50vw - var(--col)/2). Value readout kept in sync.
 (function(){

@@ -81,7 +81,10 @@ the rate limiter; never flood. A half-finished graph is a normal, valid state.**
     **whole PDF** as a lazily-rendered scroll of pages, opened on the highlight, with a real
     scrollbar, ⌘/ctrl-wheel zoom, a live page indicator, and a pan / text-select toolbar (drag to
     pan, or select & copy the page's real text via a transparent word overlay). The location comes
-    from a stored `quote_loc` (SCHEMA §6) when present, else resolved live.
+    from a stored `quote_loc` (SCHEMA §6) when present, else resolved live. The dock's titlebar
+    carries a **⧉ detach** button that pops the PDF into its **own OS window** (`index.html?detached=1`,
+    for a second monitor); the same hover keeps aiming it via a `lit-pdf` BroadcastChannel, and the
+    **📄 PDF** pill re-docks it. Detaching reclaims the graph's full width.
   - *In-progress zone* — **right-click a curated card → "Curate this paper"** *moves* it out of the
     graph into the **"in progress · N"** worklist (`[curation] active` in config.toml). The pill
     opens a picker; entering a paper opens its **three-pane cockpit**: the isolated subgraph as the
