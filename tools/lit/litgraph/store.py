@@ -6,6 +6,7 @@ are additive and never delete.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -127,6 +128,72 @@ def prune_curated_stubs(root: Path, dry_run: bool, extra_keys: tuple[str, ...] =
         with sp.open("w") as fh:
             _yaml_rt.dump(doc, fh)
     return removed
+
+
+def _norm_doi(doi: str | None) -> str | None:
+    """Bare, lower-cased DOI for matching (OpenAlex keeps case; DOIs are case-insensitive)."""
+    if not doi:
+        return None
+    return re.sub(r"^https?://(dx\.)?doi\.org/", "", doi.strip(), flags=re.IGNORECASE).lower() or None
+
+
+@dataclass
+class EnrichResult:
+    enriched: list[str]   # stubs that gained authors and/or journal
+    already: list[str]    # already complete (skipped; --force re-fetches these)
+    no_doi: list[str]     # no DOI on the stub — nothing to look up
+    unmatched: list[str]  # had a DOI but OpenAlex returned no work / no new fields
+
+
+def enrich_stubs(root: Path, oa, dry_run: bool = False, force: bool = False) -> EnrichResult:
+    """Backfill `authors` + `journal` onto existing stubs.yaml entries from OpenAlex (by DOI).
+
+    A stub written before these fields existed carries only title/year/doi/type; this fills the
+    gaps in one batched query. Only stubs missing a field are fetched unless `force`. New/other
+    fields and comments are round-tripped; the two added keys append to each entry.
+    """
+    sp = stubs_path(root)
+    if not sp.exists():
+        return EnrichResult([], [], [], [])
+    doc = _yaml_rt.load(sp.read_text()) or {}
+
+    doi_to_keys: dict[str, list[str]] = {}
+    already: list[str] = []
+    no_doi: list[str] = []
+    for key in list(doc):
+        body = doc.get(key) or {}
+        nd = _norm_doi(body.get("doi"))
+        if not nd:
+            no_doi.append(key)
+            continue
+        if body.get("authors") and body.get("journal") and not force:
+            already.append(key)
+            continue
+        doi_to_keys.setdefault(nd, []).append(key)
+
+    enriched: list[str] = []
+    unmatched: list[str] = []
+    if doi_to_keys:
+        works = oa.fetch_works_by_doi(list(doi_to_keys))
+        by_doi = {_norm_doi(w.doi): w for w in works if _norm_doi(w.doi)}
+        for nd, keys in doi_to_keys.items():
+            w = by_doi.get(nd)
+            for key in keys:
+                body = doc[key]
+                names = [a.display_name for a in w.authors if a.display_name] if w else []
+                changed = False
+                if names and (force or not body.get("authors")):
+                    body["authors"] = names
+                    changed = True
+                if w and w.venue_display and (force or not body.get("journal")):
+                    body["journal"] = w.venue_display
+                    changed = True
+                (enriched if changed else unmatched).append(key)
+
+    if not dry_run and enriched:
+        with sp.open("w") as fh:
+            _yaml_rt.dump(doc, fh)
+    return EnrichResult(enriched, already, no_doi, unmatched)
 
 
 def _to_commented(mapping: dict):

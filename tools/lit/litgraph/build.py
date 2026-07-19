@@ -122,7 +122,9 @@ def _paper_json(p: Paper, builds: list[dict]) -> dict:
 def to_json_dict(g: Graph, active: "tuple[str, ...]" = (), cockpit: "dict | None" = None) -> dict:
     builds = _builds(g)
     curated = {ck: _paper_json(p, builds.get(ck, [])) for ck, p in g.papers.items() if p.curated}
-    stubs = {ck: {"title": p.title, "year": p.year, "type": p.type, "doi": p.doi}
+    stubs = {ck: {"title": p.title, "year": p.year, "type": p.type, "doi": p.doi,
+                  "journal": p.journal,
+                  "authors": [[n, pos, corr] for n, pos, corr in p.authors]}
              for ck, p in g.papers.items() if not p.curated}
     broad = {slug: {"kind": b.kind, "text": b.text,
                     "meter": ({"s": b.support, "c": b.contradict}

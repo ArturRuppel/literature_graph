@@ -198,7 +198,10 @@ def ingest(
         rvtoken = venue_token(ref.venue_display)
         rkey = make_citekey(fam, _year_str(ref.year), rvtoken, taken, ref.doi)
         taken[rkey] = ref.doi
-        stubs.append(Stub(citekey=rkey, title=ref.title, year=ref.year, doi=ref.doi, type=map_type(ref.type_raw)))
+        stubs.append(Stub(citekey=rkey, title=ref.title, year=ref.year, doi=ref.doi,
+                          type=map_type(ref.type_raw),
+                          authors=[a.display_name for a in ref.authors if a.display_name],
+                          journal=ref.venue_display))
 
     # D — writes / rename.
     curated_path = store.write_curated(root, paper, force=force, dry_run=dry_run)

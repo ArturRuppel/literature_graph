@@ -185,3 +185,14 @@ def test_emit_escapes_script_close_in_inlined_json(tmp_path):
     # graph.json keeps the raw (unescaped) value and round-trips
     data = json.loads((out / "graph.json").read_text())
     assert data["papers"]["Evil2020Jrnl"]["title"] == "danger </script><b>x</b>"
+
+
+def test_stub_payload_carries_authors_and_journal():
+    stub = Paper(citekey="Schwarz2015BBA", curated=False, title="TFM", type="original",
+                 year=2015, doi="10.1/bba", journal="Biochim. Biophys. Acta",
+                 authors=[("Ulrich S. Schwarz", "", False), ("Jérôme R. D. Soiné", "", False)])
+    g = Graph(papers={"Schwarz2015BBA": stub}, broad={}, order=["Schwarz2015BBA"])
+    d = to_json_dict(g)
+    s = d["stubs"]["Schwarz2015BBA"]
+    assert s["journal"] == "Biochim. Biophys. Acta"
+    assert s["authors"] == [["Ulrich S. Schwarz", "", False], ["Jérôme R. D. Soiné", "", False]]

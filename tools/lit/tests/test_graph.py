@@ -279,3 +279,20 @@ def test_order_ranks_curated_by_pass(tmp_path):
     g = build_graph(tmp_path)
     # pass 3 ranks above no-pass even though Shallow is newer
     assert g.order == ["Deep2021Jrnl", "Shallow2022Jrnl"]
+
+
+def test_stub_loads_authors_and_journal(tmp_path):
+    from litgraph.graph import load_repo
+    (tmp_path / "stubs.yaml").write_text(
+        "Schwarz2015BBA:\n"
+        "  title: Traction force microscopy\n"
+        "  authors: [Ulrich S. Schwarz, Jérôme R. D. Soiné]\n"
+        "  journal: Biochim. Biophys. Acta\n"
+        "  year: 2015\n"
+        "  doi: 10.1/bba\n")
+    papers, _ = load_repo(tmp_path)
+    s = papers["Schwarz2015BBA"]
+    assert s.curated is False
+    assert s.journal == "Biochim. Biophys. Acta"
+    # stub authors carry as (name, "", False) — byline names, no position/corresponding
+    assert s.authors == [("Ulrich S. Schwarz", "", False), ("Jérôme R. D. Soiné", "", False)]

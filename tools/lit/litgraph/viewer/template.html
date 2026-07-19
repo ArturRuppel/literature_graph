@@ -184,6 +184,9 @@
     background:#fff;align-items:flex-start;border-style:solid}
   #tip .pdf.live img{width:100%;display:block}
   #tip .nopdf{margin-top:9px;font-size:9px;color:var(--faint);font-style:italic}
+  /* live-fetched abstract for an uncurated stub (serve-only) — clamped + scrollable */
+  #tip .tabs{margin-top:9px;font-size:9.5px;color:var(--dim);line-height:1.5;text-align:justify;
+    max-height:240px;overflow-y:auto;border-top:1px solid var(--line);padding-top:8px}
   .hint{position:fixed;bottom:12px;left:16px;font-size:10px;color:var(--faint);z-index:30}
 
   /* right-click "Curate this paper" menu (serve only, browse view) */
@@ -1052,6 +1055,40 @@ addEventListener("click", e => {
   }
 }, true);
 
+// ── stub abstracts (live-fetched on hover, serve-only) ───────────────────────────────────
+// A stub carries title/authors/journal/year in stubs.yaml but NOT its abstract — persisting
+// 50–100 reference abstracts per curated paper would balloon the diffable YAML. Instead the
+// abstract is fetched on demand from OpenAlex (by DOI) the first time a stub card is hovered
+// under `lit serve`, cached for the session, and never written to disk. Static `lit build`
+// (no server, no LIVE) just shows the bib-only note.
+const esc = s => String(s).replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+const stubAbsCache = new Map();          // citekey -> string | null (none/failed) | undefined (in-flight)
+function stubAbstract(key, p){
+  if (!LIVE || !p.doi) return `<div class="nopdf">uncurated stub — bib metadata only</div>`;
+  const cached = stubAbsCache.get(key);
+  if (typeof cached === "string") return `<div class="tabs">${esc(cached)}</div>`;
+  if (cached === null) return `<div class="nopdf">uncurated stub — no abstract available</div>`;
+  fetchStubAbstract(key);                // unfetched: kick it off, show a pending note this render
+  return `<div class="nopdf" id="tabsPending">fetching abstract…</div>`;
+}
+async function fetchStubAbstract(key){
+  if (stubAbsCache.has(key)) return;     // in-flight or done — don't refetch
+  stubAbsCache.set(key, undefined);      // mark in-flight (has() true, so the guard above holds)
+  let text = null;
+  try {
+    const r = await fetch(`stub-abstract?key=${encodeURIComponent(key)}`);
+    if (r.ok) { const j = await r.json(); text = j && j.abstract ? j.abstract : null; }
+  } catch { text = null; }
+  stubAbsCache.set(key, text);
+  // patch the live tip in place if it's still showing this stub (dataset.key guards re-render)
+  if (tip.dataset.key === key && tip.style.display === "block") {
+    const slot = tip.querySelector("#tabsPending");
+    if (slot) slot.outerHTML = (typeof text === "string")
+      ? `<div class="tabs">${esc(text)}</div>`
+      : `<div class="nopdf">uncurated stub — no abstract available</div>`;
+  }
+}
+
 // The hover preview is a pure metadata card now — title · all authors · journal · year · a
 // (non-clickable) first-page thumbnail. Opening the PDF is the docked viewer's job (a card click
 // loads it), so the tip no longer opens anything; it's a bib peek that holds still under the pointer.
@@ -1064,11 +1101,11 @@ function showTip(e, key, el, force){
   const cur = !!(PAPERS[key] && PAPERS[key].cur);
   const p = PAPERS[key] || STUBS[key];
   let thumb;
-  if (!cur) thumb = `<div class="nopdf">uncurated stub — bib metadata only</div>`;
-  else if (!LIVE) thumb = `<div class="nopdf">PDF preview needs <code>lit serve</code></div>`;
-  else if (!PDFS || !PDFS.has(key)) thumb = `<div class="nopdf">no PDF served (${key}.pdf)</div>`;
-  else thumb = `<div class="pdf live"><img src="preview/${key}.png" alt="first page of ${key}.pdf"></div>`;
-  const auth = (cur && p.authors && p.authors.length) ? `<div class="tauth">${authLine(p.authors)}</div>` : "";
+  if (cur && !LIVE) thumb = `<div class="nopdf">PDF preview needs <code>lit serve</code></div>`;
+  else if (cur && (!PDFS || !PDFS.has(key))) thumb = `<div class="nopdf">no PDF served (${key}.pdf)</div>`;
+  else if (cur) thumb = `<div class="pdf live"><img src="preview/${key}.png" alt="first page of ${key}.pdf"></div>`;
+  else thumb = stubAbstract(key, p);   // uncurated: no PDF — show the abstract (live-fetched) instead
+  const auth = (p.authors && p.authors.length) ? `<div class="tauth">${authLine(p.authors)}</div>` : "";
   const bib = [p.journal || venueFromKey(key), p.year].filter(Boolean).join(" · ");
   tip.innerHTML = `<div class="ttitle">${p.title || key}</div>${auth}`
                 + `<div class="meta">${bib}</div>${thumb}`;

@@ -449,3 +449,34 @@ def test_cli_serve_fails_fast_on_broken_repo(repo, monkeypatch, capsys):
     rc = cli.main(["serve", "--root", str(repo)])
     assert rc == 1
     assert "m99" in capsys.readouterr().err
+
+
+# ── stub abstracts: live OpenAlex fetch on hover, memoized, never persisted ────────────────
+def test_stub_abstract_fetches_and_caches(srv):
+    from litgraph.model import Work
+
+    calls = []
+
+    class FakeOA:
+        def fetch_work(self, doi):
+            calls.append(doi)
+            return Work(doi=doi, title="t", year=2016, type_raw="article",
+                        venue_display="V", abstract="A synthesized abstract.")
+
+    srv._oa = FakeOA()   # pre-seed so no real network is touched
+    status, _, body = get(srv, "/stub-abstract?key=Bench2016Tools")
+    assert status == 200 and json.loads(body) == {"abstract": "A synthesized abstract."}
+    get(srv, "/stub-abstract?key=Bench2016Tools")       # second hit served from session cache
+    assert calls == ["10.0000/synth.bench2016"]          # fetched exactly once
+
+
+def test_stub_abstract_bad_key_and_no_match(srv):
+    assert get(srv, "/stub-abstract?key=../etc")[0] == 400   # malformed citekey
+
+    class NoneOA:
+        def fetch_work(self, doi):
+            return None
+
+    srv._oa = NoneOA()
+    status, _, body = get(srv, "/stub-abstract?key=Zhao2014Nsdi")
+    assert status == 200 and json.loads(body) == {"abstract": None}

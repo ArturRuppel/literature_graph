@@ -58,7 +58,13 @@ the rate limiter; never flood. A half-finished graph is a normal, valid state.**
   citation (DOI-anchored via OpenAlex), and an AI-parsable `<citekey>.md` full text beside
   the (renamed) PDF. **Non-interactive**: an agent runs it, then agent + human review the
   written YAML together. Use `--dry-run` to preview without writing/renaming. It does *not*
-  extract the claim/question/method slices — that's the curation step (CURATION.md).
+  extract the claim/question/method slices — that's the curation step (CURATION.md). Ingest also
+  writes each stub's `authors` + `journal` (the bib OpenAlex already returns per reference), which
+  the viewer shows on hover.
+- **`lit enrich`** — backfill `authors` + `journal` onto **existing** `stubs.yaml` entries from
+  OpenAlex (by DOI), for stubs ingested before those fields existed. One batched query; only fills
+  gaps unless `--force`; `--dry-run` reports without writing. Run once, review the diff, commit.
+  (Abstracts are *not* stored — `lit serve` fetches a stub's abstract live on hover; SCHEMA §4 Stub.)
 - **`lit build`** — build the static graph viewer: reads the data repo's YAML, computes the
   graph + emergent properties (SCHEMA §7), and emits a self-contained `dist/index.html`
   (the paper-centric column view) plus `graph.json`. Open the HTML directly; no server.

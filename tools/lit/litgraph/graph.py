@@ -49,6 +49,7 @@ class Paper:
     doi: str | None = None
     note: str | None = None
     abstract: str | None = None     # verbatim abstract (written by `lit ingest`)
+    journal: str | None = None      # venue display name; stubs carry it, curated fall back to venueFromKey
     authors: list[tuple[str, str, bool]] = field(default_factory=list)  # (name, position, corresponding)
     slices: list[Slice] = field(default_factory=list)
     head: list[str] = field(default_factory=list)                 # top-altitude claim texts
@@ -137,6 +138,10 @@ def load_repo(root: Path) -> tuple[dict[str, Paper], dict[str, BroadNode]]:
                 citekey=citekey, curated=False,
                 title=raw.get("title", ""), type=raw.get("type", "original"),
                 year=raw.get("year"), doi=raw.get("doi"),
+                journal=raw.get("journal"),
+                # stub authors are byline-order names only (no position/corresponding known
+                # without the PDF); carry them in the shared tuple shape so authLine renders them
+                authors=[(n, "", False) for n in (raw.get("authors") or [])],
             )
 
     broad: dict[str, BroadNode] = {}

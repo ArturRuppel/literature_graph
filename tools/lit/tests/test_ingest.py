@@ -89,6 +89,13 @@ def test_ingest_writes_node_stubs_and_fulltext(workspace):
         assert re.match(r"^[A-Z][A-Za-z'-]*\d{4}\w*$", key), key
         assert f"{key}:" in stubs
 
+    # Stubs carry the bib metadata OpenAlex already returned for each ref: byline authors + journal.
+    from ruamel.yaml import YAML
+    stub_doc = YAML(typ="safe").load(stubs)
+    schwarz = next(v for v in stub_doc.values() if v["title"].startswith("Traction force microscopy"))
+    assert schwarz["authors"] == ["Ulrich S. Schwarz", "Jérôme R. D. Soiné"]
+    assert schwarz["journal"] == "Biochimica et Biophysica Acta (BBA) - Molecular Cell Research"
+
     # Abstract: de-inverted from OpenAlex, written into the curated YAML.
     assert 'abstract: "Cell-generated forces coordinate large-scale tissue behavior"' in body
 

@@ -116,6 +116,13 @@ def main(argv: list[str] | None = None) -> int:
     p_foc.add_argument("--host", default="127.0.0.1", help="lit serve host (default: 127.0.0.1)")
     p_foc.add_argument("--port", type=int, default=8000, help="lit serve port (default: 8000)")
 
+    p_enr = sub.add_parser("enrich", help="backfill authors + journal onto existing stubs.yaml "
+                                          "entries from OpenAlex (by DOI)")
+    p_enr.add_argument("--root", default=".", help="data root (curated/, stubs.yaml, config.toml)")
+    p_enr.add_argument("--force", action="store_true",
+                       help="re-fetch stubs that already have authors + journal (overwrite them)")
+    p_enr.add_argument("--dry-run", action="store_true", help="report what would change; write nothing")
+
     p_cur = sub.add_parser("curate", help="move a paper into (or out of) the in-progress worklist "
                                           "(`[curation] active` in config.toml)")
     p_cur.add_argument("citekey", help="curated paper to move")
@@ -283,6 +290,23 @@ def main(argv: list[str] | None = None) -> int:
             print(f"curate → {key} moved into the in-progress zone ({len(active)} in progress)")
         else:
             print(f"curate → {key} returned to the graph ({len(active)} in progress)")
+        return 0
+
+    if args.command == "enrich":
+        from . import store
+        from .sources.openalex import OpenAlex
+        cfg = load_config(args.root)
+        oa = OpenAlex(mailto=cfg.mailto)
+        try:
+            res = store.enrich_stubs(cfg.root, oa, dry_run=args.dry_run, force=args.force)
+        except Exception as e:  # network/parse — report, don't traceback
+            print(f"error: {e}", file=sys.stderr)
+            return 1
+        tag = "DRY-RUN — nothing written" if args.dry_run else "written"
+        print(f"lit enrich ({tag}): {len(res.enriched)} enriched, {len(res.already)} already "
+              f"complete, {len(res.no_doi)} without DOI, {len(res.unmatched)} unmatched")
+        for k in res.unmatched:
+            print(f"  ⚠ {k}: no OpenAlex match / nothing to add", file=sys.stderr)
         return 0
 
     return 2

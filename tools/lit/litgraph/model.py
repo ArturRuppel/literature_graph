@@ -64,10 +64,16 @@ class Stub:
     year: int | None = None
     doi: str | None = None
     type: str | None = None
+    authors: list[str] = field(default_factory=list)  # byline-order display names; no role resolution (no PDF to read)
+    journal: str | None = None                         # venue display name (OpenAlex primary_location)
 
     def to_mapping(self) -> dict:
         """Stub body (without the citekey), in stubs.yaml field order."""
         body: dict = {"title": self.title}
+        if self.authors:
+            body["authors"] = list(self.authors)
+        if self.journal:
+            body["journal"] = self.journal
         if self.year is not None:
             body["year"] = self.year
         if self.doi:

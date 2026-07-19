@@ -32,6 +32,7 @@ from litgraph.config import load_config
 from litgraph.graph import BuildError, build_graph
 from litgraph.preview import isolate
 from litgraph.quotes import polish_graph
+from litgraph.sources.openalex import OpenAlex
 
 # strictly <citekey>.<ext> — one flat name, no separators, so /pdf/ can't traverse out
 _PDF_NAME = re.compile(r"^[A-Za-z0-9]+\.pdf$")
@@ -158,6 +159,10 @@ class _Server(ThreadingHTTPServer):
         # — never persisted. `seq` is the poll's change-detector; `loc` is the resolved {page,
         # rects} or None (the graceful floor: switch paper, no highlight).
         self.focus = {"seq": 0, "citekey": None, "quote": None, "loc": None}
+        # stub abstracts: fetched from OpenAlex on hover, memoized for the session (citekey ->
+        # abstract str | None). Never persisted — the diffable stubs.yaml stays abstract-free.
+        self._abs_cache: dict[str, str | None] = {}
+        self._oa = None                 # lazily built OpenAlex client (polite pool via config mailto)
         super().__init__(address, _Handler)
 
 
@@ -224,6 +229,15 @@ class _Handler(BaseHTTPRequestHandler):
                         if self.server.pdf_dir.is_dir() else [])
                 return self._send(HTTPStatus.OK, "application/json; charset=utf-8",
                                   json.dumps(keys).encode())
+            if path == "/stub-abstract":
+                # bib peek for an uncurated stub: OpenAlex abstract by DOI, memoized per session
+                # (never persisted — stubs.yaml stays abstract-free). null when there's no DOI,
+                # no match, or the lookup fails; the viewer degrades to the bib-only note.
+                key = parse_qs(urlparse(self.path).query).get("key", [""])[0]
+                if not _CITEKEY.match(key):
+                    return self._send(HTTPStatus.BAD_REQUEST, "application/json", b"null")
+                return self._send(HTTPStatus.OK, "application/json; charset=utf-8",
+                                  json.dumps({"abstract": self._stub_abstract(key)}).encode())
             if path.startswith("/pdf/"):
                 name = path[len("/pdf/"):]
                 f = self.server.pdf_dir / name
@@ -288,6 +302,25 @@ class _Handler(BaseHTTPRequestHandler):
             # a mid-edit repo is a normal state — report, keep serving
             return self._send(HTTPStatus.INTERNAL_SERVER_ERROR, "text/plain; charset=utf-8",
                               f"build error: {e}\n".encode())
+
+    def _stub_abstract(self, key: str) -> str | None:
+        """OpenAlex abstract for a stub, by its DOI; memoized on the server for the session.
+        None when the stub has no DOI, OpenAlex has no match, or the lookup fails (offline)."""
+        srv = self.server
+        if key in srv._abs_cache:
+            return srv._abs_cache[key]
+        doi = store.load_taken(srv.root).get(key)  # citekey -> DOI (curated stems + stubs.yaml)
+        abstract: str | None = None
+        if doi:
+            try:
+                if srv._oa is None:
+                    srv._oa = OpenAlex(mailto=load_config(srv.root).mailto)
+                work = srv._oa.fetch_work(doi)
+                abstract = work.abstract if work else None
+            except Exception:
+                abstract = None
+        srv._abs_cache[key] = abstract
+        return abstract
 
     def _read_json(self) -> dict:
         n = int(self.headers.get("Content-Length", 0))

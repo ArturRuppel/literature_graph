@@ -161,13 +161,20 @@ count, never bookkept here).
 ```yaml
 West2015Sigmod:
   title: "Unbounded throughput scaling in partitioned pipelines"
+  authors: [Dana West, Omar Farooq]   # optional; byline order, display names (no role resolution)
+  journal: "SIGMOD Record"            # optional; venue display name
   year: 2015
   doi: 10.0000/synth.west2015
-  type: original        # optional
+  type: original                      # optional
 ```
 
 An **un-sliced container**: bib-only, reached by some slice's `grounded_in` / `corroborates`
-/ `contradicts`. Carries no slices (not read yet).
+/ `contradicts`. Carries no slices (not read yet). `authors` and `journal` are the bib metadata
+OpenAlex already returns for every reference, written by `lit ingest` and backfillable onto older
+stubs with `lit enrich`; both drive the viewer's hover card (title · authors · journal · year).
+Unlike a curated paper's authors, stub authors are plain names — no `position` / `corresponding`
+(there's no PDF to resolve roles from). A stub's **abstract is never stored** (it would balloon
+the frontier file); `lit serve` fetches it live from OpenAlex on hover instead.
 
 ### Author — emergent
 

@@ -15,6 +15,16 @@ def test_stub_mapping_omits_empties():
     assert s2.to_mapping() == {"title": "T"}
 
 
+def test_stub_mapping_carries_authors_and_journal():
+    s = Stub(citekey="Bench2016Tools", title="T", year=2016, doi="10.1/x", type="original",
+             authors=["Mei Chen", "Ada Okafor"], journal="Systems Biology")
+    m = s.to_mapping()
+    assert m["authors"] == ["Mei Chen", "Ada Okafor"]
+    assert m["journal"] == "Systems Biology"
+    # authors/journal read before year — the tooltip's title · authors · journal · year order
+    assert list(m) == ["title", "authors", "journal", "year", "doi", "type"]
+
+
 def test_curated_yaml_render():
     p = CuratedPaper(
         citekey="Chen2021Sys",
