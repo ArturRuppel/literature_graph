@@ -107,7 +107,7 @@ def _paper_json(p: Paper, builds: list[dict]) -> dict:
     return {
         "cur": p.curated, "pass": p.pass_, "type": p.type, "year": p.year,
         "title": p.title, "authors": [[n, pos, corr] for n, pos, corr in p.authors],
-        "note": p.note, "abs": p.abstract, "head": p.head,
+        "tags": p.tags, "note": p.note, "abs": p.abstract, "head": p.head,
         "slices": [{"id": s.id, "kind": s.kind, "text": s.text, "color": s.color,
                     "is_floor": s.is_floor, "grounded": s.grounded,
                     "borrowed": s.borrowed, "answered": s.answered, "up": _up(s),

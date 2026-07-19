@@ -96,6 +96,7 @@ class CuratedPaper:
     pdf: str | None
     abstract: str | None = None
     authors: list[Author] = field(default_factory=list)
+    tags: list[str] = field(default_factory=list)  # free-form curator labels (container filter axis, SCHEMA §4)
 
     def to_yaml(self) -> str:
         """Render curated/<citekey>.yaml, matching the example's flow-author style."""
@@ -114,6 +115,8 @@ class CuratedPaper:
             lines.append(f"pdf: {self.pdf}")
         if self.abstract:
             lines.append(f"abstract: {_yaml_str(self.abstract)}")
+        if self.tags:
+            lines.append("tags: [" + ", ".join(_yaml_str(t) for t in self.tags) + "]")
         lines.append("authors:")
         for a in self.authors:
             lines.append(f"  - {_author_flow(a)}")

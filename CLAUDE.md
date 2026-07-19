@@ -69,6 +69,8 @@ the rate limiter; never flood. A half-finished graph is a normal, valid state.**
   graph + emergent properties (SCHEMA §7), and emits a self-contained `dist/index.html`
   (the paper-centric column view) plus `graph.json`. Open the HTML directly; no server.
   Validation fails the build on a dangling ref or a curated/stub citekey collision (SCHEMA §6).
+  The viewer's HUD carries a **paper-finding search box** (title · author · journal · year · tag,
+  curated + stubs) — client-side, so it works in the static artifact offline.
 - **`lit serve`** — the same viewer over loopback HTTP, for a curation session: the graph is
   rebuilt from the YAML on every refresh (edit → refresh; a broken edit returns the
   validation error and the server survives), and the tooltip gains PDF hover-preview +
@@ -91,6 +93,10 @@ the rate limiter; never flood. A half-finished graph is a normal, valid state.**
 - **`lit curate <citekey>`** / **`lit curate --done <citekey>`** — the same move from the terminal:
   add (or remove) a curated paper to the in-progress worklist. Drives the same `[curation] active`
   that the right-click move and the "in progress" pill share.
+- **`lit tag <citekey> [tags…]`** — add / remove / list a curated paper's **`tags`**: free-form
+  curator labels (a container filter axis like `type`, SCHEMA §4 — no evidential weight, curated-only).
+  Bare `lit tag <citekey>` lists; `--remove` drops the given tag(s). Round-trips the one YAML file
+  (comments survive). Tags are searchable in the viewer, and clicking a tag chip on a card searches it.
 - **`lit focus <citekey> [--quote "…"]`** — aim a running `lit serve` in-progress zone's PDF pane
   at a quote (my hand during curation): resolves the quote and re-aims the docked pane. The zone's
   left-card quote-clicks drive the same wire, so agent and human stay in one truth.

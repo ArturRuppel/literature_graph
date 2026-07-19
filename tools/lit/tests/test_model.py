@@ -48,3 +48,17 @@ def test_curated_yaml_render():
     assert '  - {name: "Vidal, Ramon", position: last, corresponding: true}' in text
     # affirmations/questions are not emitted by ingest
     assert "affirmations:" not in text.split("# affirmations")[0]
+    assert "tags:" not in text        # no tags by default → no key emitted
+
+
+def test_curated_yaml_renders_tags():
+    p = CuratedPaper(
+        citekey="Chen2021Sys", title="T", type="original", year=2021,
+        doi=None, url=None, pdf=None,
+        authors=[Author("Chen, Mei", position="first")],
+        tags=["batching", "queueing model"],
+    )
+    text = p.to_yaml()
+    # flow list, quoted per tag; emitted before authors (SCHEMA §4 field order)
+    assert 'tags: ["batching", "queueing model"]' in text
+    assert text.index("tags:") < text.index("authors:")

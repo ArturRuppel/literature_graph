@@ -6,6 +6,7 @@ year: 2021
 pass: 4
 doi: 10.0000/synth.chen2021
 abstract: "Stream processors trade latency for throughput by batching records. Using a microbenchmark harness and an open-network queueing model, we show that aggregate throughput rises monotonically with batch size while per-record latency grows roughly linearly, and that the model predicts a throughput plateau beyond a critical batch size. Memory bandwidth, not compute, sets the latency floor of a pipeline."
+tags: ["batching", "throughput", "queueing-model"]
 authors:
   - {name: "Chen, Mei",     position: first}
   - {name: "Okafor, Ada"}

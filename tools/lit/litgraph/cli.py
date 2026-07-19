@@ -123,6 +123,13 @@ def main(argv: list[str] | None = None) -> int:
                        help="re-fetch stubs that already have authors + journal (overwrite them)")
     p_enr.add_argument("--dry-run", action="store_true", help="report what would change; write nothing")
 
+    p_tag = sub.add_parser("tag", help="add / remove / list a curated paper's tags "
+                                       "(free-form curator labels; searchable in the viewer)")
+    p_tag.add_argument("citekey", help="curated paper to tag")
+    p_tag.add_argument("tags", nargs="*", help="tag(s) to add (omit to just list the current tags)")
+    p_tag.add_argument("--remove", action="store_true", help="remove the given tag(s) instead of adding")
+    p_tag.add_argument("--root", default=".", help="data root (curated/, stubs.yaml, config.toml)")
+
     p_cur = sub.add_parser("curate", help="move a paper into (or out of) the in-progress worklist "
                                           "(`[curation] active` in config.toml)")
     p_cur.add_argument("citekey", help="curated paper to move")
@@ -275,6 +282,22 @@ def main(argv: list[str] | None = None) -> int:
             print(f"focus → {rec['citekey']} (quote not located; opened at page top)")
         else:
             print(f"focus → {rec['citekey']}")
+        return 0
+
+    if args.command == "tag":
+        from . import store
+        cfg = load_config(args.root)
+        try:
+            tags = store.edit_tags(cfg.root, args.citekey, args.tags, remove=args.remove)
+        except FileNotFoundError as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 1
+        shown = ", ".join(tags) if tags else "(no tags)"
+        if not args.tags:
+            print(f"{args.citekey}: {shown}")
+        else:
+            verb = "removed from" if args.remove else "added to"
+            print(f"tag → {', '.join(args.tags)} {verb} {args.citekey}  |  now: {shown}")
         return 0
 
     if args.command == "curate":

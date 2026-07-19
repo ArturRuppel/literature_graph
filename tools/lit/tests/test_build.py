@@ -15,6 +15,8 @@ def test_to_json_dict_shape():
     p = d["papers"]["Chen2021Sys"]
     assert p["cur"] is True and p["pass"] == 4
     assert p["authors"][0] == ["Chen, Mei", "first", False]
+    assert p["tags"] == ["batching", "throughput", "queueing-model"]   # tags ride into the JSON
+    assert d["papers"]["Kumar2020Net"]["tags"] == []                   # no tags → empty list
     assert p["abs"].startswith("Stream processors trade latency for throughput")
     c1 = next(s for s in p["slices"] if s["id"] == "c1")
     assert c1["color"] == "grounded" and c1["kind"] == "claim"

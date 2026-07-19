@@ -39,6 +39,15 @@ def test_load_repo_reads_curated_and_stubs():
     assert broad["throughput-scales-with-batching"].kind == "broad claim"
 
 
+def test_load_repo_reads_tags():
+    papers, _ = load_repo(EXAMPLE)
+    assert papers["Chen2021Sys"].tags == ["batching", "throughput", "queueing-model"]
+    # a curated paper without a `tags:` key defaults to an empty list (never None)
+    assert papers["Kumar2020Net"].tags == []
+    # stubs carry no tags (curated-only)
+    assert papers["Patel2017Vldb"].tags == []
+
+
 def test_load_repo_rejects_curated_stub_collision(tmp_path):
     import pytest
     from litgraph.graph import load_repo, BuildError

@@ -275,6 +275,45 @@ def write_quote_locs(root: Path, citekey: str, locs: dict[str, dict]) -> int:
     return n
 
 
+def edit_tags(root: Path, citekey: str, tags: list[str], remove: bool = False) -> list[str]:
+    """Add, remove, or (with empty `tags`) just read a curated paper's `tags` list, round-tripped
+    so the curator's comments/formatting survive. Adds are de-duplicated and order-preserving;
+    removing the last tag drops the key entirely. A new `tags` key is inserted before `authors`
+    to match the on-disk field order (SCHEMA §4). Returns the resulting tag list; writes nothing
+    when reading or when the list is unchanged. Raises FileNotFoundError if the paper is absent."""
+    path = curated_dir(root) / f"{citekey}.yaml"
+    if not path.is_file():
+        raise FileNotFoundError(f"no curated paper: {citekey}")
+    doc = _yaml_rt.load(path.read_text()) or {}
+    current = list(doc.get("tags") or [])
+    if not tags:                                   # list-only: no mutation
+        return current
+    if remove:
+        drop = set(tags)
+        result = [t for t in current if t not in drop]
+    else:
+        result = current + [t for t in tags if t not in current]
+    if result == current:                          # nothing changed → leave the file untouched
+        return current
+
+    if not result:
+        doc.pop("tags", None)                      # last tag gone → drop the key
+    else:
+        from ruamel.yaml.comments import CommentedSeq
+        from ruamel.yaml.scalarstring import DoubleQuotedScalarString as DQ
+        seq = CommentedSeq(DQ(t) for t in result)  # quote every tag → `tags: ["a", "b"]`
+        seq.fa.set_flow_style()                    # flow list, matching model.to_yaml
+        if "tags" in doc:
+            doc["tags"] = seq                      # in place — keep its position
+        elif "authors" in doc:
+            doc.insert(list(doc).index("authors"), "tags", seq)
+        else:
+            doc["tags"] = seq
+    with path.open("w") as fh:
+        _yaml_rt.dump(doc, fh)
+    return result
+
+
 def rename_pdf(pdf_path: Path, citekey: str, dry_run: bool) -> Path | None:
     """Rename the source PDF to <dir>/<citekey>.pdf. Never clobber a different file."""
     pdf_path = Path(pdf_path)

@@ -51,6 +51,7 @@ class Paper:
     abstract: str | None = None     # verbatim abstract (written by `lit ingest`)
     journal: str | None = None      # venue display name; stubs carry it, curated fall back to venueFromKey
     authors: list[tuple[str, str, bool]] = field(default_factory=list)  # (name, position, corresponding)
+    tags: list[str] = field(default_factory=list)                 # curator labels (curated only; SCHEMA §4)
     slices: list[Slice] = field(default_factory=list)
     head: list[str] = field(default_factory=list)                 # top-altitude claim texts
 
@@ -115,7 +116,7 @@ def paper_from_raw(citekey: str, raw: dict) -> Paper:
         title=raw.get("title", ""), type=raw.get("type", "original"),
         year=raw.get("year"), pass_=raw.get("pass"),
         doi=raw.get("doi"), note=raw.get("note"), abstract=raw.get("abstract"),
-        authors=_authors_from(raw), slices=slices,
+        authors=_authors_from(raw), tags=list(raw.get("tags", []) or []), slices=slices,
     )
 
 

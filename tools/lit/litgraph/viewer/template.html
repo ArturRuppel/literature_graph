@@ -27,6 +27,32 @@
   #hud .widthctl input{width:150px;accent-color:#5a9fd0;cursor:pointer}
   #hud .widthctl .val{min-width:34px;text-align:right;color:#d7e0e7;letter-spacing:0}
 
+  /* find-a-paper search box (build + serve) + its results dropdown */
+  #hud #search{width:240px;font:inherit;font-size:11px;color:#eaf1f6;
+    background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.18);border-radius:999px;
+    padding:4px 12px;outline:none;-webkit-appearance:none}
+  #hud #search::placeholder{color:#93a4b3}
+  #hud #search:focus{background:rgba(255,255,255,.16);border-color:rgba(150,195,225,.75)}
+  #searchResults{position:fixed;z-index:55;width:340px;max-height:70vh;overflow:auto;display:none;
+    background:var(--panel);border:1px solid var(--line);border-radius:10px;
+    box-shadow:0 12px 34px rgba(38,54,70,.24);padding:5px}
+  #searchResults.on{display:block}
+  #searchResults .sr-row{display:flex;flex-direction:column;gap:2px;padding:7px 9px;border-radius:7px;cursor:pointer}
+  #searchResults .sr-row:hover{background:var(--bg)}
+  #searchResults .sr-t{font-size:11px;color:var(--ink);line-height:1.3}
+  #searchResults .sr-row.stub .sr-t{color:var(--dim)}
+  #searchResults .sr-m{font-size:9px;color:var(--faint)}
+  #searchResults .sr-badge{font-size:7px;letter-spacing:.6px;text-transform:uppercase;color:#fff;
+    background:var(--faint);border-radius:3px;padding:1px 4px;margin-left:5px;vertical-align:1px}
+  #searchResults .sr-none{padding:9px;font-size:10px;color:var(--faint)}
+  #searchResults .sr-more{padding:6px 9px 4px;font-size:9px;color:var(--faint);letter-spacing:.4px}
+
+  /* a paper the search jumped to: a brief highlight so the eye lands on it */
+  @keyframes foundflash{
+    0%{border-color:var(--floor);box-shadow:0 0 0 2px var(--floor),0 6px 20px rgba(181,130,47,.28)}
+    100%{border-color:var(--line);box-shadow:0 0 0 0 transparent}}
+  .card.found{animation:foundflash 1.7s ease-out}
+
   /* curation-in-progress review lens (serve only) */
   #hud .wip{display:inline-flex;align-items:center;gap:6px;cursor:pointer;
     font-size:10px;letter-spacing:1px;text-transform:uppercase;color:#e7cfa6;
@@ -110,6 +136,12 @@
   .cabs{display:none;padding:0 11px 8px;font-size:10px;color:var(--dim);line-height:1.4}
   .card.open .cyr{display:inline-block}
   .card.open .ctitle,.card.open .cauth{display:block}
+  /* curator tags — a container filter axis; shown when the card is open, click one to search it */
+  .ctags{display:none;flex-wrap:wrap;gap:4px;padding:0 11px 8px}
+  .card.open .ctags{display:flex}
+  .ctag{font-size:8px;letter-spacing:.3px;color:#3f6486;background:#eef3f8;border:1px solid #d7e2ec;
+    border-radius:999px;padding:2px 7px;cursor:pointer}
+  .ctag:hover{background:#e0ebf4;border-color:#b9cfe0;color:#295c86}
   /* open card: body is inert; the header collapses, the slice rows drill */
   .card.open{cursor:default}
   .card.open .chd{cursor:pointer}
@@ -332,6 +364,8 @@
 <body>
 <div id="hud">
   <b>litgraph</b>
+  <input id="search" type="search" autocomplete="off" spellcheck="false"
+         placeholder="find a paper — title, author, journal, tag…">
   <span id="wip" class="wip" hidden></span>
   <button id="pdfToggle" class="pdfbtn" hidden>📄 PDF</button>
   <label class="widthctl">width
@@ -339,6 +373,7 @@
     <span class="val"></span>
   </label>
 </div>
+<div id="searchResults"></div>
 <div id="board"><svg id="edges"></svg></div>
 <div id="dockEmpty">open a card to load its PDF · hover a claim to jump to its quote · toggle with 📄 PDF</div>
 <div id="dockGrip"></div>
@@ -442,10 +477,16 @@ function paperCard(key, level){
   if (cur) {
     body += `<div class="ctitle">${p.title}</div>`;
     if (p.authors) body += `<div class="cauth">${authLine(p.authors)}</div>`;
+    if (p.tags && p.tags.length) body += `<div class="ctags">`
+      + p.tags.map(t => `<span class="ctag" data-tag="${esc(t)}">${esc(t)}</span>`).join("") + `</div>`;
     if (p.abs) body += `<div class="cabs">${p.abs}</div>`;   // shown inline only on touch (CSS); desktop reads it in the hover tip
     body += `<div class="slices"></div>`;   // filled by renderSlices from the drill state
   }
   el.innerHTML = body;
+  // a tag chip runs a search for that tag (the whole filter-by-tag story — no separate panel);
+  // stopPropagation keeps the click off cardClick's fold/drill routing
+  if (cur) el.querySelectorAll(".ctag").forEach(chip =>
+    chip.addEventListener("click", e => { e.stopPropagation(); runSearch(chip.dataset.tag); }));
   // the abstract + PDF-preview tip is bound to the citekey tag only (hovering the body drills
   // slices / isolates edges without popping the tip); edge-isolation still tracks any row.
   el.addEventListener("mousemove", e => {
@@ -1033,6 +1074,9 @@ if (pdfToggle && LIVE && !DRIVE) {
   pdfToggle.hidden = false;
   pdfToggle.addEventListener("click", toggleDock);
 }
+// search is a browse-view affordance; the DRIVE left-card (cockpit preview iframe) is one
+// isolated paper, so drop the box there (chip clicks then no-op via runSearch's null guard)
+if (DRIVE) { const sb = document.getElementById("search"); if (sb) sb.remove(); }
 let PDFS = null;                       // Set of citekeys with a PDF (null until fetched)
 if (LIVE) fetch("pdfs.json").then(r => r.ok ? r.json() : [])
   .then(l => { PDFS = new Set(l); }).catch(() => { PDFS = new Set(); });
@@ -1605,6 +1649,96 @@ boot();
     val.textContent=slider.value+"px"; redraw(); };
   slider.addEventListener("input",apply); apply();
 })();
+
+// ── find a paper (build + serve) ─────────────────────────────────────────────────────────
+// A paper-finding search: type fragments of what you remember (title, author, journal, year,
+// tag) and jump to the matching card. NOT a knowledge search over claims/quotes. Purely
+// client-side, so a static `lit build` keeps it working offline. Curated papers rank above
+// stubs (ORDER is already curated-first); in-progress (ACTIVE) papers live in the zone, not the
+// browse column, so they're left out — there's no landing card to jump to.
+const searchInput = document.getElementById("search");
+const searchResults = document.getElementById("searchResults");
+let searchIndex = null;
+function buildSearchIndex(){
+  const rows = [];
+  for(const key of ORDER){
+    if(ACTIVE.has(key)) continue;
+    const cur = !!(PAPERS[key] && PAPERS[key].cur);
+    const p = PAPERS[key] || STUBS[key] || {};
+    const authors = (p.authors || []).map(a => a[0]);
+    const journal = p.journal || venueFromKey(key);       // curated: venue token from the citekey
+    const tags = (cur && p.tags) ? p.tags : [];            // tags are curated-only
+    const blob = [key, p.title || "", authors.join(" "), journal, p.year || "", tags.join(" ")]
+      .join(" ").toLowerCase();
+    rows.push({key, cur, title: p.title || key, authors, journal, year: p.year, tags, blob});
+  }
+  return rows;
+}
+function openResults(){
+  const r = searchInput.getBoundingClientRect();       // pin under the box (HUD is fixed)
+  searchResults.style.left = Math.max(8, Math.min(r.left, innerWidth - 348)) + "px";
+  searchResults.style.top = (r.bottom + 6) + "px";
+  searchResults.classList.add("on");
+}
+function closeSearch(){ searchResults.classList.remove("on"); }
+function renderResults(q){
+  if(!searchIndex) searchIndex = buildSearchIndex();
+  const terms = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  if(!terms.length){ closeSearch(); return; }
+  const hits = searchIndex.filter(r => terms.every(t => r.blob.includes(t)));   // AND across terms
+  const CAP = 12;
+  if(!hits.length){
+    searchResults.innerHTML = `<div class="sr-none">no paper matches “${esc(q)}”</div>`;
+  } else {
+    let html = hits.slice(0, CAP).map(r => {
+      const who = r.authors.length
+        ? esc(r.authors.slice(0, 3).join(" · ")) + (r.authors.length > 3 ? " · …" : "") : "";
+      const bib = esc([r.journal, r.year].filter(Boolean).join(" · "));
+      const meta = [who, bib].filter(Boolean).join("  ·  ");
+      const badge = r.cur ? "" : `<span class="sr-badge">stub</span>`;
+      return `<div class="sr-row ${r.cur ? "" : "stub"}" data-key="${esc(r.key)}">`
+           + `<div class="sr-t">${esc(r.title)}${badge}</div>`
+           + `<div class="sr-m">${esc(r.key)}${meta ? "  ·  " + meta : ""}</div></div>`;
+    }).join("");
+    if(hits.length > CAP) html += `<div class="sr-more">+${hits.length - CAP} more — refine the search</div>`;
+    searchResults.innerHTML = html;
+  }
+  openResults();
+}
+function gotoPaper(key){
+  closeSearch();
+  const el = document.getElementById(`card-0:${key}`);   // every browse paper has a landing card
+  if(!el) return;
+  el.scrollIntoView({behavior: "smooth", block: "center"});
+  el.classList.remove("found"); void el.offsetWidth;     // restart the flash if it's still running
+  el.classList.add("found");
+  setTimeout(() => el.classList.remove("found"), 1800);
+}
+function runSearch(term){                                 // called by a tag chip → search that tag
+  if(!searchInput) return;
+  searchInput.value = term;
+  searchInput.focus();
+  renderResults(term);
+}
+if(searchInput){
+  searchInput.addEventListener("input", () => renderResults(searchInput.value));
+  searchInput.addEventListener("focus", () => { if(searchInput.value.trim()) renderResults(searchInput.value); });
+  searchInput.addEventListener("keydown", e => {
+    if(e.key === "Escape"){ searchInput.value = ""; closeSearch(); searchInput.blur(); }
+    else if(e.key === "Enter"){
+      const first = searchResults.querySelector(".sr-row");
+      if(first) gotoPaper(first.dataset.key);
+    }
+  });
+  searchResults.addEventListener("click", e => {
+    const row = e.target.closest(".sr-row");
+    if(row) gotoPaper(row.dataset.key);
+  });
+  addEventListener("click", e => {                       // click outside closes the dropdown
+    if(!e.target.closest("#searchResults, #search")) closeSearch();
+  }, true);
+}
+
 board.addEventListener("scroll",redraw);
 addEventListener("resize",redraw);
 

@@ -89,6 +89,57 @@ def test_write_quote_loc_errors(tmp_path):
         store.write_quote_loc(tmp_path, "Nope2020Xyz", "c1", 0, [[0, 0, 1, 1]])
 
 
+def _load(path):
+    from ruamel.yaml import YAML
+    return YAML(typ="safe").load(path.read_text())
+
+
+def test_edit_tags_add_dedupes_and_preserves_comments(tmp_path):
+    p = _paper(tmp_path)
+    assert store.edit_tags(tmp_path, "Chen2021Sys", ["batching", "throughput"]) == ["batching", "throughput"]
+    # adding again de-dupes (order-preserving) and appends only the new one
+    assert store.edit_tags(tmp_path, "Chen2021Sys", ["batching", "queueing"]) == \
+        ["batching", "throughput", "queueing"]
+    assert _load(p)["tags"] == ["batching", "throughput", "queueing"]
+    assert "# a hand-authored curated file" in p.read_text()      # comment survives
+
+
+def test_edit_tags_inserts_before_authors(tmp_path):
+    (tmp_path / "curated").mkdir(parents=True)
+    p = tmp_path / "curated" / "X2020Jrnl.yaml"
+    p.write_text('title: "T"\ntype: original\nauthors: [{name: "A, B"}]\n')
+    store.edit_tags(tmp_path, "X2020Jrnl", ["foo"])
+    text = p.read_text()
+    assert text.index("tags:") < text.index("authors:")
+
+
+def test_edit_tags_remove_and_drop_key(tmp_path):
+    p = _paper(tmp_path)
+    store.edit_tags(tmp_path, "Chen2021Sys", ["a", "b"])
+    assert store.edit_tags(tmp_path, "Chen2021Sys", ["a"], remove=True) == ["b"]
+    # removing the last tag drops the key entirely
+    assert store.edit_tags(tmp_path, "Chen2021Sys", ["b"], remove=True) == []
+    assert "tags" not in _load(p)
+
+
+def test_edit_tags_list_only_and_no_op_do_not_write(tmp_path):
+    p = _paper(tmp_path)
+    before = p.read_text()
+    assert store.edit_tags(tmp_path, "Chen2021Sys", []) == []          # list-only on a tagless paper
+    assert p.read_text() == before                                    # untouched
+    store.edit_tags(tmp_path, "Chen2021Sys", ["a"])
+    mid = p.read_text()
+    assert store.edit_tags(tmp_path, "Chen2021Sys", ["a"]) == ["a"]     # re-add same → no change
+    assert p.read_text() == mid                                       # not rewritten
+    assert store.edit_tags(tmp_path, "Chen2021Sys", []) == ["a"]        # list-only reports current
+
+
+def test_edit_tags_missing_paper_errors(tmp_path):
+    (tmp_path / "curated").mkdir(parents=True)
+    with pytest.raises(FileNotFoundError):
+        store.edit_tags(tmp_path, "Nope2020Xyz", ["a"])
+
+
 def _oa_by_doi(mapping):
     """A minimal OpenAlex stand-in: filter=doi:… -> works assembled from `mapping` (doi -> raw)."""
     from urllib.parse import unquote
