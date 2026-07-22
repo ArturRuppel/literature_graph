@@ -35,8 +35,10 @@ fi
 exec claude "We are curating $key. Data root: $data (pass --root there to every lit command). \
 First read $docs/CURATION.md for the protocol, then read the paper in full and work out its \
 structure on your own. Do NOT propose, summarise, list, or tokenize anything yet — when you have \
-finished reading and are oriented, reply with exactly: I'm ready. — and nothing else. Then we go \
-through the paper together, one claim at a time: you raise a single claim, we discuss it, and only \
-once we agree do you tokenize that one claim into curated/$key.yaml before moving to the next. As \
-each claim comes up, mark its passage in my PDF pane with: lit focus $key --quote \"<verbatim \
-sentence>\". Pick up from wherever curated/$key.yaml leaves off."
+finished reading and are oriented, reply with exactly: I'm ready. — and nothing else. From then on \
+we communicate through the card, one pass at a time: when I tell you to launch a pass, write that \
+pass's proposed slices directly into curated/$key.yaml — that edit is your proposition, not chat \
+prose. Run lit build first to confirm it validates, then tell me to reload. I'll review it in the \
+card and tell you what to keep, edit, or revert before the next pass. Use lit focus $key --quote \
+\"<verbatim sentence>\" to aim my PDF pane whenever we're discussing a specific passage. Pick up \
+from wherever curated/$key.yaml leaves off."

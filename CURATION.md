@@ -20,6 +20,10 @@ edits/accepts. Nothing is "curated" until the human commits it.
 - **Discuss, then tokenize — align after every pass.** Never write slices ahead of agreement.
   Each pass is a loop: *explain your reading at the pass's granularity → discuss until
   aligned → only then weld the agreed slices into the file.* Realign before the next pass.
+  **In the `lit serve` cockpit, the card *is* the explain step:** the human triggers a pass
+  ("launch pass 2"), the agent writes that pass's proposed slices straight into
+  `curated/<citekey>.yaml` as the proposition, and the two discuss over the reloaded card /
+  git diff rather than prose-first — see "Where the render must land" below.
 - **Render the proposition, don't just describe it — `lit preview`.** Prose is hard to judge.
   During the *explain* step, write the pass's proposed slices to a **scratch YAML** (the real
   `curated/` schema, held *outside* `curated/`) and run
@@ -32,15 +36,16 @@ edits/accepts. Nothing is "curated" until the human commits it.
   proposition time if an anchor isn't verbatim in the `.md`. It's a rendering aid, not a
   shortcut past the reading and judgement — the discussion is still the work.
   - **Where the render must land depends on the human's review surface.** `lit preview
-    --scratch` writes a **standalone `dist/preview.html`** — a *separate* artifact. If the
-    human is curating in the **`lit serve` cockpit** (the in-progress zone's three-pane view),
-    that pane shows the **live card rebuilt from `curated/<citekey>.yaml` on reload**, and it
-    **does not display `preview.html`** — so a scratch render is invisible there. To let the
-    human read a proposed slice *in their card*, write it **into the real
-    `curated/<citekey>.yaml`** (a proposal they then accept / edit / reject via the git diff,
-    which you revert if rejected) and have them reload the cockpit; run `lit build` first to
-    confirm it validates so the reload isn't just a validation error. Reserve the standalone
-    `--scratch` preview for when the human is looking at `preview.html` directly, not the cockpit.
+    --scratch` writes a **standalone `dist/preview.html`** — a *separate* artifact, useful
+    outside the cockpit. In the **`lit serve` cockpit** (the in-progress zone's three-pane
+    view), that pane shows the **live card rebuilt from `curated/<citekey>.yaml` on reload**
+    and never displays `preview.html`, so this is the cockpit's **default** mode, not a
+    fallback: on "launch pass N," write that whole pass's proposed slices **directly into
+    `curated/<citekey>.yaml`** — that edit *is* the proposition — run `lit build` first to
+    confirm it validates, then tell the human to reload. They accept / edit / reject via the
+    git diff; revert whatever's rejected before the next pass. Reserve the standalone
+    `--scratch` preview for review surfaces outside the cockpit, where there's no live card to
+    write into.
 - **Propose, never flood** (CONCEPT §10). A handful of well-welded slices beats a wall of
   shallow ones. **Curation is a single staircase** — a paper climbs it one rung at a time, and
   the rung *is* both how far you read and how mature the card is: there is no second axis.
