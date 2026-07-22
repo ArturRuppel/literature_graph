@@ -31,6 +31,16 @@ edits/accepts. Nothing is "curated" until the human commits it.
   the tokenize step). Preview also polishes the focal quotes, so a `quote-flag` warns you at
   proposition time if an anchor isn't verbatim in the `.md`. It's a rendering aid, not a
   shortcut past the reading and judgement — the discussion is still the work.
+  - **Where the render must land depends on the human's review surface.** `lit preview
+    --scratch` writes a **standalone `dist/preview.html`** — a *separate* artifact. If the
+    human is curating in the **`lit serve` cockpit** (the in-progress zone's three-pane view),
+    that pane shows the **live card rebuilt from `curated/<citekey>.yaml` on reload**, and it
+    **does not display `preview.html`** — so a scratch render is invisible there. To let the
+    human read a proposed slice *in their card*, write it **into the real
+    `curated/<citekey>.yaml`** (a proposal they then accept / edit / reject via the git diff,
+    which you revert if rejected) and have them reload the cockpit; run `lit build` first to
+    confirm it validates so the reload isn't just a validation error. Reserve the standalone
+    `--scratch` preview for when the human is looking at `preview.html` directly, not the cockpit.
 - **Propose, never flood** (CONCEPT §10). A handful of well-welded slices beats a wall of
   shallow ones. **Curation is a single staircase** — a paper climbs it one rung at a time, and
   the rung *is* both how far you read and how mature the card is: there is no second axis.
@@ -99,6 +109,7 @@ as floor-slices the headline claims can immediately ground in (no deferral):
 | the question(s) the paper sets out to answer | draft **Question** slices (`questions:`) |
 | the **approach** (measurements, models) | **Method** slices (`methods:`) — a measurement is a *floor*; a model `grounded_in` the measurements it consumes (CONCEPT §7) |
 | the headline claims | **Claim** slices (`claims:`), provisional quote welded to the abstract sentence, `grounded_in` the relevant method floors, `answers` the question they resolve |
+| the authors' **keyword line** (sits under the abstract) | proposed **`tags`** — *not slices*: a container filter axis (SCHEMA §4), welded to nothing, no evidential weight. Run `lit tag <key> --suggest` to scrape and kebab-case the line from the full text; it prints candidates and a ready `lit tag` command, **writes nothing** — you accept the ones worth keeping. Author lists are often three broad words a journal required, so gate them by hand |
 
 ### Pass 2 — Framing: intro + discussion together (the words)
 

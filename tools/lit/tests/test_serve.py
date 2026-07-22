@@ -2,6 +2,7 @@
 """`lit serve` — loopback only: every request hits 127.0.0.1, no external network."""
 import http.client
 import json
+import os
 import shutil
 import threading
 from pathlib import Path
@@ -90,6 +91,19 @@ def test_preview_html_rejects_unknown_and_stub_keys(srv):
     assert get(srv, "/preview.html?key=NoSuchPaper2099")[0] == 404
     # a stub (uncurated container) is not previewable — only curated papers isolate
     assert get(srv, "/preview.html?key=Bench2016Tools")[0] == 404
+
+
+def test_preview_json_isolates_one_curated_paper(srv):
+    # the JSON twin of /preview.html: the DRIVE card fetches it to hot-reload its data in place
+    status, headers, body = get(srv, "/preview.json?key=Chen2021Sys")
+    assert status == 200 and headers["Content-Type"].startswith("application/json")
+    mini = json.loads(body)
+    assert mini["order"] == ["Chen2021Sys"] and "Chen2021Sys" in mini["papers"]
+
+
+def test_preview_json_rejects_unknown_and_stub_keys(srv):
+    assert get(srv, "/preview.json?key=NoSuchPaper2099")[0] == 404
+    assert get(srv, "/preview.json?key=Bench2016Tools")[0] == 404
 
 
 def test_pdf_manifest_and_fetch(srv):
@@ -274,7 +288,9 @@ def test_quote_loc_rejects_bad_payloads(srv):
 def test_focus_starts_empty(srv):
     status, _, body = get(srv, "/focus")
     assert status == 200
-    assert json.loads(body) == {"seq": 0, "citekey": None, "quote": None, "loc": None}
+    rec = json.loads(body)
+    assert rec.pop("data_version") >= 0        # rides along on the poll for the card hot-reload
+    assert rec == {"seq": 0, "citekey": None, "quote": None, "loc": None}
 
 
 def test_focus_set_resolves_quote_bumps_seq_and_reads_back(srv):
@@ -282,7 +298,9 @@ def test_focus_set_resolves_quote_bumps_seq_and_reads_back(srv):
     assert status == 200
     assert rec["citekey"] == "Chen2021Sys" and rec["quote"] == "fixture paper"
     assert rec["seq"] == 1 and rec["loc"]["page"] == 0 and len(rec["loc"]["rects"]) >= 1
-    assert json.loads(get(srv, "/focus")[2]) == rec        # GET returns the same record
+    got = json.loads(get(srv, "/focus")[2])
+    assert got.pop("data_version") >= 0                     # GET adds the reload version;
+    assert got == rec                                      # the focus record itself is unchanged
     # each set bumps seq — the poll's change-detector
     _, rec2 = post(srv, "/focus", {"citekey": "Chen2021Sys", "quote": "fixture paper"})
     assert rec2["seq"] == 2
@@ -298,6 +316,16 @@ def test_focus_without_quote_just_opens_the_paper(srv):
     status, rec = post(srv, "/focus", {"citekey": "Chen2021Sys"})
     assert status == 200 and rec["citekey"] == "Chen2021Sys"
     assert rec["quote"] == "" and rec["loc"] is None
+
+
+def test_data_version_bumps_on_curated_edit(srv):
+    # the card hot-reload signal: editing a curated YAML must raise data_version so the
+    # viewer's focus poll can re-render the cockpit card without a manual refresh.
+    v0 = json.loads(get(srv, "/focus")[2])["data_version"]
+    f = srv.root / "curated" / "Chen2021Sys.yaml"
+    os.utime(f, ns=(v0 + 1_000_000_000, v0 + 1_000_000_000))   # push mtime a second ahead of the max
+    v1 = json.loads(get(srv, "/focus")[2])["data_version"]
+    assert v1 > v0
 
 
 def test_focus_rejects_missing_pdf_and_traversal(srv):

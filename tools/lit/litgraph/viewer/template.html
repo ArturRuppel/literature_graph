@@ -115,8 +115,9 @@
   /* hover counterpart: the paper(s) an edge of the hovered claim touches */
   .card.hl{border-color:var(--borrowed);box-shadow:0 0 0 1px var(--borrowed)}
   .bn.hl{box-shadow:0 0 0 1.5px var(--borrowed)}
-  /* header: circle + citekey always; type/year only when expanded. Flex row = no overlap. */
-  .chd{display:flex;align-items:center;gap:7px;padding:9px 11px}
+  /* header: circle + citekey always; type/year only when expanded. Flex row = no overlap.
+     wrap so a paper's tag chips can spill onto a second header line on a narrow card. */
+  .chd{display:flex;align-items:center;flex-wrap:wrap;gap:7px;padding:9px 11px}
   .circle{flex:none;display:flex;width:16px;height:16px}
   .ckey{font-size:11px;font-weight:700;cursor:help}
   /* the paper classifier (original / perspective / methods …) rides in the header at all
@@ -136,9 +137,9 @@
   .cabs{display:none;padding:0 11px 8px;font-size:10px;color:var(--dim);line-height:1.4}
   .card.open .cyr{display:inline-block}
   .card.open .ctitle,.card.open .cauth{display:block}
-  /* curator tags — a container filter axis; shown when the card is open, click one to search it */
-  .ctags{display:none;flex-wrap:wrap;gap:4px;padding:0 11px 8px}
-  .card.open .ctags{display:flex}
+  /* curator tags — a container filter axis; ride in the header (collapsed or open), click one to
+     search it. As a single flex child they wrap onto their own header line when the row is full. */
+  .ctags{display:flex;flex-wrap:wrap;gap:4px;align-items:center}
   .ctag{font-size:8px;letter-spacing:.3px;color:#3f6486;background:#eef3f8;border:1px solid #d7e2ec;
     border-radius:999px;padding:2px 7px;cursor:pointer}
   .ctag:hover{background:#e0ebf4;border-color:#b9cfe0;color:#295c86}
@@ -427,7 +428,8 @@ const ORDER = GRAPH.order;
 // independent of expansion state. Lets a broad-node hover reach papers still collapsed in the
 // landing column, not just the expanded ones whose edges happen to already be drawn.
 const BROAD_LINKS = {};
-(function(){
+function buildBroadLinks(){
+  for(const k in BROAD_LINKS) delete BROAD_LINKS[k];   // idempotent: a live refresh rebuilds it
   const push=(slug,key,via,kind)=>{ (BROAD_LINKS[slug]=BROAD_LINKS[slug]||[]).push({key,via,kind}); };
   for(const [key,p] of Object.entries(PAPERS)){
     if(!p.cur) continue;
@@ -435,7 +437,8 @@ const BROAD_LINKS = {};
     (p.lateral||[]).forEach(l=>{ if(l.slug) push(l.slug,key,l.via,l.sign); });
     (p.ans||[]).forEach(a=>{ if(a.slug) push(a.slug,key,a.via,"answers"); });
   }
-})();
+}
+buildBroadLinks();
 
 const board=document.getElementById("edges").parentNode;
 const svg=document.getElementById("edges");
@@ -488,13 +491,17 @@ function paperCard(key, level){
   el.dataset.year = p.year || 0;
   // Collapsed by default: circle + citekey only. The rest is revealed on focus (.open).
   let body = `<div class="chd">${passCircle(cur ? p.pass : 0)}<span class="ckey">${key}</span>`;
-  if (cur) body += `<span class="ctype ${p.type}">${p.type}</span><span class="cyr">${p.year}</span>`;
+  if (cur) {
+    body += `<span class="ctype ${p.type}">${p.type}</span>`;
+    // tags ride in the header (collapsed too) between the class pill and the right-pushed year
+    if (p.tags && p.tags.length) body += `<div class="ctags">`
+      + p.tags.map(t => `<span class="ctag" data-tag="${esc(t)}">${esc(t)}</span>`).join("") + `</div>`;
+    body += `<span class="cyr">${p.year}</span>`;
+  }
   body += `</div>`;
   if (cur) {
     body += `<div class="ctitle">${p.title}</div>`;
     if (p.authors) body += `<div class="cauth">${authLine(p.authors)}</div>`;
-    if (p.tags && p.tags.length) body += `<div class="ctags">`
-      + p.tags.map(t => `<span class="ctag" data-tag="${esc(t)}">${esc(t)}</span>`).join("") + `</div>`;
     if (p.abs) body += `<div class="cabs">${p.abs}</div>`;   // shown inline only on touch (CSS); desktop reads it in the hover tip
     body += `<div class="slices"></div>`;   // filled by renderSlices from the drill state
   }
@@ -1074,6 +1081,28 @@ const COCKPIT = GRAPH.cockpit || null;
 // mode a quote-click POSTs the weld to the focus wire (aiming the PARENT zone's PDF pane); it mounts
 // no pane and polls nothing itself. The top-level browse document is never DRIVE.
 const DRIVE = LIVE && new URLSearchParams(location.search).has("drive");
+// Hot-reload the DRIVE card IN PLACE on a YAML edit: fetch the freshly-isolated subgraph, refill
+// the data objects (const bindings survive — we mutate contents, never reassign), rebuild from the
+// preserved reading state (open/drill/grpCollapsed/stacks are untouched), and restore scroll. The
+// parent zone detects the edit (data_version bump) and postMessages us — far gentler than reloading
+// the iframe, which tore down the DOM and collapsed the card the human was mid-read on.
+async function refreshDriveData(){
+  const key = new URLSearchParams(location.search).get("key");
+  if (!key) return;
+  let g; try { g = await fetch(`preview.json?key=${encodeURIComponent(key)}`).then(r => r.ok ? r.json() : null); }
+  catch { return; }                                    // server gone / broken edit → keep the last good render
+  if (!g || !g.papers) return;
+  for (const k in PAPERS) delete PAPERS[k]; Object.assign(PAPERS, g.papers);
+  for (const k in BROAD)  delete BROAD[k];  Object.assign(BROAD,  g.broad || {});
+  for (const k in STUBS)  delete STUBS[k];  Object.assign(STUBS,  g.stubs || {});
+  ORDER.length = 0; ORDER.push(...(g.order || []));
+  buildBroadLinks();
+  const sc = document.scrollingElement || document.documentElement;
+  const y = sc.scrollTop, x = board.scrollLeft;        // rebuild churns the DOM; hold the reading spot
+  rebuild();
+  sc.scrollTop = y; board.scrollLeft = x;
+}
+if (DRIVE) addEventListener("message", e => { if (e.data && e.data.t === "litRefresh") refreshDriveData(); });
 // DETACHED: this document is the browse view's PDF pane popped into its own OS window
 // (window.open of index.html?detached=1). It renders no graph — just a full-bleed PDF pane it
 // mirrors from the parent over the "lit-pdf" BroadcastChannel. Implies LIVE and not DRIVE.
@@ -1384,7 +1413,7 @@ addEventListener("scroll", hideCtxMenu, true);   // scrolling the board dismisse
 // unchanged → do nothing, so an idle session never repaints. A null loc is the graceful floor:
 // open the paper at its top, no highlight. Polling runs ONLY inside the zone (zoneOpen); the
 // browse view and the DRIVE card never poll — the browse view has no pane to aim.
-let focusWin = null, focusSeq = 0, zoneOpen = false, lastFocus = null;
+let focusWin = null, focusSeq = 0, zoneOpen = false, lastFocus = null, dataVer = null;
 function closeFocusWin(){ if (focusWin) { focusWin.remove(); focusWin = null; } }
 function aimFocus(f){
   if (!f.citekey || !zoneOpen) return;
@@ -1414,7 +1443,17 @@ function setTerm(key){
 async function pollFocus(){
   if (!zoneOpen) return;
   let f; try { f = await fetch("focus").then(r => r.ok ? r.json() : null); } catch { return; }
-  if (!f || f.seq === focusSeq) return;
+  if (!f) return;
+  if (f.data_version != null) {                          // hot-reload the card on a YAML edit
+    if (dataVer === null) dataVer = f.data_version;       // baseline: first poll after entering
+    else if (f.data_version !== dataVer) {
+      dataVer = f.data_version;
+      const cf = document.querySelector("#wipOverlay .wo-frame");   // refresh the left card's data in
+      if (cf && cf.contentWindow) cf.contentWindow.postMessage({t: "litRefresh"}, "*");  // place —
+      else if (cf) cf.src = cf.src;                       // reading state kept; PDF pane + terminal untouched
+    }
+  }
+  if (f.seq === focusSeq) return;
   focusSeq = f.seq;
   aimFocus(f);
 }
@@ -1872,7 +1911,7 @@ if (LIVE && !DRIVE) (function(){
     at = (i + inProg.length) % inProg.length;
     const k = inProg[at];
     panel.hidden = true; overlay.hidden = false;
-    zoneOpen = true;
+    zoneOpen = true; dataVer = null;                // re-baseline the hot-reload watch per paper
     frame.src = `preview.html?key=${encodeURIComponent(k)}&drive=1`;   // left card, drives the wire
     titleEl.innerHTML = `curating <b>${k}</b> · ${stage(k)}`;
     countEl.textContent = inProg.length > 1 ? `${at + 1} / ${inProg.length}` : "";

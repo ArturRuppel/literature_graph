@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 from pathlib import Path
 
@@ -13,6 +14,12 @@ from .build import emit
 from .preview import build_preview_graph, emit_preview
 from .quotes import polish_graph
 from .serve import serve
+
+
+def _slug(kw: str) -> str:
+    """A keyword phrase → kebab tag, matching the repo's lowercase-hyphen tag convention."""
+    s = re.sub(r"[^\w\s-]", "", kw.lower())
+    return re.sub(r"[\s_-]+", "-", s).strip("-")
 
 
 def _print_report(r: Report) -> None:
@@ -128,6 +135,8 @@ def main(argv: list[str] | None = None) -> int:
     p_tag.add_argument("citekey", help="curated paper to tag")
     p_tag.add_argument("tags", nargs="*", help="tag(s) to add (omit to just list the current tags)")
     p_tag.add_argument("--remove", action="store_true", help="remove the given tag(s) instead of adding")
+    p_tag.add_argument("--suggest", action="store_true", help="propose tags from the paper's author-keyword "
+                                                              "line (Pass 1); prints candidates, writes nothing")
     p_tag.add_argument("--root", default=".", help="data root (curated/, stubs.yaml, config.toml)")
 
     p_cur = sub.add_parser("curate", help="move a paper into (or out of) the in-progress worklist "
@@ -287,6 +296,21 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "tag":
         from . import store
         cfg = load_config(args.root)
+        if args.suggest:
+            from .fulltext import extract_keywords
+            pdf_dir = cfg.pdf_dir or cfg.root / "pdfs"
+            md = pdf_dir / f"{args.citekey}.md"
+            if not md.is_file():
+                print(f"error: no full text to scan: {md}", file=sys.stderr)
+                return 1
+            kws = extract_keywords(md.read_text())
+            if not kws:
+                print(f"{args.citekey}: no author-keyword line found in the full text")
+                return 0
+            slugs = [_slug(k) for k in kws]
+            print(f"author keywords ({len(kws)}): " + " · ".join(kws))
+            print("  " + " ".join(["lit", "tag", args.citekey, *slugs]))
+            return 0
         try:
             tags = store.edit_tags(cfg.root, args.citekey, args.tags, remove=args.remove)
         except FileNotFoundError as e:

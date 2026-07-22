@@ -145,6 +145,25 @@ def _valid_rects(rects) -> bool:
     return True
 
 
+def _data_version(root: Path) -> int:
+    """Max mtime (ns) over the YAML the card is built from — curated/*.yaml + stubs.yaml.
+    The viewer piggybacks this on the focus poll and reloads the cockpit card when it bumps,
+    so an agent's edit shows up without a manual refresh. 44-odd stats every 500 ms is free;
+    `lit build` writes only to dist/, so a rebuild never bumps it — only a source edit does."""
+    latest = 0
+    try:
+        paths = list((root / "curated").glob("*.yaml"))
+    except OSError:
+        paths = []
+    paths.append(root / "stubs.yaml")
+    for p in paths:
+        try:
+            latest = max(latest, p.stat().st_mtime_ns)
+        except OSError:
+            pass  # a file removed mid-glob just doesn't count toward the version this tick
+    return latest
+
+
 class _Server(ThreadingHTTPServer):
     daemon_threads = True
 
@@ -209,8 +228,10 @@ class _Handler(BaseHTTPRequestHandler):
             if path == "/focus":
                 # the focus wire — what the viewer's PDF pane should aim at right now. Set by
                 # POST /focus (the `lit focus` CLI or a card click); the viewer polls this.
+                # `data_version` rides along so the same poll can hot-reload the card on an edit.
+                resp = {**self.server.focus, "data_version": _data_version(self.server.root)}
                 return self._send(HTTPStatus.OK, "application/json; charset=utf-8",
-                                  json.dumps(self.server.focus).encode())
+                                  json.dumps(resp).encode())
             if path == "/preview.html":
                 # one paper's local subgraph in isolation — the exact `lit preview` view
                 # (real `isolate()` + the shared template), for reviewing an in-progress paper
@@ -224,6 +245,18 @@ class _Handler(BaseHTTPRequestHandler):
                 mini = json.dumps(isolate(full, key), ensure_ascii=False)
                 return self._send(HTTPStatus.OK, "text/html; charset=utf-8",
                                   render_html(mini).encode())
+            if path == "/preview.json":
+                # the isolated subgraph as JSON — same `isolate()` as /preview.html, sans the
+                # template. The zone's DRIVE card fetches this to refresh its data *in place* on a
+                # YAML edit (rebuild from live PAPERS, reading state preserved) instead of reloading
+                # the iframe, which would collapse the card the human is reading.
+                key = parse_qs(urlparse(self.path).query).get("key", [""])[0]
+                full = self._payload_dict()
+                if key not in full["papers"]:
+                    return self._send(HTTPStatus.NOT_FOUND, "text/plain; charset=utf-8",
+                                      f"no curated paper to preview: {key}\n".encode())
+                return self._send(HTTPStatus.OK, "application/json; charset=utf-8",
+                                  json.dumps(isolate(full, key), ensure_ascii=False).encode())
             if path == "/pdfs.json":
                 keys = (sorted(f.stem for f in self.server.pdf_dir.glob("*.pdf"))
                         if self.server.pdf_dir.is_dir() else [])

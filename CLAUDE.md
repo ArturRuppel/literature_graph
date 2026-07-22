@@ -100,6 +100,9 @@ the rate limiter; never flood. A half-finished graph is a normal, valid state.**
   curator labels (a container filter axis like `type`, SCHEMA §4 — no evidential weight, curated-only).
   Bare `lit tag <citekey>` lists; `--remove` drops the given tag(s). Round-trips the one YAML file
   (comments survive). Tags are searchable in the viewer, and clicking a tag chip on a card searches it.
+  `--suggest` proposes tags from the paper's **author-keyword line** (scraped + kebab-cased from the
+  full text) — a **Pass-1** step (CURATION.md): it prints candidates and a ready `lit tag` command and
+  **writes nothing**, so the curator gates which land in the filter axis.
 - **`lit focus <citekey> [--quote "…"]`** — aim a running `lit serve` in-progress zone's PDF pane
   at a quote (my hand during curation): resolves the quote and re-aims the docked pane. The zone's
   left-card quote-clicks drive the same wire, so agent and human stay in one truth.
