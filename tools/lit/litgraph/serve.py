@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import unicodedata
@@ -44,6 +45,8 @@ _WORDS_REQ = re.compile(r"^/words/([A-Za-z0-9]+)/(\d+)\.json$")
 _PAGES_REQ = re.compile(r"^/pages/([A-Za-z0-9]+)\.json$")
 
 _IMG_CACHE = "max-age=600"  # page/preview PNGs are immutable until the PDF's mtime changes
+_PWA_CACHE = "public, max-age=86400"
+_VIEWER_ASSETS = Path(__file__).parent / "viewer"
 
 
 def _needles(anchor: str) -> list[str]:
@@ -167,12 +170,17 @@ def _data_version(root: Path) -> int:
 class _Server(ThreadingHTTPServer):
     daemon_threads = True
 
-    def __init__(self, address, root: Path, pdf_dir: Path, terminal: bool = False,
-                 term_port: int = 7682):
+    def __init__(self, address, root: Path, pdf_dir: Path, term_cmd: list[str] | None = None,
+                 agent_cmd: tuple[list[str], Path] | None = None):
         self.root = Path(root)
         self.pdf_dir = Path(pdf_dir)
-        self.terminal = terminal        # a ttyd is up → the in-progress zone can embed a terminal
-        self.term_port = term_port      # port that ttyd runs on (injected into the viewer)
+        # argv prefix that opens a new terminal WINDOW running a command (e.g. ["kitty", "-e"]),
+        # or None when no emulator was found. Curation's terminal is a real OS window, not an
+        # embedded pane — POST /term spawns one per paper.
+        self.term_cmd = term_cmd
+        # Switchboard owns agent creation. The tuple is (argv prefix, cwd), for example
+        # ([.../.venv/bin/python, "-m", "sb.cli"], .../switchboard).
+        self.agent_cmd = agent_cmd
         # the focus channel: the one "what should the PDF pane be aimed at" record, driven by
         # `lit focus` (the agent) or a card click and polled by the viewer. Serve-only, ephemeral
         # — never persisted. `seq` is the poll's change-detector; `loc` is the resolved {page,
@@ -207,9 +215,11 @@ class _Handler(BaseHTTPRequestHandler):
         no restart — like every other refresh-after-edit in the curation loop."""
         graph = build_graph(self.server.root)
         polish_graph(graph, self.server.pdf_dir)
-        # cockpit = "terminal features available" (a ttyd is up), not "the whole window is curate
-        # mode": the in-progress zone embeds a per-paper terminal, the browse view stays the graph.
-        cockpit = {"term_port": self.server.term_port} if self.server.terminal else None
+        # Agent creation and terminal attachment are separate capabilities: phone curation needs
+        # the former but deliberately skips the latter; desktop uses both.
+        cockpit = ({"agent": "Switchboard agent",
+                    "terminal": Path(self.server.term_cmd[0]).name if self.server.term_cmd else None}
+                   if self.server.agent_cmd else None)
         return to_json_dict(graph, active=load_config(self.server.root).active, cockpit=cockpit)
 
     def _payload(self) -> str:
@@ -222,6 +232,12 @@ class _Handler(BaseHTTPRequestHandler):
             if path in ("/", "/index.html"):
                 body = render_html(self._payload()).encode()
                 return self._send(HTTPStatus.OK, "text/html; charset=utf-8", body)
+            if path in ("/manifest.webmanifest", "/icon-192.png", "/icon-512.png",
+                        "/apple-touch-icon.png"):
+                asset = _VIEWER_ASSETS / path.lstrip("/")
+                ctype = ("application/manifest+json" if path.endswith(".webmanifest")
+                         else "image/png")
+                return self._send(HTTPStatus.OK, ctype, asset.read_bytes(), cache=_PWA_CACHE)
             if path == "/graph.json":
                 return self._send(HTTPStatus.OK, "application/json; charset=utf-8",
                                   self._payload().encode())
@@ -416,6 +432,31 @@ class _Handler(BaseHTTPRequestHandler):
                 new_active = config.set_active(self.server.root, key, active)
                 return self._send(HTTPStatus.OK, "application/json; charset=utf-8",
                                   json.dumps({"ok": True, "active": list(new_active)}).encode())
+            if path == "/term":
+                # Always ask Switchboard to create the canonical agent tmux session. Desktop also
+                # asks us to attach a native terminal; phone sends attach=false and leaves the
+                # agent detached but visible/manageable in Switchboard.
+                body = self._read_json()
+                key, attach = body.get("citekey", ""), body.get("attach", True)
+                if not _CITEKEY.match(key) or not isinstance(attach, bool):
+                    return self._send(HTTPStatus.BAD_REQUEST, "text/plain; charset=utf-8",
+                                      b"bad term payload\n")
+                if not (self.server.root / "curated" / f"{key}.yaml").is_file():
+                    return self._send(HTTPStatus.NOT_FOUND, "text/plain; charset=utf-8",
+                                      f"not a curated paper: {key}\n".encode())
+                if not self.server.agent_cmd or (attach and not self.server.term_cmd):
+                    return self._send(HTTPStatus.SERVICE_UNAVAILABLE, "application/json",
+                                      b'{"ok":false,"error":"switchboard agent unavailable"}')
+                try:
+                    session = spawn_agent(self.server.agent_cmd, self.server.root, key,
+                                          self.server.server_address[0])
+                    if attach:
+                        attach_terminal(self.server.term_cmd, session)
+                except RuntimeError as exc:
+                    return self._send(HTTPStatus.BAD_GATEWAY, "text/plain; charset=utf-8",
+                                      f"{exc}\n".encode())
+                payload = json.dumps({"ok": True, "session": session, "attached": attach}).encode()
+                return self._send(HTTPStatus.OK, "application/json", payload)
             return self._send(HTTPStatus.NOT_FOUND, "text/plain; charset=utf-8",
                               b"not found\n")
         except (ValueError, json.JSONDecodeError):
@@ -426,48 +467,121 @@ class _Handler(BaseHTTPRequestHandler):
 
 
 def make_server(root: Path, pdf_dir: Path, host: str = "127.0.0.1",
-                port: int = 0, terminal: bool = False, term_port: int = 7682) -> _Server:
+                port: int = 0, term_cmd: list[str] | None = None,
+                agent_cmd: tuple[list[str], Path] | None = None) -> _Server:
     """Bind (port 0 = ephemeral) but don't serve yet — the caller runs serve_forever()."""
-    return _Server((host, port), root=root, pdf_dir=pdf_dir, terminal=terminal, term_port=term_port)
+    return _Server((host, port), root=root, pdf_dir=pdf_dir, term_cmd=term_cmd,
+                   agent_cmd=agent_cmd)
 
 
-def _spawn_ttyd(term_port: int, data_root: Path) -> "subprocess.Popen | None":
-    """Spawn the cockpit's embedded terminal: ttyd on loopback running the seed-or-resume wrapper
-    (design §5). Returns the process, or None if ttyd isn't installed — the rest of the cockpit
-    still works, the pane just shows a connection error. CURATION.md lives in the code repo while
-    curation runs against the data repo (`--root`), so the wrapper gets both via the environment."""
-    ttyd = shutil.which("ttyd")
-    if not ttyd:
-        print("  ⚠ ttyd not found — terminal pane disabled (install ttyd to enable it)")
-        return None
-    code_root = Path(__file__).resolve().parents[3]     # literature_graph repo (CLAUDE.md, CURATION.md)
-    env = {**os.environ, "LIT_SESSIONS": str(code_root / ".sessions"),
-           "LIT_DATA_ROOT": str(Path(data_root).resolve()), "LIT_DOCS": str(code_root)}
-    wrapper = Path(__file__).parent / "curate_session.sh"
-    proc = subprocess.Popen(
-        [ttyd, "-i", "127.0.0.1", "-p", str(term_port), "-W", "--url-arg", "bash", str(wrapper)],
-        env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    print(f"  terminal pane: ttyd on http://127.0.0.1:{term_port} (per-paper Claude sessions)")
-    return proc
+# Terminal emulators tried in order, with the argument that makes each run a command in a fresh
+# window. `$LIT_TERMINAL` overrides (shell-split, so "kitty --class litcurate -e" works) — the
+# escape hatch for a WM rule that wants to tag / place the curation window.
+_TERMINALS = (("kitty", ["-e"]), ("wezterm", ["start", "--"]), ("ghostty", ["-e"]),
+              ("foot", ["-e"]), ("alacritty", ["-e"]), ("konsole", ["-e"]),
+              ("gnome-terminal", ["--"]), ("xfce4-terminal", ["-x"]), ("xterm", ["-e"]))
 
 
-def serve(root: Path, pdf_dir: Path, host: str = "127.0.0.1", port: int = 8000,
-          term_port: int = 7682) -> None:
-    """Serve until interrupted, announcing the URL. Raises OSError if the port is taken. Always
-    spawns a loopback ttyd (when installed) so the in-progress zone can embed a per-paper terminal;
-    if ttyd is absent the zone still works, just without its terminal pane. ttyd is terminated on
-    exit."""
-    ttyd_proc = _spawn_ttyd(term_port, root)
-    srv = make_server(root, pdf_dir, host=host, port=port,
-                      terminal=ttyd_proc is not None, term_port=term_port)
+def terminal_cmd() -> list[str] | None:
+    """The argv prefix that opens a new terminal window running a command, or None if this machine
+    has no emulator we know. Resolved once at `lit serve` start — the answer can't change under us."""
+    override = os.environ.get("LIT_TERMINAL", "").strip()
+    if override:
+        parts = shlex.split(override)
+        return parts if parts and shutil.which(parts[0]) else None
+    for exe, run in _TERMINALS:
+        found = shutil.which(exe)
+        if found:
+            return [found, *run]
+    return None
+
+
+def switchboard_cmd() -> tuple[list[str], Path] | None:
+    """Return Switchboard's local CLI and its working directory.
+
+    ``LIT_SWITCHBOARD`` can name an installed/custom command. In the development layout the two
+    public repos are siblings, so the zero-config path uses Switchboard's own virtualenv. Keeping
+    this seam explicit lets an installed LitGraph degrade cleanly when Switchboard is absent.
+    """
+    override = os.environ.get("LIT_SWITCHBOARD", "").strip()
+    if override:
+        parts = shlex.split(override)
+        return (parts, Path.cwd()) if parts and shutil.which(parts[0]) else None
+    code_root = Path(__file__).resolve().parents[3]
+    sibling = code_root.parent / "switchboard"
+    python = sibling / ".venv" / "bin" / "python"
+    if python.is_file() and (sibling / "sb" / "cli.py").is_file():
+        return [str(python), "-m", "sb.cli"], sibling
+    return None
+
+
+def _curation_prompt(citekey: str, data_root: Path, serve_host: str) -> str:
+    code_root = Path(__file__).resolve().parents[3]
+    return (
+        f"We are curating {citekey}. Data root: {Path(data_root).resolve()} "
+        "(pass --root there to every lit command). "
+        f"First read {code_root / 'CURATION.md'} for the protocol, then read the paper in full "
+        "and work out its structure on your own. Do NOT propose, summarise, list, or tokenize "
+        "anything yet — when you have finished reading and are oriented, reply with exactly: "
+        "I'm ready. — and nothing else. From then on we communicate through the card, one pass "
+        "at a time: when I tell you to launch a pass, write that pass's proposed slices directly "
+        f"into curated/{citekey}.yaml — that edit is your proposition, not chat prose. Run lit "
+        "build first to confirm it validates, then tell me to reload. I'll review it in the card "
+        "and tell you what to keep, edit, or revert before the next pass. Use lit focus "
+        f'{citekey} --host {serve_host} --quote "<verbatim sentence>" to aim my PDF window whenever we are discussing '
+        f"a specific passage. Pick up from wherever curated/{citekey}.yaml leaves off."
+    )
+
+
+def spawn_agent(agent_cmd: tuple[list[str], Path], data_root: Path,
+                citekey: str, serve_host: str) -> str:
+    """Spawn the canonical Switchboard agent and return its detached tmux session name."""
+    argv, switchboard_root = agent_cmd
+    try:
+        result = subprocess.run(
+            [*argv, "spawn", "agent", "--cwd", str(Path(data_root).resolve()),
+             "--prompt", _curation_prompt(citekey, data_root, serve_host)],
+            cwd=switchboard_root, capture_output=True, text=True, timeout=20)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise RuntimeError(f"switchboard could not spawn the curation agent: {exc}") from exc
+    if result.returncode:
+        detail = result.stderr.strip() or result.stdout.strip() or f"exit {result.returncode}"
+        raise RuntimeError(f"switchboard could not spawn the curation agent: {detail}")
+    session = result.stdout.strip()
+    if not re.fullmatch(r"[A-Za-z0-9_.-]+", session):
+        raise RuntimeError("switchboard returned an invalid tmux session name")
+    return session
+
+
+def attach_terminal(term_cmd: list[str], session: str) -> subprocess.Popen:
+    """Open a native terminal attached to an already-spawned Switchboard agent."""
+    try:
+        return subprocess.Popen([*term_cmd, "tmux", "attach", "-t", f"={session}"],
+                                start_new_session=True, stdout=subprocess.DEVNULL,
+                                stderr=subprocess.DEVNULL)
+    except OSError as exc:
+        raise RuntimeError(f"could not open the curation terminal: {exc}") from exc
+
+
+def serve(root: Path, pdf_dir: Path, host: str = "127.0.0.1", port: int = 8000) -> None:
+    """Serve until interrupted, announcing the URL. Raises OSError if the port is taken. Curation
+    opens three real OS windows (card · PDF · terminal); the browser opens the first two itself and
+    asks the server (POST /term) for the third. Phone uses the same endpoint to spawn the agent
+    detached while keeping card + PDF together, so Switchboard is useful even without an emulator."""
+    term = terminal_cmd()
+    agent = switchboard_cmd()
+    srv = make_server(root, pdf_dir, host=host, port=port, term_cmd=term, agent_cmd=agent)
     bound = srv.server_address
     print(f"serving {Path(root).resolve()} at http://{bound[0]}:{bound[1]}/")
     print(f"PDFs from {Path(pdf_dir).resolve()} — Ctrl-C to stop")
+    if term and agent:
+        print(f"  curation terminal: Switchboard agent in {Path(term[0]).name}")
+    else:
+        missing = "terminal emulator" if not term else "Switchboard CLI"
+        print(f"  ⚠ no {missing} found — curation opens the card + PDF windows only")
     try:
         srv.serve_forever()
     except KeyboardInterrupt:
         print("\nstopped")
     finally:
         srv.server_close()
-        if ttyd_proc:
-            ttyd_proc.terminate()

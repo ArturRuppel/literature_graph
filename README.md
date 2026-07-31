@@ -95,6 +95,20 @@ Everything runs through the `lit` CLI.
   Quotes get PDF hover-preview: hovering a claim's weld pops its PDF page with
   the sentence highlighted, and clicking pins a scrollable viewer over the whole
   document.
+
+## Install the viewer on a phone
+
+`lit serve` ships a web app manifest and dedicated iOS/Android icons. Serve it
+on a phone-reachable address (preferably the machine's Tailscale address), open
+that URL on the phone, then use **Add to Home Screen**:
+
+```bash
+lit serve --host "$(tailscale ip -4)" --root /path/to/your/library
+```
+
+The installed app launches standalone with its own LitGraph icon. The service
+must remain reachable to browse PDFs and use live curation features; the static
+`lit build` output also carries the manifest and icons for HTTPS hosting.
 - **`lit locate`**: resolve every curated quote's place in its PDF and store it
   as `quote_loc` in the YAML. Run once, review the diff, commit.
 - **`lit preview <citekey>`**: render one paper's local subgraph in isolation,

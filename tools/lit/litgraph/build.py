@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 
 from litgraph.graph import Graph, Paper, Slice, classify_ref
@@ -145,6 +146,8 @@ def to_json_dict(g: Graph, active: "tuple[str, ...]" = (), cockpit: "dict | None
 
 
 _TEMPLATE = Path(__file__).parent / "viewer" / "template.html"
+_PWA_ASSETS = ("manifest.webmanifest", "icon-192.png", "icon-512.png",
+               "apple-touch-icon.png")
 _TOKEN_START = "/*__GRAPH_JSON__*/"
 _TOKEN_END = "/*__END__*/"
 
@@ -167,3 +170,5 @@ def emit(g: Graph, out: Path) -> None:
     payload = json.dumps(to_json_dict(g), ensure_ascii=False)
     (out / "graph.json").write_text(payload, encoding="utf-8")
     (out / "index.html").write_text(render_html(payload), encoding="utf-8")
+    for name in _PWA_ASSETS:
+        shutil.copy2(_TEMPLATE.parent / name, out / name)

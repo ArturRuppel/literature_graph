@@ -3,7 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>litgraph · paper-centric column view</title>
+<meta name="theme-color" content="#263646">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="LitGraph">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<title>LitGraph</title>
 <style>
   :root{
     /* ELN light theme. The variable NAMES are load-bearing: JS reads --grounded / --cross /
@@ -70,6 +76,15 @@
   #hud .pdfbtn:hover{background:rgba(90,159,208,.26);border-color:rgba(150,195,225,.7)}
   #hud .pdfbtn.on{background:rgba(90,159,208,.34);border-color:rgba(170,205,230,.85);color:#fff}
   #hud .pdfbtn[hidden]{display:none}
+
+  /* "finish curation" — the DRIVE card window's counterpart to the picker row's ✓ (serve only) */
+  #hud .donebtn{display:inline-flex;align-items:center;gap:6px;cursor:pointer;font:inherit;
+    font-size:10px;letter-spacing:1px;text-transform:uppercase;color:#a9d8c6;
+    border:1px solid rgba(120,200,175,.42);border-radius:999px;padding:3px 10px;
+    background:rgba(39,115,95,.20)}
+  #hud .donebtn:hover{background:rgba(39,115,95,.38);border-color:rgba(150,215,195,.8);color:#fff}
+  #hud .donebtn[disabled]{opacity:.5;cursor:default}
+  #hud .donebtn[hidden]{display:none}
   #wipPanel{position:fixed;z-index:45;top:44px;left:16px;width:300px;max-height:72vh;overflow:auto;
     background:var(--panel);border:1px solid var(--line);border-radius:10px;
     box-shadow:0 12px 34px rgba(38,54,70,.24);padding:6px}
@@ -80,17 +95,12 @@
   #wipPanel .wp-row:hover{background:var(--bg)}
   #wipPanel .wp-row .ckey{font-size:12px;color:var(--ink)}
   #wipPanel .wp-row .stage{margin-left:auto;font-size:9px;color:var(--faint);text-transform:uppercase;letter-spacing:.5px}
-  #wipOverlay{position:absolute;inset:46px 0 0 0;z-index:40;display:flex;flex-direction:column;background:var(--bg)}
-  #wipOverlay[hidden]{display:none}
-  #wipOverlay .wo-bar{display:flex;align-items:center;gap:12px;padding:7px 16px;
-    background:var(--panel);border-bottom:1px solid var(--line)}
-  #wipOverlay .wo-bar button{font:inherit;font-size:11px;color:var(--ink);background:none;
-    border:1px solid var(--line);border-radius:6px;padding:3px 10px;cursor:pointer}
-  #wipOverlay .wo-bar button:hover{background:var(--bg)}
-  #wipOverlay .wo-title{font-size:11px;color:var(--dim)}
-  #wipOverlay .wo-title b{color:var(--ink)}
-  #wipOverlay .wo-nav{margin-left:auto;display:flex;align-items:center;gap:8px;font-size:10px;color:var(--faint)}
-  #wipOverlay iframe{flex:1;width:100%;border:0;background:var(--bg)}
+  /* per-row "finish" — return the paper to the graph without opening its windows */
+  #wipPanel .wp-row .wp-done{flex:0 0 auto;font:inherit;font-size:11px;line-height:1;padding:3px 6px;
+    border:1px solid transparent;border-radius:5px;background:none;color:var(--faint);cursor:pointer}
+  #wipPanel .wp-row:hover .wp-done{color:var(--dim);border-color:var(--line)}
+  #wipPanel .wp-row .wp-done:hover{color:var(--grounded);border-color:var(--grounded)}
+  #wipPanel .wp-note{padding:6px 8px 2px;font-size:10px;line-height:1.5;color:var(--faint)}
 
   /* side padding centers the landing column on screen when nothing is expanded (half the
      viewport minus half a column), so grounds (←) and builds/synthesis (→) spawn symmetrically;
@@ -286,7 +296,6 @@
     #hud{gap:8px 10px;flex-wrap:wrap}
     #hud .widthctl{display:none}                 /* column ≈ full width — slider is moot (and ate swipes) */
     #wipPanel{left:8px;right:8px;width:auto;max-height:60vh}
-    #wipOverlay .wo-bar{flex-wrap:wrap;gap:8px 10px}
   }
   @media (hover:none) and (pointer:coarse){
     /* the movable/resizable quote window becomes a near-fullscreen sheet: no drag, no resize,
@@ -295,13 +304,23 @@
     .pw-grip{display:none}
     .pw-bar{cursor:default}
     .card,.slice,.slices .sgrp,.card.stack,.pw-tool,.pw-x,#hud .wip,
-    #wipPanel .wp-row,#wipOverlay .wo-bar button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+    #wipPanel .wp-row{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
     .slice{padding:7px 6px}                       /* fatter tap targets */
     .slices .sgrp{padding-top:9px;margin:9px 0 4px}
     #wipPanel .wp-row{padding:11px 10px}
     .card:active{border-color:#b8c3cc}            /* tap feedback (replaces the lost :hover cue) */
     .slice.drillable:active{background:#e9eef2}
     .card.open .cabs{display:block}               /* abstract inline (no hover tip on touch) */
+    /* Phone curation is one app window split horizontally: card above, PDF below. Desktop
+       curation never gets this class and keeps its three independent OS windows. */
+    body.mobile-curate{--mobile-pdf-h:52%}
+    body.mobile-curate.dock-open #board{right:0;bottom:var(--mobile-pdf-h)}
+    body.mobile-curate.dock-open #dockEmpty{left:0;right:0;top:auto;bottom:0;
+      width:100%;height:var(--mobile-pdf-h);border-left:0;border-top:1px solid var(--line)}
+    body.mobile-curate.dock-open .pw-side{left:0!important;right:0!important;top:auto!important;
+      bottom:0!important;width:100%!important;height:var(--mobile-pdf-h)!important;
+      border-left:0;border-top:1px solid var(--line)}
+    body.mobile-curate #dockGrip{display:none}
   }
 
   /* ── collapsible PDF viewer (browse view) ───────────────────────────────────────────────
@@ -328,14 +347,16 @@
   #dockGrip:hover,body.dock-resizing #dockGrip{background:#6ea8d8}
   body.dock-resizing{cursor:ew-resize;user-select:none}
   body.dock-resizing .pw-side{pointer-events:none}
-  /* ── detached PDF window (index.html?detached=1) ─────────────────────────────────────────
-     The browse view's PDF pane popped into its own OS window: hide all graph chrome, let the
-     PDF pane fill the whole window. Same .pw markup as the dock, restyled to be borderless. */
+  /* ── PDF-only window (index.html?detached=1 or ?focus=1) ────────────────────────────────
+     One document, two drivers: the browse view's popped-out dock (`detached`, mirrored over a
+     BroadcastChannel) and curation's paper window (`focus`, aimed by polling the focus wire).
+     Both hide all graph chrome and let the PDF pane fill the whole window. Same .pw markup as
+     the dock, restyled to be borderless. */
   #detachPane{display:none}
   body.detached{overflow:hidden}
   body.detached #hud,body.detached #board,body.detached #searchResults,body.detached #dockEmpty,
   body.detached #dockGrip,body.detached #tip,body.detached #ctxmenu,
-  body.detached #wipPanel,body.detached #wipOverlay{display:none!important}
+  body.detached #wipPanel{display:none!important}
   body.detached #detachPane{display:block;position:fixed;inset:0;z-index:5;background:#e0e5e9}
   body.detached #detachEmpty{position:absolute;inset:0;display:flex;align-items:center;
     justify-content:center;text-align:center;padding:24px;color:var(--faint);font-size:12px}
@@ -344,37 +365,11 @@
   body.detached #detachPane .pw-grip{display:none}
   body.detached #detachPane .pw-bar{cursor:default}
 
-  /* ── in-progress zone = the cockpit ─────────────────────────────────────────────────────
-     Entering an in-progress paper (from the "in progress" pill) opens its three-pane cockpit
-     inside the review overlay: the isolated subgraph as the left card, the focus-wire PDF pane
-     top-right, the paper's ttyd terminal bottom-right. The focus pane (.pw) is re-parented into
-     .wo-pdf and absolute-filled; the terminal iframe mounts in .wo-term. */
-  /* two-column × two-row tiling: the left card spans full height; the right column stacks the
-     focus-wire PDF pane over the terminal. Thin gutter tracks (col 2 / row 2) carry the drag
-     handles; the fr weights are driven by JS and persisted — Hyprland-style divider resize. */
-  #wipOverlay .wo-body{flex:1;position:relative;display:grid;min-height:0;
-    grid-template-columns:0.42fr 6px 0.58fr;grid-template-rows:0.58fr 6px 0.42fr}
-  #wipOverlay .wo-frame{grid-column:1;grid-row:1 / 4;width:100%;height:100%;border:0;
-    border-right:1px solid var(--line);background:var(--bg)}
-  #wipOverlay .wo-pdf{grid-column:3;grid-row:1;position:relative;min-height:0;overflow:hidden}
-  #wipOverlay .wo-term{grid-column:3;grid-row:3;position:relative;min-height:0;
-    border-top:1px solid var(--line);background:#1e1e1e}
-  #wipOverlay .wo-rs{position:relative;z-index:3;background:transparent;transition:background .12s}
-  #wipOverlay .wo-rs-c{grid-column:2;grid-row:1 / 4;cursor:ew-resize}
-  #wipOverlay .wo-rs-r{grid-column:3;grid-row:2;cursor:ns-resize}
-  #wipOverlay .wo-rs-x{grid-column:2;grid-row:2;z-index:4;cursor:nwse-resize}
-  #wipOverlay .wo-rs:hover,#wipOverlay .wo-body.resizing .wo-rs{background:#6ea8d8}
-  /* during a divider drag, let pointer moves pass through the iframes/pane to the window listener */
-  #wipOverlay .wo-body.resizing iframe,#wipOverlay .wo-body.resizing .wo-pdf{pointer-events:none}
-  #wipOverlay .wo-term iframe{width:100%;height:100%;border:0;display:block}
-  #wipOverlay .wo-term .term-empty{color:#9aa;font-size:11px;padding:10px 12px}
-  #wipOverlay .wo-return{margin-left:8px;color:var(--grounded) !important}
-  /* fill the .wo-pdf cell: inset:0 pins all four edges; width/height:auto let those edges (not the
-     base .pw's 440×520) drive the size, so .pw-body becomes a bounded scroll viewport (scroll/pan). */
-  .pw-zone{position:absolute !important;inset:0 !important;
-    width:auto !important;height:auto !important;border-radius:0;box-shadow:none;z-index:1}
-  .pw-zone .pw-grip{display:none}
-  .pw-zone .pw-bar{cursor:default}
+  /* ── the DRIVE card window ───────────────────────────────────────────────────────────────
+     preview.html?key=…&drive=1 in its own OS window: the paper's isolated subgraph, standing
+     alone rather than squeezed into a pane. Nothing to restyle — it IS the viewer — but the
+     window is narrow, so let the column breathe to the full width it's given. */
+  body.cardwin #board{padding-left:16px;padding-right:16px}
 </style>
 </head>
 <body>
@@ -384,6 +379,7 @@
          placeholder="find a paper — title, author, journal, tag…">
   <span id="wip" class="wip" hidden></span>
   <button id="pdfToggle" class="pdfbtn" hidden>📄 PDF</button>
+  <button id="finishBtn" class="donebtn" hidden>✓ finish curation</button>
   <label class="widthctl">width
     <input id="colw" type="range" min="220" max="720" step="4" value="340">
     <span class="val"></span>
@@ -397,23 +393,6 @@
 <div id="tip"></div>
 <div id="ctxmenu"></div>
 <div id="wipPanel" hidden></div>
-<div id="wipOverlay" hidden>
-  <div class="wo-bar">
-    <button class="wo-back">← back to graph</button>
-    <span class="wo-title"></span>
-    <span class="wo-nav"><button class="wo-prev" title="previous (←)">‹</button>
-      <span class="wo-count"></span><button class="wo-next" title="next (→)">›</button></span>
-    <button class="wo-return" title="finish: return this paper to the graph">Return to graph</button>
-  </div>
-  <div class="wo-body">
-    <iframe class="wo-frame" title="in-progress paper subgraph"></iframe>
-    <div class="wo-pdf"></div>
-    <div class="wo-term"><div class="term-empty">terminal unavailable — no ttyd on this serve</div></div>
-    <div class="wo-rs wo-rs-c" title="drag to resize"></div>
-    <div class="wo-rs wo-rs-r" title="drag to resize"></div>
-    <div class="wo-rs wo-rs-x" title="drag to resize both"></div>
-  </div>
-</div>
 
 <script>
 const NS="http://www.w3.org/2000/svg";
@@ -517,7 +496,7 @@ function paperCard(key, level){
     hoverRow(el, e);
   });
   el.addEventListener("mouseleave", () => { dropTip(); hoverRow(null); });
-  // right-click a curated card (browse view) → "Curate this paper" → move it into the zone
+  // right-click a curated card (browse view) → "Curate this paper" → move it onto the worklist
   if (cur && LIVE && !DRIVE) el.addEventListener("contextmenu", e => showCurateMenu(e, key));
   // touch has no hover: a curated card opens on tap; a stub (no open action) pins its tip instead,
   // so its bib metadata stays reachable on a phone (dismissed by the next outside tap).
@@ -569,9 +548,10 @@ function cardClick(e, el, level, key){
   const row = e.target.closest(".slice");
   if (row && el.classList.contains("open")) {
     togglePin({cardId: el.id, sid: row.dataset.sid});   // harden/release this row (accumulates)
-    // zone left-card (DRIVE): a quote-slice click aims the parent zone's PDF pane via the focus
-    // wire. Browse view: the click just pins the edge — the docked viewer follows hover, not clicks.
+    // card window (DRIVE): a quote-slice click aims the separate PDF window via the focus wire.
+    // Browse view: the click just pins the edge — the docked viewer follows hover, not clicks.
     if (DRIVE && row.classList.contains("pdf-src")) focusFromClick(key, row.dataset.sid);
+    else if (MOBILE_CURATE && row.classList.contains("pdf-src")) aimDock(key, row.dataset.sid);
     if (row.classList.contains("drillable")) toggleDrill(id, row.dataset.path);  // drill + rebuild
     return;
   }
@@ -1073,19 +1053,28 @@ const LIVE = location.protocol.startsWith("http");
 // tooltip and latch soft previews. Hover-only affordances are gated on a real hover pointer;
 // the load-bearing actions (tap to open/pin) are click/pointer-based and unaffected.
 const HOVER = matchMedia("(hover: hover)").matches;
-// COCKPIT = terminal features available (a ttyd is up), injected by `lit serve` as GRAPH.cockpit
-// ({term_port}). It means the in-progress zone can embed a per-paper terminal — NOT that the whole
-// window is a curate mode. The browse view stays the graph; the cockpit is a per-paper *place*.
+const QUERY = new URLSearchParams(location.search);
+// A touch-only device cannot meaningfully manage the desktop's three OS windows. Its curation
+// route keeps the isolated card and PDF dock together in this one installed-app window.
+const MOBILE_CURATE = LIVE && QUERY.has("mobile");
+const PHONE_LAUNCH = matchMedia("(hover: none) and (pointer: coarse)").matches;
+if (MOBILE_CURATE) document.body.classList.add("mobile-curate");
+// COCKPIT = the server can open a curation terminal window (it found an emulator), injected by
+// `lit serve` as GRAPH.cockpit ({terminal: "kitty"}). Entering curation turns this graph window
+// into the card, opens the PDF, and asks the server for the terminal. This says whether POST /term
+// can produce the terminal. Not a mode: the graph is only replaced after the curator enters.
 const COCKPIT = GRAPH.cockpit || null;
-// DRIVE: this document is the zone's left card — an iframe of /preview.html?key=…&drive=1. In DRIVE
-// mode a quote-click POSTs the weld to the focus wire (aiming the PARENT zone's PDF pane); it mounts
-// no pane and polls nothing itself. The top-level browse document is never DRIVE.
-const DRIVE = LIVE && new URLSearchParams(location.search).has("drive");
+// DRIVE: this document is a paper's curation card — /preview.html?key=…&drive=1, opened in its own
+// OS window. It shows one paper's isolated subgraph; a quote-click POSTs the weld to the focus wire
+// (aiming the separate PDF window) rather than mounting a pane of its own. The graph is never DRIVE.
+const DRIVE = LIVE && QUERY.has("drive") && !MOBILE_CURATE;
+if (DRIVE) document.body.classList.add("cardwin");
 // Hot-reload the DRIVE card IN PLACE on a YAML edit: fetch the freshly-isolated subgraph, refill
 // the data objects (const bindings survive — we mutate contents, never reassign), rebuild from the
 // preserved reading state (open/drill/grpCollapsed/stacks are untouched), and restore scroll. The
-// parent zone detects the edit (data_version bump) and postMessages us — far gentler than reloading
-// the iframe, which tore down the DOM and collapsed the card the human was mid-read on.
+// card window watches the focus wire's `data_version` itself (it's a top-level window now, with no
+// parent to tell it) — far gentler than reloading, which tore down the DOM and collapsed the card
+// the human was mid-read on.
 async function refreshDriveData(){
   const key = new URLSearchParams(location.search).get("key");
   if (!key) return;
@@ -1102,34 +1091,73 @@ async function refreshDriveData(){
   rebuild();
   sc.scrollTop = y; board.scrollLeft = x;
 }
-if (DRIVE) addEventListener("message", e => { if (e.data && e.data.t === "litRefresh") refreshDriveData(); });
-// DETACHED: this document is the browse view's PDF pane popped into its own OS window
-// (window.open of index.html?detached=1). It renders no graph — just a full-bleed PDF pane it
-// mirrors from the parent over the "lit-pdf" BroadcastChannel. Implies LIVE and not DRIVE.
-const DETACHED = LIVE && new URLSearchParams(location.search).has("detached");
-if (DETACHED) document.body.classList.add("detached");   // hide graph chrome before it paints
+// The card window keeps itself current: poll the focus wire purely for its `data_version` and
+// refresh in place when the YAML underneath changes (the agent writing a pass, `lit tag`, an edit
+// by hand). Same 500 ms tick the PDF window polls on; unchanged version → no work.
+if (DRIVE || MOBILE_CURATE) (function(){
+  let seen = null;
+  setInterval(async () => {
+    let f; try { f = await fetch("focus").then(r => r.ok ? r.json() : null); } catch { return; }
+    if (!f || f.data_version == null) return;
+    if (seen === null) { seen = f.data_version; return; }   // baseline: first poll after opening
+    if (f.data_version !== seen) { seen = f.data_version; refreshDriveData(); }
+  }, 500);
+})();
+// Finishing from the card: the symmetric close of the move that opened it. Entering curation turned
+// the graph window into this card; ✓ finish drops the paper off `[curation] active` (the same POST
+// /active the picker row's ✓ makes — one writer, config.set_active) and turns this window back into
+// the graph, where the paper is no longer filtered out. The PDF and terminal windows are left alone:
+// they're separate OS windows this document never owned a handle on, and closing a terminal
+// mid-session is the curator's call, not ours.
+if (DRIVE || MOBILE_CURATE) (function(){
+  const btn = document.getElementById("finishBtn");
+  const key = new URLSearchParams(location.search).get("key");
+  if (!btn || !key) return;
+  btn.hidden = false;
+  btn.title = `finish: return ${key} to the graph and reopen it here`;
+  btn.addEventListener("click", async () => {
+    btn.disabled = true;
+    let r = null;
+    try {
+      r = await fetch("active", {method: "POST",
+        body: JSON.stringify({citekey: key, active: false})}).then(r => r.ok ? r.json() : null);
+    } catch { /* server gone — fall through to the alert */ }
+    if (!(r && r.ok)) { btn.disabled = false; return alert(`could not return ${key} to the graph`); }
+    const u = new URL("index.html", location.href); u.search = ""; u.hash = "";
+    location.assign(u.href);                       // the card window becomes the graph again
+  });
+})();
+// The PDF-only window: this document renders no graph, just a full-bleed PDF pane. Two ways in,
+// one body — DETACHED is the browse view's popped-out dock (mirrored from the graph window over
+// the "lit-pdf" BroadcastChannel); FOCUSWIN is curation's paper window (aimed by polling the focus
+// wire, so `lit focus` and card clicks both steer it). Either implies LIVE and not DRIVE.
+const DETACHED = LIVE && QUERY.has("detached");
+const FOCUSWIN = LIVE && QUERY.has("focus");
+const PDFWIN = DETACHED || FOCUSWIN;
+if (PDFWIN) document.body.classList.add("detached");     // hide graph chrome before it paints
 // the move (delta §3): papers on the in-progress worklist are pulled OUT of the browse view —
-// they live in the in-progress zone, not the graph. The DRIVE card shows one isolated (active)
-// paper, so it must not filter; a static build carries no active list, so this is empty there.
-const ACTIVE = new Set(DRIVE ? [] : (GRAPH.active || []));
-// the embedded terminal (ttyd) origin — port from the cockpit payload, else ?term=, else 7682
-// (7681 is often a system login ttyd). The pane loads <origin>/?arg=<citekey>, which ttyd passes
-// to the seed-or-resume wrapper as the paper to curate.
-const TERM_PORT = (COCKPIT && COCKPIT.term_port) || new URLSearchParams(location.search).get("term") || "7682";
-const TERM_ORIGIN = location.protocol + "//" + location.hostname + ":" + TERM_PORT;
-// the collapsible PDF viewer lives in the browse view only — the zone has its own focus pane, and
-// the DRIVE card drives that pane rather than owning one.
+// they live in their own curation windows, not the graph column. The DRIVE card shows one
+// isolated (active) paper, so it must not filter; a static build carries no active list.
+const ACTIVE = new Set((DRIVE || MOBILE_CURATE) ? [] : (GRAPH.active || []));
+// The collapsible PDF viewer lives in the browse view only. Entering curation already opens the
+// separate PDF window and mutates this browse window into the DRIVE card, so the card owns no dock.
 const pdfToggle = document.getElementById("pdfToggle");
 if (pdfToggle && LIVE && !DRIVE) {
   pdfToggle.hidden = false;
   pdfToggle.addEventListener("click", toggleDock);
 }
-// search is a browse-view affordance; the DRIVE left-card (cockpit preview iframe) is one
-// isolated paper, so drop the box there (chip clicks then no-op via runSearch's null guard)
-if (DRIVE) { const sb = document.getElementById("search"); if (sb) sb.remove(); }
+// search is a browse-view affordance; the DRIVE card window shows one isolated paper, so drop
+// the box there (chip clicks then no-op via runSearch's null guard)
+if (DRIVE || MOBILE_CURATE) { const sb = document.getElementById("search"); if (sb) sb.remove(); }
 let PDFS = null;                       // Set of citekeys with a PDF (null until fetched)
 if (LIVE) fetch("pdfs.json").then(r => r.ok ? r.json() : [])
-  .then(l => { PDFS = new Set(l); }).catch(() => { PDFS = new Set(); });
+  .then(l => {
+    PDFS = new Set(l);
+    if (MOBILE_CURATE && ORDER.length) {
+      const key = ORDER[0];
+      open.add(`0:${key}`); loadDock(key); rebuild();  // arrive with both card and PDF visible
+    }
+  }).catch(() => { PDFS = new Set(); });
 // The tip must survive the hop from card to tip (to click the preview): hiding is
 // deferred a beat (dropTip) and cancelled when the pointer arrives (keepTip).
 let tipHide = null;
@@ -1252,7 +1280,7 @@ let dockDoc = null, dockRefitTimer = null;             // dockDoc = last mount {
 // child mounts it. `dockDoc` stays the single source of truth for what's shown; `renderCurrent`
 // paints it wherever the PDF currently lives (in-page dock, or broadcast to the detached child).
 let pdfDetached = false, pdfWin = null, pdfWatch = null;
-const pdfChan = (LIVE && !DRIVE && !DETACHED && "BroadcastChannel" in window) ? new BroadcastChannel("lit-pdf") : null;
+const pdfChan = (LIVE && !DRIVE && !PDFWIN && "BroadcastChannel" in window) ? new BroadcastChannel("lit-pdf") : null;
 const pdfActive = () => dockOpen || pdfDetached;       // hover aims the PDF while EITHER home is live
 function broadcastAim(){ if (pdfChan && dockDoc) pdfChan.postMessage({t: "aim", ...dockDoc}); }
 function renderCurrent(){ if (pdfDetached) broadcastAim(); else if (dockOpen) mountDockDoc(); }
@@ -1351,7 +1379,7 @@ async function aimDock(key, sid){
   dockShown = qid;
 }
 // dock width resize (persisted): the grip sits on the dock's left seam; drag sets --dock-w, and the
-// PDF re-fits on release / window resize (same baked-W0 re-mount the cockpit uses).
+// PDF re-fits on release / window resize (same baked-W0 re-mount the PDF window uses).
 if (LIVE && !DRIVE) {
   const grip = document.getElementById("dockGrip");
   const DW_KEY = "lit.dock.w";
@@ -1407,115 +1435,20 @@ addEventListener("click", hideCtxMenu);          // any left-click dismisses the
 addEventListener("scroll", hideCtxMenu, true);   // scrolling the board dismisses it too
 
 // ── focus channel (serve-only) ───────────────────────────────────────────────────────────
-// A shared "aim the PDF here" wire the agent (via `lit focus`) and the zone's left-card clicks
-// both drive: the server holds one {citekey, quote, loc, seq}; while the zone is open we poll it
-// and re-aim ONE reused pane docked in the zone's top-right cell. `seq` is the change-detector —
-// unchanged → do nothing, so an idle session never repaints. A null loc is the graceful floor:
-// open the paper at its top, no highlight. Polling runs ONLY inside the zone (zoneOpen); the
-// browse view and the DRIVE card never poll — the browse view has no pane to aim.
-let focusWin = null, focusSeq = 0, zoneOpen = false, lastFocus = null, dataVer = null;
-function closeFocusWin(){ if (focusWin) { focusWin.remove(); focusWin = null; } }
-function aimFocus(f){
-  if (!f.citekey || !zoneOpen) return;
-  lastFocus = f;                                       // remember it so a resize can re-fit (re-mount)
-  closeFocusWin();
-  const loc = (f.loc && f.loc.rects) ? f.loc : {page: 0, rects: []};
-  const win = buildWin(f.citekey, loc.rects.length ? `p.${loc.page + 1}` : "quote not located",
-                       {onClose: closeFocusWin});
-  win.classList.add("pw-zone");                        // absolute-fill the .wo-pdf cell (CSS)
-  document.querySelector("#wipOverlay .wo-pdf").appendChild(win);   // re-parent out of <body>
-  mountDoc(win, f.citekey, loc.page || 0, loc.rects.slice(), {interactive: true});
-  focusWin = win;
-}
-// Point the zone's embedded terminal at a paper's session — only on a citekey *change*, so
-// re-aiming the PDF pane to another quote (or another paper) never reloads the iframe and kills
-// the session you're typing in. A new paper → ttyd runs the wrapper for it (seed or --continue).
-// The terminal stays on the ZONE's paper even when the PDF pane roams to a cited paper.
-let termKey = null;
-function setTerm(key){
-  if (!COCKPIT || !key || key === termKey) return;
-  termKey = key;
-  const box = document.querySelector("#wipOverlay .wo-term");
-  let f = box.querySelector("iframe");
-  if (!f) { box.textContent = ""; f = document.createElement("iframe"); f.title = "curation terminal"; box.appendChild(f); }
-  f.src = TERM_ORIGIN + "/?arg=" + encodeURIComponent(key);
-}
-async function pollFocus(){
-  if (!zoneOpen) return;
-  let f; try { f = await fetch("focus").then(r => r.ok ? r.json() : null); } catch { return; }
-  if (!f) return;
-  if (f.data_version != null) {                          // hot-reload the card on a YAML edit
-    if (dataVer === null) dataVer = f.data_version;       // baseline: first poll after entering
-    else if (f.data_version !== dataVer) {
-      dataVer = f.data_version;
-      const cf = document.querySelector("#wipOverlay .wo-frame");   // refresh the left card's data in
-      if (cf && cf.contentWindow) cf.contentWindow.postMessage({t: "litRefresh"}, "*");  // place —
-      else if (cf) cf.src = cf.src;                       // reading state kept; PDF pane + terminal untouched
-    }
-  }
-  if (f.seq === focusSeq) return;
-  focusSeq = f.seq;
-  aimFocus(f);
-}
-// The zone's left card (DRIVE) driving the wire: POST the slice's weld to /focus so the parent
-// zone's poll re-aims the pane — the same code path `lit focus` uses, so clicks and the agent
-// stay in one truth. (Runs in the DRIVE iframe; the fetch is same-origin to the serve.)
+// A shared "aim the PDF here" wire the agent (via `lit focus`) and the card window's quote-clicks
+// both drive: the server holds one {citekey, quote, loc, seq}, and the PDF *window* polls it (see
+// the PDFWIN block below) and re-mounts on a change. `seq` is the change-detector — unchanged →
+// do nothing, so an idle session never repaints. A null loc is the graceful floor: open the paper
+// at its top, no highlight. One wire, one PDF window: whoever aims it, everyone sees the same page.
+//
+// The card window (DRIVE) driving the wire: POST the slice's weld to /focus so the PDF window's
+// poll re-aims it — the same code path `lit focus` uses, so clicks and the agent stay in one truth.
 async function focusFromClick(key, sid){
   const s = (PAPERS[key] && PAPERS[key].slices || []).find(x => x.id === sid);
   try {
     await fetch("focus", {method: "POST",
       body: JSON.stringify({citekey: key, quote: (s && s.quote) || ""})});
-  } catch { /* server gone — leave the pane as-is */ }
-}
-
-// ── zone panes: keep the docked PDF fit to its cell + Hyprland-style divider resize ──────────
-// mountDoc bakes its fit-width (W0) at mount, so a re-fit means a cheap re-mount at the current
-// width. One debounced re-fit serves all triggers; the ResizeObserver below fires it on first
-// layout (fixes an initial under-fill), window resize, AND a divider drag — no manual plumbing.
-let refitTimer = null;
-function scheduleRefit(){ clearTimeout(refitTimer);
-  refitTimer = setTimeout(() => { if (zoneOpen && lastFocus) aimFocus(lastFocus); }, 140); }
-if (LIVE && !DRIVE) {
-  const woBody = document.querySelector("#wipOverlay .wo-body");
-  const pdfCell = woBody.querySelector(".wo-pdf");
-  // divider state (persisted): cL = left column's share of the two columns; rT = the PDF row's share.
-  const RS_KEY = "lit.zone.split";
-  let split = {cL: 0.42, rT: 0.58};
-  try { const s = JSON.parse(localStorage.getItem(RS_KEY) || "null"); if (s && s.cL > 0 && s.rT > 0) split = s; } catch {}
-  const applySplit = () => {
-    woBody.style.gridTemplateColumns = `${split.cL}fr 6px ${1 - split.cL}fr`;
-    woBody.style.gridTemplateRows = `${split.rT}fr 6px ${1 - split.rT}fr`;
-  };
-  applySplit();
-  const beginResize = (e, axisX, axisY) => {           // the divider follows the pointer (abs, not delta)
-    e.preventDefault();
-    const r = woBody.getBoundingClientRect();
-    woBody.classList.add("resizing");
-    const prevCur = document.body.style.cursor;
-    document.body.style.cursor = axisX && axisY ? "nwse-resize" : axisX ? "ew-resize" : "ns-resize";
-    document.body.style.userSelect = "none";
-    const move = ev => {
-      if (axisX) split.cL = Math.min(0.85, Math.max(0.15, (ev.clientX - r.left) / r.width));
-      if (axisY) split.rT = Math.min(0.85, Math.max(0.15, (ev.clientY - r.top) / r.height));
-      applySplit();
-    };
-    const up = () => {
-      window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up);
-      woBody.classList.remove("resizing");
-      document.body.style.cursor = prevCur; document.body.style.userSelect = "";
-      try { localStorage.setItem(RS_KEY, JSON.stringify(split)); } catch {}
-    };
-    window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
-  };
-  woBody.querySelector(".wo-rs-c").addEventListener("pointerdown", e => beginResize(e, true, false));
-  woBody.querySelector(".wo-rs-r").addEventListener("pointerdown", e => beginResize(e, false, true));
-  woBody.querySelector(".wo-rs-x").addEventListener("pointerdown", e => beginResize(e, true, true));
-  let lastW = 0;                                        // re-fit only on a real width change
-  new ResizeObserver(() => {
-    const w = pdfCell.clientWidth;
-    if (Math.abs(w - lastW) < 2) return;
-    lastW = w; scheduleRefit();
-  }).observe(pdfCell);
+  } catch { /* server gone — leave the PDF window as-is */ }
 }
 
 // A window shell: titlebar (key · page · pan/text tools · ×) + a scrollable body holding a sizer
@@ -1749,21 +1682,25 @@ function dragBy(handle, onMove, base, guard){
 // ── boot: the landing list (column 0), ranked by pass desc, then year desc ───────────────
 function boot(){
   ensureCol(0,"all papers · ranked by curation");
-  ORDER.forEach(k=>{ if(!ACTIVE.has(k)) addPaper(0,k); });   // in-progress papers live in the zone, not here
+  ORDER.forEach(k=>{ if(!ACTIVE.has(k)) addPaper(0,k); });   // in-progress papers live in their own windows
   ensureBroadBand();                                 // synthesis band present from the landing view
   redraw();
 }
-if (!DETACHED) boot();                                // the detached PDF window renders no graph
+if (!PDFWIN) boot();                                  // a PDF-only window renders no graph
 
-// ── detached PDF window (child of the browse view) ───────────────────────────────────────
-// index.html?detached=1 in its own OS window: nothing but a full-bleed PDF pane, mirroring the
-// parent's dock. The parent broadcasts {t:"aim",…} on the same hover that aims the in-page dock;
-// we mount it here with the same buildWin/mountDoc the dock uses, so the two can't drift. We
-// announce {t:"ready"} on boot so a parent that opened us first still hands over the current aim.
-if (DETACHED) {
-  document.title = "litgraph · PDF";
+// ── the PDF-only window ──────────────────────────────────────────────────────────────────
+// Its own OS window holding nothing but a full-bleed PDF pane, mounted with the same
+// buildWin/mountDoc the in-page dock uses so the two can't drift. Two drivers share the mount:
+//
+//   ?detached=1  the browse view's popped-out dock. The graph window broadcasts {t:"aim",…} on
+//                the same hover that would aim the in-page dock. We announce {t:"ready"} on boot
+//                so a graph window that opened us first still hands over the current aim.
+//   ?focus=1     curation's paper window. No parent to mirror — it polls the focus wire itself,
+//                so `lit focus` from the agent and quote-clicks in the card window both steer it,
+//                and it survives the graph window being closed or navigated away.
+if (PDFWIN) {
+  document.title = FOCUSWIN ? "litgraph · paper" : "litgraph · PDF";
   const pane = document.getElementById("detachPane");
-  const chan = "BroadcastChannel" in window ? new BroadcastChannel("lit-pdf") : null;
   let win = null, lastAim = null;
   function mount(m){
     lastAim = m;
@@ -1774,10 +1711,21 @@ if (DETACHED) {
     pane.appendChild(win);                           // re-parent out of <body> into the full-bleed host
     mountDoc(win, m.key, m.page || 0, (m.rects || []).slice(), {interactive: true});
   }
+  const chan = (DETACHED && "BroadcastChannel" in window) ? new BroadcastChannel("lit-pdf") : null;
   if (chan) {
     chan.onmessage = e => { const m = e.data; if (m && m.t === "aim") mount(m); };
     chan.postMessage({t: "ready"});
     addEventListener("beforeunload", () => chan.postMessage({t: "closed"}));
+  }
+  if (FOCUSWIN) {                                     // poll the wire; re-mount only when seq moves
+    let seq = null;
+    setInterval(async () => {
+      let f; try { f = await fetch("focus").then(r => r.ok ? r.json() : null); } catch { return; }
+      if (!f || !f.citekey || f.seq === seq) return;
+      seq = f.seq;
+      const loc = (f.loc && f.loc.rects) ? f.loc : {page: 0, rects: []};
+      mount({key: f.citekey, page: loc.page || 0, rects: loc.rects || []});
+    }, 500);
   }
   let rt = null;                                      // re-fit the page to the new window width (mountDoc bakes W0)
   addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(() => { if (lastAim) mount(lastAim); }, 140); });
@@ -1795,8 +1743,8 @@ if (DETACHED) {
 // A paper-finding search: type fragments of what you remember (title, author, journal, year,
 // tag) and jump to the matching card. NOT a knowledge search over claims/quotes. Purely
 // client-side, so a static `lit build` keeps it working offline. Curated papers rank above
-// stubs (ORDER is already curated-first); in-progress (ACTIVE) papers live in the zone, not the
-// browse column, so they're left out — there's no landing card to jump to.
+// stubs (ORDER is already curated-first); in-progress (ACTIVE) papers live in their own curation
+// windows, not the browse column, so they're left out — there's no landing card to jump to.
 const searchInput = document.getElementById("search");
 const searchResults = document.getElementById("searchResults");
 let searchIndex = null;
@@ -1883,14 +1831,25 @@ if(searchInput){
 board.addEventListener("scroll",redraw);
 addEventListener("resize",redraw);
 
-// ── the in-progress zone = the cockpit (serve only) ──────────────────────────────────────────
+// ── the in-progress worklist: launch a paper's three windows (serve only) ────────────────────
 // The papers the curator moved in (`[curation] active`). The pill opens a picker; selecting one
-// ENTERS its three-pane cockpit in the overlay: the isolated subgraph as the left card (a DRIVE
-// iframe of /preview.html?key=…&drive=1, whose quote-clicks aim the pane), the focus-wire PDF pane
-// top-right, and that paper's ttyd terminal bottom-right. "Return to graph" removes it from the
-// worklist. LIVE-gated: a static `lit build` carries no active list, so the pill stays hidden.
-// Not DRIVE: the zone only lives in the top-level document (a DRIVE card must not nest a zone).
-if (LIVE && !DRIVE) (function(){
+// opens that paper's curation windows — three real OS windows, not panes:
+//
+//   card      /preview.html?key=…&drive=1   the isolated subgraph; quote-clicks aim the wire
+//   paper     /index.html?focus=1           the PDF, polling the wire (`lit focus` steers it too)
+//   terminal  POST /term                    a native emulator running that paper's Claude session
+//
+// Why windows: the window manager already tiles, stacks, moves across monitors, and remembers
+// better than a CSS grid with drag handles ever did, and the terminal is a REAL terminal — full
+// keybindings, scrollback, Ctrl-C — instead of ttyd inside an iframe. The graph window stays the
+// graph: it launches and tracks, and you can close it without disturbing a session.
+//
+// A browser gesture can reliably authorize ONE new window, not two. The PDF is that one popup;
+// this graph window then navigates into the card, while the server launches the native terminal.
+// The two POSTs settle before navigation so a failed terminal request is visible and cannot be
+// cancelled by leaving the graph. One click, three real surfaces, only one browser popup.
+// LIVE-gated: a static `lit build` carries no active list, so the pill stays hidden.
+if (LIVE && !DRIVE && !PDFWIN && !MOBILE_CURATE) (function(){
   const pill = document.getElementById("wip");
   const inProg = (GRAPH.active || []).filter(k => PAPERS[k] && PAPERS[k].cur);
   if (!inProg.length) return;
@@ -1898,40 +1857,50 @@ if (LIVE && !DRIVE) (function(){
   pill.hidden = false;
 
   const panel = document.getElementById("wipPanel");
-  const overlay = document.getElementById("wipOverlay");
-  const frame = overlay.querySelector(".wo-frame");
-  const titleEl = overlay.querySelector(".wo-title");
-  const countEl = overlay.querySelector(".wo-count");
   const STAGE = ["stub","ingested","skeleton","contextualized","full"];
   const stage = k => { const p = PAPERS[k].pass == null ? 0 : PAPERS[k].pass;
                        return `maturity ${p}/4 · ${STAGE[p] || ""}`; };
-  let at = 0, pollStarted = false;
-
-  async function enter(i){
-    at = (i + inProg.length) % inProg.length;
-    const k = inProg[at];
-    panel.hidden = true; overlay.hidden = false;
-    zoneOpen = true; dataVer = null;                // re-baseline the hot-reload watch per paper
-    frame.src = `preview.html?key=${encodeURIComponent(k)}&drive=1`;   // left card, drives the wire
-    titleEl.innerHTML = `curating <b>${k}</b> · ${stage(k)}`;
-    countEl.textContent = inProg.length > 1 ? `${at + 1} / ${inProg.length}` : "";
-    setTerm(k);                                    // bottom-right: this paper's Claude session
-    closeFocusWin();                               // drop the prior paper's pane before re-aiming
-    try {                                          // open the PDF pane on the paper (top, no highlight)
-      const rec = await fetch("focus", {method: "POST",
-        body: JSON.stringify({citekey: k})}).then(r => r.ok ? r.json() : null);
-      if (rec) { focusSeq = rec.seq; aimFocus(rec); }
-    } catch { /* no server / no PDF — the pane just stays empty */ }
-    if (!pollStarted) { setInterval(pollFocus, 500); pollStarted = true; }   // pick up `lit focus`
+  // build both URLs off THIS document's URL so they survive whatever path the viewer is mounted
+  // under (a hardcoded "index.html" resolves against the base and breaks under a prefix mount).
+  const winUrl = (file, params) => {
+    const u = new URL(file, location.href); u.hash = "";
+    for (const [k, v] of Object.entries(params)) u.searchParams.set(k, v);
+    return u.href;
+  };
+  // One PDF window shared across papers (the wire holds one focus, so a second would just mirror
+  // it). The current graph window becomes the card instead of opening a second browser popup.
+  async function enter(k){
+    panel.hidden = true;
+    if (PHONE_LAUNCH) {
+      if (!COCKPIT) { alert("Switchboard's agent spawn is unavailable"); return; }
+      try {
+        const r = await fetch("term", {method: "POST",
+          body: JSON.stringify({citekey: k, attach: false})});
+        if (!r.ok) throw new Error((await r.text()).trim() || `HTTP ${r.status}`);
+      } catch (e) { alert(`could not spawn the agent for ${k}: ${e.message}`); return; }
+      location.assign(winUrl("preview.html", {key: k, mobile: "1"}));
+      return;                                         // agent runs detached; no popup/terminal attachment
+    }
+    const pdf = window.open(winUrl("index.html", {focus: "1"}), "litpdf_focus",
+                            "popup,width=900,height=1040,left=780,top=40");
+    if (!pdf) { alert("the browser blocked the paper window"); return; }
+    const cardUrl = winUrl("preview.html", {key: k, drive: "1"});
+    const focusRequest = fetch("focus", {method: "POST", body: JSON.stringify({citekey: k})})
+      .catch(() => {});                              // PDF stays at its last aim if the wire is down
+    let termRequest = Promise.resolve();
+    if (COCKPIT && COCKPIT.terminal) termRequest = fetch("term", {method: "POST", body: JSON.stringify({citekey: k})})
+      .then(async r => {
+        if (r.ok) return;
+        const detail = (await r.text()).trim() || `HTTP ${r.status}`;
+        throw new Error(detail);
+      });
+    else alert("Switchboard's agent spawn is unavailable — restart lit serve after checking Switchboard");
+    const [, termResult] = await Promise.allSettled([focusRequest, termRequest]);
+    if (termResult.status === "rejected") alert(`could not open the terminal for ${k}: ${termResult.reason.message}\n\n`
+      + `If lit serve was already running when this feature changed, restart it once.`);
+    location.assign(cardUrl);                       // reuse the graph window as the curation card
   }
-  function leave(){                                // ← back to graph: keep the paper in progress
-    zoneOpen = false; overlay.hidden = true; lastFocus = null;
-    frame.src = "about:blank"; closeFocusWin();
-    const box = overlay.querySelector(".wo-term"); box.textContent = ""; termKey = null;
-    box.innerHTML = `<div class="term-empty">terminal unavailable — no ttyd on this serve</div>`;
-  }
-  async function returnToGraph(){                  // finish: remove from the worklist, rejoin graph
-    const k = inProg[at];
+  async function returnToGraph(k){                 // finish: remove from the worklist, rejoin graph
     try {
       const r = await fetch("active", {method: "POST",
         body: JSON.stringify({citekey: k, active: false})}).then(r => r.ok ? r.json() : null);
@@ -1940,22 +1909,23 @@ if (LIVE && !DRIVE) (function(){
     } catch { alert("server unreachable — is lit serve running?"); }
   }
 
-  panel.innerHTML = `<div class="wp-hd">curation in progress</div>` + inProg.map((k, i) =>
-    `<div class="wp-row" data-i="${i}">${passCircle(PAPERS[k].pass || 0)}`
-    + `<span class="ckey">${k}</span><span class="stage">${stage(k)}</span></div>`).join("");
-  if (inProg.length < 2) overlay.querySelector(".wo-nav").style.display = "none";
+  panel.innerHTML = `<div class="wp-hd">curation in progress</div>` + inProg.map(k =>
+    `<div class="wp-row" data-k="${k}" title="open ${k}'s card, paper and terminal windows">`
+    + `${passCircle(PAPERS[k].pass || 0)}<span class="ckey">${k}</span>`
+    + `<span class="stage">${stage(k)}</span>`
+    + `<button class="wp-done" data-done="${k}" title="finish: return ${k} to the graph">✓</button>`
+    + `</div>`).join("")
+    + `<div class="wp-note">one click → this window becomes the card · opens PDF`
+    + `${COCKPIT ? ` · opens ${COCKPIT.agent}${COCKPIT.terminal ? ` in ${COCKPIT.terminal}` : ``}`
+                : ` · no Switchboard agent available`}</div>`;
 
-  pill.addEventListener("click", () => { if (overlay.hidden) panel.hidden = !panel.hidden; });
-  panel.addEventListener("click", e => { const r = e.target.closest(".wp-row"); if (r) enter(+r.dataset.i); });
-  overlay.querySelector(".wo-back").addEventListener("click", leave);
-  overlay.querySelector(".wo-return").addEventListener("click", returnToGraph);
-  overlay.querySelector(".wo-prev").addEventListener("click", () => enter(at - 1));
-  overlay.querySelector(".wo-next").addEventListener("click", () => enter(at + 1));
-  addEventListener("keydown", e => {
-    if (e.key === "Escape") { if (!overlay.hidden) leave(); else panel.hidden = true; }
-    else if (!overlay.hidden && e.key === "ArrowLeft") enter(at - 1);
-    else if (!overlay.hidden && e.key === "ArrowRight") enter(at + 1);
+  pill.addEventListener("click", () => { panel.hidden = !panel.hidden; });
+  panel.addEventListener("click", e => {
+    const done = e.target.closest(".wp-done");
+    if (done) { e.stopPropagation(); return returnToGraph(done.dataset.done); }
+    const r = e.target.closest(".wp-row"); if (r) enter(r.dataset.k);
   });
+  addEventListener("keydown", e => { if (e.key === "Escape") panel.hidden = true; });
   // click outside an open panel dismisses it (capture so it runs before the board's own handler)
   addEventListener("click", e => {
     if (!panel.hidden && !e.target.closest("#wipPanel,#wip")) panel.hidden = true;

@@ -4,6 +4,7 @@ import http.client
 import json
 import os
 import shutil
+import subprocess
 import threading
 from pathlib import Path
 
@@ -71,6 +72,41 @@ def test_index_serves_viewer_with_live_rebuild_headers(srv):
     assert headers["Cache-Control"] == "no-store"    # refresh must re-read the YAML
     text = body.decode()
     assert "Chen2021Sys" in text and "__GRAPH_JSON__" not in text
+
+
+def test_pwa_manifest_and_phone_icons_are_served(srv):
+    status, headers, body = get(srv, "/manifest.webmanifest")
+    assert status == 200
+    assert headers["Content-Type"] == "application/manifest+json"
+    manifest = json.loads(body)
+    assert manifest["display"] == "standalone" and manifest["start_url"] == "./"
+    for name in ("icon-192.png", "icon-512.png", "apple-touch-icon.png"):
+        status, headers, body = get(srv, f"/{name}")
+        assert status == 200 and headers["Content-Type"] == "image/png"
+        assert body.startswith(b"\x89PNG\r\n\x1a\n")
+
+
+def test_curation_opens_three_surfaces_in_one_click_without_two_popups(srv):
+    text = get(srv, "/")[2].decode()
+    # The PDF consumes the click's one popup allowance; the existing graph window becomes the
+    # card, and the server launches the terminal. Thus all three surfaces still take one click.
+    enter = text.split("function enter(k){", 1)[1].split("async function returnToGraph", 1)[0]
+    assert enter.count("window.open(") == 1
+    assert 'location.assign(cardUrl)' in enter
+    assert 'fetch("term"' in enter and "Promise.allSettled([focusRequest, termRequest])" in enter
+
+
+def test_phone_curation_keeps_card_and_pdf_in_one_window_without_terminal(srv):
+    text = get(srv, "/")[2].decode()
+    phone_branch = text.split("function enter(k){", 1)[1].split(
+        "const pdf = window.open", 1)[0]
+    assert "if (PHONE_LAUNCH)" in phone_branch
+    assert 'mobile: "1"' in phone_branch and "location.assign(" in phone_branch
+    assert "window.open(" not in phone_branch
+    assert 'fetch("term"' in phone_branch and "attach: false" in phone_branch
+    assert "body.mobile-curate.dock-open #board" in text
+    assert "open.add(`0:${key}`); loadDock(key); rebuild()" in text
+    assert "aimDock(key, row.dataset.sid)" in text
 
 
 def test_graph_json_endpoint(srv):
@@ -363,47 +399,115 @@ def test_active_move_rejects_non_curated_and_bad_payloads(srv, repo):
 
 
 def test_serve_without_terminal_has_no_cockpit(srv):
-    # make_server defaults terminal=False (no ttyd) → no cockpit payload; a static build carries none
+    # no terminal/Switchboard integration → no cockpit payload; a static build carries none
     assert "cockpit" not in json.loads(get(srv, "/graph.json")[2])
 
 
-def test_terminal_available_injects_cockpit_term_port(repo):
-    s = make_server(repo, repo / "pdfs", terminal=True, term_port=7690)
+def test_terminal_available_injects_cockpit_name(repo):
+    agent = (["/switchboard/python", "-m", "sb.cli"], Path("/switchboard"))
+    s = make_server(repo, repo / "pdfs", term_cmd=["/usr/bin/kitty", "-e"],
+                    agent_cmd=agent)
     threading.Thread(target=s.serve_forever, daemon=True).start()
     try:
-        assert json.loads(get(s, "/graph.json")[2])["cockpit"] == {"term_port": 7690}
+        assert json.loads(get(s, "/graph.json")[2])["cockpit"] == {
+            "agent": "Switchboard agent", "terminal": "kitty"}
     finally:
         s.shutdown()
         s.server_close()
 
 
-def test_spawn_ttyd_argv_binds_loopback_and_passes_env(repo, monkeypatch):
-    # offline: no real ttyd — assert we'd launch it loopback-bound, writable, with the wrapper and
-    # the three roots the wrapper needs (data root for lit, code root for CURATION.md)
+def test_post_term_uses_switchboard_agent_spawn_then_attaches(repo):
     from litgraph import serve as sm
     cap = {}
 
+    def fake_run(argv, **kw):
+        cap["spawn_argv"], cap["spawn_kw"] = argv, kw
+        return subprocess.CompletedProcess(argv, 0, "agents-7\n", "")
+
     class FakePopen:
-        def __init__(self, argv, env=None, **kw):
-            cap["argv"], cap["env"] = argv, env
-    monkeypatch.setattr(sm.shutil, "which", lambda _: "/usr/bin/ttyd")
-    monkeypatch.setattr(sm.subprocess, "Popen", FakePopen)
-    assert sm._spawn_ttyd(7690, repo) is not None
-    argv = cap["argv"]
-    assert argv[0] == "/usr/bin/ttyd"
-    assert argv[argv.index("-i") + 1] == "127.0.0.1"        # never 0.0.0.0
-    assert argv[argv.index("-p") + 1] == "7690"
-    assert "-W" in argv and "--url-arg" in argv             # writable + ?arg=<citekey>
-    assert argv[-1].endswith("curate_session.sh")
-    assert cap["env"]["LIT_DATA_ROOT"] == str(repo.resolve())
-    assert cap["env"]["LIT_SESSIONS"].endswith(".sessions") and cap["env"]["LIT_DOCS"]
+        def __init__(self, argv, **kw):
+            cap["term_argv"], cap["term_kw"] = argv, kw
+
+    agent = (["/switchboard/python", "-m", "sb.cli"], Path("/switchboard"))
+    s = make_server(repo, repo / "pdfs", term_cmd=["/usr/bin/kitty", "-e"],
+                    agent_cmd=agent)
+    threading.Thread(target=s.serve_forever, daemon=True).start()
+    try:
+        real_run, real_popen = sm.subprocess.run, sm.subprocess.Popen
+        sm.subprocess.run, sm.subprocess.Popen = fake_run, FakePopen
+        try:
+            assert post(s, "/term", {"citekey": "Chen2021Sys"})[0] == 200
+        finally:
+            sm.subprocess.run, sm.subprocess.Popen = real_run, real_popen
+    finally:
+        s.shutdown()
+        s.server_close()
+    assert cap["spawn_argv"][:5] == [
+        "/switchboard/python", "-m", "sb.cli", "spawn", "agent"]
+    assert cap["spawn_argv"][cap["spawn_argv"].index("--cwd") + 1] == str(repo.resolve())
+    prompt = cap["spawn_argv"][cap["spawn_argv"].index("--prompt") + 1]
+    assert "Chen2021Sys" in prompt and "CURATION.md" in prompt
+    assert "lit focus Chen2021Sys --host 127.0.0.1" in prompt
+    assert cap["spawn_kw"]["cwd"] == Path("/switchboard")
+    assert cap["term_argv"] == [
+        "/usr/bin/kitty", "-e", "tmux", "attach", "-t", "=agents-7"]
+    assert cap["term_kw"]["start_new_session"] is True
 
 
-def test_spawn_ttyd_missing_is_graceful(monkeypatch, capsys):
+def test_post_term_can_spawn_agent_detached_without_an_emulator(repo):
     from litgraph import serve as sm
-    monkeypatch.setattr(sm.shutil, "which", lambda _: None)
-    assert sm._spawn_ttyd(7690, Path(".")) is None          # no crash — the rest of the cockpit works
-    assert "ttyd not found" in capsys.readouterr().out
+    cap = {}
+
+    def fake_run(argv, **kw):
+        cap["spawn_argv"] = argv
+        return subprocess.CompletedProcess(argv, 0, "agents-8\n", "")
+
+    agent = (["/switchboard/python", "-m", "sb.cli"], Path("/switchboard"))
+    s = make_server(repo, repo / "pdfs", agent_cmd=agent)  # deliberately no emulator
+    threading.Thread(target=s.serve_forever, daemon=True).start()
+    try:
+        real_run, sm.subprocess.run = sm.subprocess.run, fake_run
+        try:
+            status, result = post(s, "/term", {"citekey": "Chen2021Sys", "attach": False})
+        finally:
+            sm.subprocess.run = real_run
+    finally:
+        s.shutdown()
+        s.server_close()
+    assert status == 200 and result == {"ok": True, "session": "agents-8", "attached": False}
+    assert cap["spawn_argv"][:5] == [
+        "/switchboard/python", "-m", "sb.cli", "spawn", "agent"]
+
+
+def test_post_term_rejects_bad_key_and_degrades_without_an_emulator(srv, repo):
+    assert post(srv, "/term", {"citekey": "../etc"})[0] == 400
+    assert post(srv, "/term", {"citekey": "Nope2099X"})[0] == 404      # not a curated paper
+    assert post(srv, "/term", {"citekey": "Chen2021Sys", "attach": "no"})[0] == 400
+    # `srv` has term_cmd=None: a curated paper still 503s rather than crashing — the card and
+    # paper windows keep working, you just start the session yourself
+    assert post(srv, "/term", {"citekey": "Chen2021Sys"})[0] == 503
+
+
+def test_terminal_cmd_prefers_a_found_emulator_and_honours_the_override(monkeypatch):
+    from litgraph import serve as sm
+    monkeypatch.delenv("LIT_TERMINAL", raising=False)
+    monkeypatch.setattr(sm.shutil, "which", lambda e: None)
+    assert sm.terminal_cmd() is None                        # nothing installed — graceful, not a crash
+    monkeypatch.setattr(sm.shutil, "which", lambda e: f"/usr/bin/{e}" if e == "foot" else None)
+    assert sm.terminal_cmd() == ["/usr/bin/foot", "-e"]
+    monkeypatch.setenv("LIT_TERMINAL", "kitty --class litcurate -e")
+    monkeypatch.setattr(sm.shutil, "which", lambda e: f"/usr/bin/{e}")
+    assert sm.terminal_cmd() == ["kitty", "--class", "litcurate", "-e"]
+
+
+def test_switchboard_cmd_degrades_cleanly_and_honours_override(monkeypatch):
+    from litgraph import serve as sm
+    monkeypatch.setenv("LIT_SWITCHBOARD", "custom-sb")
+    monkeypatch.setattr(sm.shutil, "which", lambda e: "/usr/bin/custom-sb" if e == "custom-sb" else None)
+    argv, cwd = sm.switchboard_cmd()
+    assert argv == ["custom-sb"] and cwd == Path.cwd()
+    monkeypatch.setenv("LIT_SWITCHBOARD", "missing-sb")
+    assert sm.switchboard_cmd() is None
 
 
 # ── CLI wiring ───────────────────────────────────────────────────────────────────────────
@@ -413,22 +517,15 @@ from litgraph import cli
 
 def test_cli_serve_wires_root_port_and_pdf_dir(repo, monkeypatch):
     calls = {}
-    monkeypatch.setattr(cli, "serve", lambda root, pdf_dir, port, term_port: calls.update(
-        root=Path(root), pdf_dir=Path(pdf_dir), port=port, term_port=term_port))
-    rc = cli.main(["serve", "--root", str(repo), "--port", "0"])
+    monkeypatch.setattr(cli, "serve", lambda root, pdf_dir, host, port: calls.update(
+        root=Path(root), pdf_dir=Path(pdf_dir), host=host, port=port))
+    rc = cli.main(["serve", "--root", str(repo), "--host", "100.64.0.1", "--port", "0"])
     assert rc == 0
-    # no config.toml + no --pdf-dir -> <root>/pdfs; default terminal port
-    assert calls == {"root": repo, "pdf_dir": repo / "pdfs", "port": 0, "term_port": 7682}
+    assert calls == {"root": repo, "pdf_dir": repo / "pdfs",
+                     "host": "100.64.0.1", "port": 0}
     rc = cli.main(["serve", "--root", str(repo), "--pdf-dir", str(repo / "elsewhere")])
-    assert rc == 0 and calls["pdf_dir"] == repo / "elsewhere" and calls["port"] == 8000
-
-
-def test_cli_serve_term_port_wires_through(repo, monkeypatch):
-    calls = {}
-    monkeypatch.setattr(cli, "serve", lambda root, pdf_dir, port, term_port: calls.update(
-        term_port=term_port))
-    rc = cli.main(["serve", "--root", str(repo), "--port", "0", "--term-port", "7690"])
-    assert rc == 0 and calls == {"term_port": 7690}
+    assert (rc == 0 and calls["pdf_dir"] == repo / "elsewhere"
+            and calls["host"] == "127.0.0.1" and calls["port"] == 8000)
 
 
 def test_cli_focus_posts_to_running_server(srv, capsys):

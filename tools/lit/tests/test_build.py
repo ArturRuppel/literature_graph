@@ -109,6 +109,9 @@ def test_emit_writes_self_contained_viewer(tmp_path):
     text = html.read_text()
     assert "Chen2021Sys" in text
     assert "__GRAPH_JSON__" not in text
+    assert 'rel="manifest"' in text
+    assert all((tmp_path / name).is_file() for name in (
+        "manifest.webmanifest", "icon-192.png", "icon-512.png", "apple-touch-icon.png"))
 
 
 from litgraph.graph import Graph, Paper, Slice

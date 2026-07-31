@@ -107,13 +107,12 @@ def main(argv: list[str] | None = None) -> int:
     p_srv = sub.add_parser("serve", help="serve the viewer over HTTP: rebuild on refresh, "
                                          "PDF hover-preview and click-to-open")
     p_srv.add_argument("--root", default=".", help="data root (curated/, stubs.yaml, ...)")
+    p_srv.add_argument("--host", default="127.0.0.1",
+                       help="bind address (default: 127.0.0.1)")
     p_srv.add_argument("--port", type=int, default=8000, help="port (default: 8000)")
     p_srv.add_argument("--pdf-dir", default=None,
                        help="dir holding <citekey>.pdf files "
                             "(default: config.toml pdf_dir, else <root>/pdfs)")
-    p_srv.add_argument("--term-port", type=int, default=7682,
-                       help="port for the in-progress zone's ttyd terminal (default: 7682; "
-                            "7681 is often a system login ttyd)")
 
     p_foc = sub.add_parser("focus", help="aim a running `lit serve` PDF pane at a quote "
                                          "(curation: mark a passage in the human's view)")
@@ -255,7 +254,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"error: {e}", file=sys.stderr)
             return 1
         try:
-            serve(cfg.root, pdf_dir, port=args.port, term_port=args.term_port)
+            serve(cfg.root, pdf_dir, host=args.host, port=args.port)
         except OSError as e:
             print(f"error: {e}", file=sys.stderr)
             return 1

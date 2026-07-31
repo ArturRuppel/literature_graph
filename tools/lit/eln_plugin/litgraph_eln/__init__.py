@@ -1,8 +1,8 @@
-"""litgraph-eln — the literature graph as a tab in the electronic lab notebook.
+"""litgraph-eln — literature graph routes for the electronic lab notebook.
 
 The labbook's plugin system (``eln.plugins``) auto-discovers this package through the
-``eln.plugins`` entry point and mounts one nav link plus the litgraph viewer's routes under
-``/litgraph/``. Those routes are a thin adapter over litgraph's own building blocks — the
+``eln.plugins`` entry point and mounts the litgraph viewer's routes under ``/litgraph/`` without
+adding it to the notebook navigation. Those routes are a thin adapter over litgraph's own building blocks — the
 graph is rebuilt from the litgraph data repo's YAML on every page load, PDFs render through
 the shared :mod:`litgraph.pdfview`, and quotes resolve through the same ``locate_quote`` the
 ``lit locate`` command uses — all served by the labbook's own process, reading from the
@@ -29,7 +29,7 @@ import json
 import os
 from pathlib import Path
 
-from eln.plugins import NavLink, Plugin
+from eln.plugins import Plugin
 
 # litgraph's own building blocks — reused verbatim so this viewer can never drift from what
 # `lit build` / `lit serve` ship.
@@ -219,6 +219,5 @@ def register_litgraph_routes(app, root) -> None:
 
 plugin = Plugin(
     name="litgraph",
-    nav=NavLink("Literature", "/litgraph/"),  # trailing slash: viewer's relative fetches
     register_routes=register_litgraph_routes,
 )
