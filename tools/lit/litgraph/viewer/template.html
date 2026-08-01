@@ -507,10 +507,20 @@ function paperCard(key, level){
   return el;
 }
 
+const samePin=(a,b)=>!!a&&!!b&&a.cardId===b.cardId&&a.sid===b.sid;
+// A target a second click just RELEASED. Without this the release is invisible: the pointer is
+// still resting on the row it released, so the transient `hover` immediately re-lights the very
+// edges the click turned off. On desktop that lasts until the pointer wanders away; on touch,
+// where a tap fires a synthetic mousemove and no mouseleave ever comes, it lasts until some other
+// card is tapped — which is exactly the "second click does nothing" it was reported as. The
+// suppression lifts the moment the hover genuinely moves somewhere else.
+let unpinned=null;
 // Hover-isolate: hovering a slice row (or a broad synthesis node) keeps only the edges
 // incident on it — every other arrow disappears — and each counterpart card lights up
 // (.hl), so the paper an edge touches is visible even while its slice is still folded.
 function setHover(h){
+  if (samePin(h, unpinned)) return;                 // still on the target we just released
+  unpinned = null;
   if (h ? (hover && h.cardId === hover.cardId && h.sid === hover.sid) : !hover) return;
   hover = h; redraw();
   aimDockFromHover(h);          // if the docked PDF viewer is open, aim it at this claim's source
@@ -525,10 +535,10 @@ function hoverRow(el, e){
 }
 // Click-to-pin: harden a target so it stays bright after the pointer leaves. Pins accumulate;
 // clicking the same target again releases just it, a click on empty board space thaws them all.
-const samePin=(a,b)=>!!a&&!!b&&a.cardId===b.cardId&&a.sid===b.sid;
 function togglePin(t){
   const i=pin.findIndex(p=>samePin(p,t));
-  if(i>=0) pin.splice(i,1); else pin.push(t);
+  if(i>=0){ pin.splice(i,1); unpinned=t; if(samePin(hover,t)) hover=null; }  // release, and stay released
+  else { pin.push(t); unpinned=null; }
   redraw();
 }
 const SID_CLASS = {floor: "fl", model: "fl", grounded: "cl", borrowed: "bo",
@@ -548,10 +558,15 @@ function cardClick(e, el, level, key){
   const row = e.target.closest(".slice");
   if (row && el.classList.contains("open")) {
     togglePin({cardId: el.id, sid: row.dataset.sid});   // harden/release this row (accumulates)
-    // card window (DRIVE): a quote-slice click aims the separate PDF window via the focus wire.
-    // Browse view: the click just pins the edge — the docked viewer follows hover, not clicks.
-    if (DRIVE && row.classList.contains("pdf-src")) focusFromClick(key, row.dataset.sid);
-    else if (MOBILE_CURATE && row.classList.contains("pdf-src")) aimDock(key, row.dataset.sid);
+    // A quote-slice click aims the PDF at that exact quote. This used to be hover-only in the
+    // browse view, which meant a phone could never see a highlighted quote at all: there is no
+    // hover to aim with, so the dock sat on page 1 of the paper no matter what you tapped. Click
+    // now aims it everywhere — on desktop that's a no-op confirming what the hover already did
+    // (aimDock early-returns when it's already parked on this claim).
+    if (row.classList.contains("pdf-src")) {
+      if (DRIVE) focusFromClick(key, row.dataset.sid);   // card window: steer the separate PDF window
+      else aimDock(key, row.dataset.sid);                // browse / mobile-curate: aim the dock
+    }
     if (row.classList.contains("drillable")) toggleDrill(id, row.dataset.path);  // drill + rebuild
     return;
   }
@@ -786,7 +801,7 @@ function rebuild(){
       const el=document.getElementById(`card-0:${k}`); if(el) el.remove();
     }
   });
-  edges=[]; edgeSeen.clear(); hover=null;   // rows re-render; next mousemove re-isolates (docked viewer rests)
+  edges=[]; edgeSeen.clear(); hover=null; unpinned=null;   // rows re-render; next mousemove re-isolates (docked viewer rests)
   document.querySelectorAll(".card.open,.card.focus").forEach(c=>c.classList.remove("open","focus"));
   ctxOpen=new Set(); ctxDrill=new Map();
   const done=new Set();
@@ -954,7 +969,10 @@ function redraw(){
   // hover (transient). An edge incident on any target is drawn bright and its counterpart card
   // gets .hl; every other edge stays dim — faint scaffolding rather than a bright tangle.
   pin=pin.filter(p=>document.getElementById(p.cardId));       // drop pins whose card is gone
-  const targets=hover?[...pin,hover]:pin;
+  // deduped: the pointer usually rests on the target it just pinned, and a target counted twice
+  // made broadExtraEdges synthesize its arrows twice — identical paths stacked on each other
+  const all=hover?[...pin,hover]:pin;
+  const targets=all.filter((t,i)=>all.findIndex(o=>samePin(o,t))===i);
   const atT=(end,t)=>end.cardId===t.cardId&&end.sid===t.sid;
   const isTarget=end=>targets.some(t=>atT(end,t));
   const inc=e=>targets.some(t=>atT(e.from,t)||atT(e.to,t));   // incident on any target
