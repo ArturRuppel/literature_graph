@@ -20,13 +20,24 @@
     --plausible:#8a97a4;
     --navy:#263646;   /* the signature ELN accent bar (the HUD) */
     --col:340px;   /* content-container width; the width slider in the HUD drives it */
+    --grip:8px;    /* the graph/PDF seam's grab width — widened for fingers under (pointer:coarse).
+                      Lives on :root so that override wins: an equal-specificity `body` rule later
+                      in this sheet would otherwise beat the one inside the media query. */
   }
   *{box-sizing:border-box}
   html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);
     font:13px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+  /* The HUD OVERLAYS the board's top padding instead of pushing the board down, so getting it out
+     of the way is a pure transform: nothing reflows and the scroll position never jumps. --hud-h
+     is its measured height (it wraps to two rows on a narrow screen); --hud-top is what the dock
+     hangs from, and collapses to 0 while the bar is away so the PDF takes the space too. */
+  body{--hud-h:46px;--hud-top:var(--hud-h)}
+  body.hud-off{--hud-top:0px}
   #hud{position:fixed;top:0;left:0;right:0;z-index:30;display:flex;align-items:center;gap:12px;
     padding:8px 16px;background:var(--navy);color:#d7e0e7;
-    border-bottom:1px solid rgba(0,0,0,.18);backdrop-filter:blur(6px)}
+    border-bottom:1px solid rgba(0,0,0,.18);backdrop-filter:blur(6px);
+    transition:transform .18s ease}
+  body.hud-off #hud{transform:translateY(-100%)}
   #hud b{font-size:13px;color:#fff}
   #hud .widthctl{margin-left:auto;display:flex;align-items:center;gap:8px;
     font-size:10px;letter-spacing:1px;text-transform:uppercase;color:#a9b7c4}
@@ -105,8 +116,8 @@
   /* side padding centers the landing column on screen when nothing is expanded (half the
      viewport minus half a column), so grounds (←) and builds/synthesis (→) spawn symmetrically;
      it grows into scroll as columns fan out. min 40px keeps a gutter on narrow screens. */
-  #board{position:absolute;inset:46px 0 0 0;overflow:auto;display:flex;align-items:flex-start;
-    gap:54px;padding:34px max(40px, calc(50vw - var(--col)/2)) 80px}
+  #board{position:absolute;inset:0;overflow:auto;display:flex;align-items:flex-start;
+    gap:54px;padding:calc(var(--hud-h) + 34px) max(40px, calc(50vw - var(--col)/2)) 80px}
   /* edges paint above the cards so an arrow runs all the way to the slice row it anchors
      on (never clipped at the container border); hover-isolation is for disentangling */
   svg#edges{position:absolute;top:0;left:0;z-index:10;pointer-events:none;overflow:visible}
@@ -292,7 +303,7 @@
 
   @media (max-width:640px){
     :root{--col:min(340px,86vw)}                 /* card fits with a gutter; neighbor column peeks */
-    #board{gap:22px;padding:22px max(12px, calc(50vw - var(--col)/2)) 80px}
+    #board{gap:22px;padding:calc(var(--hud-h) + 22px) max(12px, calc(50vw - var(--col)/2)) 80px}
     #hud{gap:8px 10px;flex-wrap:wrap}
     #hud .widthctl{display:none}                 /* column ≈ full width — slider is moot (and ate swipes) */
     #wipPanel{left:8px;right:8px;width:auto;max-height:60vh}
@@ -311,42 +322,56 @@
     .card:active{border-color:#b8c3cc}            /* tap feedback (replaces the lost :hover cue) */
     .slice.drillable:active{background:#e9eef2}
     .card.open .cabs{display:block}               /* abstract inline (no hover tip on touch) */
-    /* Phone curation is one app window split horizontally: card above, PDF below. Desktop
-       curation never gets this class and keeps its three independent OS windows. */
-    body.mobile-curate{--mobile-pdf-h:52%}
-    body.mobile-curate.dock-open #board{right:0;bottom:var(--mobile-pdf-h)}
-    body.mobile-curate.dock-open #dockEmpty{left:0;right:0;top:auto;bottom:0;
-      width:100%;height:var(--mobile-pdf-h);border-left:0;border-top:1px solid var(--line)}
-    body.mobile-curate.dock-open .pw-side{left:0!important;right:0!important;top:auto!important;
-      bottom:0!important;width:100%!important;height:var(--mobile-pdf-h)!important;
-      border-left:0;border-top:1px solid var(--line)}
-    body.mobile-curate #dockGrip{display:none}
+    body{--grip:22px}                             /* a seam a finger can actually catch */
   }
 
-  /* ── collapsible PDF viewer (browse view) ───────────────────────────────────────────────
-     Toggled from the HUD. One docked pane on the right the graph makes room for; hovering a
-     quote-slice aims it (JS). Empty until the first hover — the placeholder sits behind and is
-     painted over once a page mounts. */
-  body{--dock-w:44%}                              /* dock width — JS-driven, persisted, resizable */
+  /* ── collapsible PDF viewer ─────────────────────────────────────────────────────────────
+     Toggled from the HUD. One docked pane the graph makes room for; hovering (or tapping) a
+     quote-slice aims it. Empty until the first aim — the placeholder sits behind and is painted
+     over once a page mounts.
+     ONE layout for every mode. Phone curation used to have its own stacked split while the browse
+     view was always a right-hand dock, which meant the same PDF behaved differently depending on
+     how you had arrived at it. The split now follows the WINDOW's long axis rather than the mode:
+     landscape puts the PDF beside the graph, portrait puts it underneath. The two fractions are
+     stored separately, so rotating a phone lands on the ratio you last chose for that shape. */
+  body{--dock-w:44%;--dock-h:52%}                 /* JS-driven, persisted, resizable */
   body.dock-open #board{right:var(--dock-w)}
   #dockEmpty{display:none}
-  body.dock-open #dockEmpty{display:flex;position:fixed;right:0;top:46px;bottom:0;
+  body.dock-open #dockEmpty{display:flex;position:fixed;right:0;top:var(--hud-top);bottom:0;
     width:var(--dock-w);z-index:15;align-items:center;justify-content:center;text-align:center;
     padding:0 32px;border-left:1px solid var(--line);background:var(--bg);
     color:var(--faint);font-size:11px;line-height:1.6}
   body.dock-open .pw-side{position:fixed !important;right:0 !important;
-    left:auto !important;top:46px !important;bottom:0 !important;width:var(--dock-w) !important;
+    left:auto !important;top:var(--hud-top) !important;bottom:0 !important;width:var(--dock-w) !important;
     height:auto !important;border-radius:0;box-shadow:none;border-left:1px solid var(--line);
-    z-index:16}
+    z-index:16;transition:top .18s ease}
   body.dock-open .pw-side .pw-grip{display:none}
   body.dock-open .pw-side .pw-bar{cursor:default}
-  /* drag handle on the dock's left seam — Hyprland-style width resize (persisted) */
-  #dockGrip{display:none}
-  body.dock-open #dockGrip{display:block;position:fixed;top:46px;bottom:0;right:var(--dock-w);
-    width:8px;margin-right:-4px;z-index:17;cursor:ew-resize;background:transparent;transition:background .12s}
+  /* drag handle on the seam — Hyprland-style resize (persisted). The pill makes it findable on a
+     touchscreen, where there is no hover to reveal the strip. */
+  #dockGrip{display:none;touch-action:none}
+  body.dock-open #dockGrip{display:block;position:fixed;top:var(--hud-top);bottom:0;right:var(--dock-w);
+    width:var(--grip);margin-right:calc(var(--grip) / -2);z-index:17;cursor:ew-resize;
+    background:transparent;transition:background .12s,top .18s ease}
+  #dockGrip::after{content:"";position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+    width:3px;height:38px;border-radius:3px;background:#c3ccd4;transition:background .12s}
   #dockGrip:hover,body.dock-resizing #dockGrip{background:#6ea8d8}
-  body.dock-resizing{cursor:ew-resize;user-select:none}
+  #dockGrip:hover::after,body.dock-resizing #dockGrip::after{background:#fff}
+  body.dock-resizing{user-select:none}            /* the cursor is set per axis from JS */
   body.dock-resizing .pw-side{pointer-events:none}
+
+  /* PORTRAIT — the long axis is vertical, so the graph takes the top and the PDF the bottom. */
+  @media (orientation:portrait){
+    body.dock-open #board{right:0;bottom:var(--dock-h)}
+    body.dock-open #dockEmpty{left:0;right:0;top:auto;bottom:0;width:100%;height:var(--dock-h);
+      border-left:0;border-top:1px solid var(--line)}
+    body.dock-open .pw-side{left:0 !important;right:0 !important;top:auto !important;
+      bottom:0 !important;width:100% !important;height:var(--dock-h) !important;
+      border-left:0;border-top:1px solid var(--line)}
+    body.dock-open #dockGrip{left:0;right:0;top:auto;bottom:var(--dock-h);width:auto;
+      height:var(--grip);margin:0 0 calc(var(--grip) / -2) 0;cursor:ns-resize}
+    #dockGrip::after{width:38px;height:3px}
+  }
   /* ── PDF-only window (index.html?detached=1 or ?focus=1) ────────────────────────────────
      One document, two drivers: the browse view's popped-out dock (`detached`, mirrored over a
      BroadcastChannel) and curation's paper window (`focus`, aimed by polling the focus wire).
@@ -387,7 +412,7 @@
 </div>
 <div id="searchResults"></div>
 <div id="board"><svg id="edges"></svg></div>
-<div id="dockEmpty">open a card to load its PDF · hover a claim to jump to its quote · toggle with 📄 PDF</div>
+<div id="dockEmpty">open a card to load its PDF · click a claim to jump to its quote · toggle with 📄 PDF</div>
 <div id="dockGrip"></div>
 <div id="detachPane"><div id="detachEmpty">waiting for the graph — hover a claim or open a card to load its PDF here</div></div>
 <div id="tip"></div>
@@ -1113,6 +1138,8 @@ const QUERY = new URLSearchParams(location.search);
 // route keeps the isolated card and PDF dock together in this one installed-app window.
 const MOBILE_CURATE = LIVE && QUERY.has("mobile");
 const PHONE_LAUNCH = matchMedia("(hover: none) and (pointer: coarse)").matches;
+// A mode marker only — the split layout no longer branches on it. Phone curation used to carry its
+// own stacked-pane CSS; the dock now splits on the window's long axis in every mode alike.
 if (MOBILE_CURATE) document.body.classList.add("mobile-curate");
 // COCKPIT = the server can open a curation terminal window (it found an emulator), injected by
 // `lit serve` as GRAPH.cockpit ({terminal: "kitty"}). Entering curation turns this graph window
@@ -1451,31 +1478,71 @@ async function aimDock(key, sid){
   renderCurrent();
   dockShown = qid;
 }
-// dock width resize (persisted): the grip sits on the dock's left seam; drag sets --dock-w, and the
-// PDF re-fits on release / window resize (same baked-W0 re-mount the PDF window uses).
+// Split resize (persisted per axis): the grip sits on the seam between graph and PDF — the dock's
+// left edge in landscape, its top edge in portrait — and one handler drives both, reading the axis
+// off the orientation at pointerdown. Pointer events, so a finger drags it as well as a mouse.
+// Only a WIDTH change needs the re-fit: mountDoc bakes the page width into its layout, while the
+// height is just how much of the scroll body you can see, so a portrait drag keeps its scroll spot.
+const SPLIT_MIN = 0.2, SPLIT_MAX = 0.8;
 if (LIVE && !DRIVE) {
   const grip = document.getElementById("dockGrip");
-  const DW_KEY = "lit.dock.w";
-  try { const v = parseFloat(localStorage.getItem(DW_KEY));
-        if (v > 0.15 && v < 0.85) document.body.style.setProperty("--dock-w", (v * 100) + "%"); } catch {}
+  const KEY = {w: "lit.dock.w", h: "lit.dock.h"};
+  const portrait = () => matchMedia("(orientation:portrait)").matches;
+  for (const ax of ["w", "h"]) {
+    try { const v = parseFloat(localStorage.getItem(KEY[ax]));
+          if (v >= SPLIT_MIN && v <= SPLIT_MAX)
+            document.body.style.setProperty(`--dock-${ax}`, (v * 100) + "%"); } catch {}
+  }
   if (grip) grip.addEventListener("pointerdown", e => {
     e.preventDefault();
+    const ax = portrait() ? "h" : "w";
     document.body.classList.add("dock-resizing");
+    document.body.style.cursor = ax === "h" ? "ns-resize" : "ew-resize";
+    let f = 0;
     const move = ev => {
-      const f = Math.min(0.75, Math.max(0.2, (innerWidth - ev.clientX) / innerWidth));
-      document.body.style.setProperty("--dock-w", (f * 100) + "%");
+      f = ax === "h" ? (innerHeight - ev.clientY) / innerHeight
+                     : (innerWidth - ev.clientX) / innerWidth;
+      f = Math.min(SPLIT_MAX, Math.max(SPLIT_MIN, f));
+      document.body.style.setProperty(`--dock-${ax}`, (f * 100) + "%");
     };
     const up = () => {
       window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up);
       document.body.classList.remove("dock-resizing");
-      const cur = parseFloat(getComputedStyle(document.body).getPropertyValue("--dock-w"));
-      try { localStorage.setItem(DW_KEY, (cur / 100).toString()); } catch {}
-      scheduleDockRefit();
+      document.body.style.cursor = "";
+      if (f) { try { localStorage.setItem(KEY[ax], f.toString()); } catch {} }
+      if (ax === "w") scheduleDockRefit();          // baked page width changed; height is free
     };
     window.addEventListener("pointermove", move); window.addEventListener("pointerup", up);
   });
+  // a rotate fires resize and swaps the axis, which does change the pane's width — re-fit
   addEventListener("resize", () => { if (dockOpen) scheduleDockRefit(); });
 }
+
+// ── the HUD gets out of the way ──────────────────────────────────────────────────────────
+// The bar is ~46px of chrome, which on a phone is real estate the graph wants back. It slides
+// away as you scroll down the board and returns the moment you scroll up or reach the top — what
+// a mobile browser does with its own toolbar. It only ever moves ITSELF: the board is full-height
+// and merely pads its top by the measured bar height, so nothing reflows and the scroll never
+// jumps. The dock hangs from --hud-top, so the PDF grows into the space at the same time.
+if (!PDFWIN) (function(){
+  const hud = document.getElementById("hud");
+  if (!hud) return;
+  const measure = () => document.body.style.setProperty("--hud-h", hud.offsetHeight + "px");
+  measure(); addEventListener("resize", measure);
+  const THRESH = 28;                    // px travelled one way before the bar commits to a move
+  let last = 0, run = 0;
+  board.addEventListener("scroll", () => {
+    const y = Math.max(0, board.scrollTop), d = y - last;
+    last = y;
+    if (!d) return;                     // horizontal scroll (fanning out columns) leaves it alone
+    run = (d > 0) === (run > 0) ? run + d : d;   // distance travelled since the last turnaround
+    if (y < 24) { run = 0; document.body.classList.remove("hud-off"); return; }   // top: always shown
+    if (run > THRESH && !document.body.classList.contains("hud-off")) {
+      document.body.classList.add("hud-off");
+      closeSearch();                    // the dropdown is pinned under a box that just left
+    } else if (run < -THRESH) document.body.classList.remove("hud-off");
+  }, {passive: true});
+})();
 
 // ── the move: right-click a curated card → curate it (serve, browse view) ─────────────────
 // "Curate this paper" adds the citekey to [curation] active (POST /active); the paper then

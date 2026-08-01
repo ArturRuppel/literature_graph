@@ -106,9 +106,38 @@ def test_phone_curation_keeps_card_and_pdf_in_one_window_without_terminal(srv):
     assert 'mobile: "1"' in phone_branch and "location.assign(" in phone_branch
     assert "window.open(" not in phone_branch
     assert 'fetch("term"' in phone_branch and "attach: false" in phone_branch
-    assert "body.mobile-curate.dock-open #board" in text
+    # the card + PDF share one window, split on that window's long axis — the same layout the
+    # browse view gets, not a phone-only special case (which is what this used to assert)
+    assert "@media (orientation:portrait){" in text
+    assert "body.dock-open #board{right:0;bottom:var(--dock-h)}" in text
     assert "open.add(`0:${key}`); loadDock(key); rebuild()" in text
     assert "aimDock(key, row.dataset.sid)" in text
+
+
+def test_the_pdf_split_follows_the_window_shape_in_every_mode(srv):
+    """Landscape docks the PDF on the right, portrait stacks it underneath, and no rule is scoped
+    to a mode class — phone curation and the browse view get the identical split."""
+    text = get(srv, "/")[2].decode()
+    portrait = text.split("@media (orientation:portrait){", 1)[1].split("\n  }", 1)[0]
+    for sel in ("#board", "#dockEmpty", ".pw-side", "#dockGrip"):
+        assert f"body.dock-open {sel}" in portrait, sel
+    assert "mobile-curate" not in portrait
+    # each axis keeps its own persisted fraction, so a rotate restores that shape's ratio
+    assert "--dock-w:44%;--dock-h:52%" in text
+    assert '{w: "lit.dock.w", h: "lit.dock.h"}' in text
+    assert 'const ax = portrait() ? "h" : "w";' in text
+
+
+def test_the_hud_slides_away_on_scroll_without_moving_the_board(srv):
+    """The bar is a transform, not a layout change: #board is full-height and pads its own top by
+    the measured bar height, so hiding the bar can't reflow the graph or jump the scroll."""
+    text = get(srv, "/")[2].decode()
+    assert "body.hud-off #hud{transform:translateY(-100%)}" in text
+    assert "#board{position:absolute;inset:0;" in text
+    assert "padding:calc(var(--hud-h) + 34px)" in text
+    assert "body{--hud-h:46px;--hud-top:var(--hud-h)}" in text
+    assert "body.hud-off{--hud-top:0px}" in text          # the dock grows into the space too
+    assert "top:var(--hud-top)" in text
 
 
 def test_graph_json_endpoint(srv):
