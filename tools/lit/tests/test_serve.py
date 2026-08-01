@@ -1,5 +1,6 @@
 # tests/test_serve.py
 """`lit serve` — loopback only: every request hits 127.0.0.1, no external network."""
+import gzip
 import http.client
 import json
 import os
@@ -11,6 +12,7 @@ from pathlib import Path
 import fitz
 import pytest
 
+from litgraph import pdfview
 from litgraph.serve import make_server
 
 EXAMPLE = Path(__file__).resolve().parents[3] / "example"
@@ -44,10 +46,10 @@ def srv(repo):
     s.server_close()
 
 
-def get(srv, path, method="GET"):
+def get(srv, path, method="GET", headers=None):
     """Raw request (no client-side path normalization — traversal reaches the server)."""
     conn = http.client.HTTPConnection("127.0.0.1", srv.server_address[1], timeout=5)
-    conn.request(method, path)
+    conn.request(method, path, headers=headers or {})
     r = conn.getresponse()
     body = r.read()
     conn.close()
@@ -245,6 +247,75 @@ def test_page_render_any_page_and_out_of_range(srv):
     assert body.startswith(b"\x89PNG\r\n")
     assert get(srv, "/page/Chen2021Sys/9.png")[0] == 404   # one-page fixture: page 9 absent
     assert get(srv, "/page/Nope2020Xyz/0.png")[0] == 404
+
+
+def test_text_bodies_are_gzipped_only_when_the_client_asks(srv):
+    # the graph page is ~2 MB of HTML-wrapped JSON on every load — the single biggest thing a
+    # phone waits for, and it compresses ~4x
+    plain = get(srv, "/")
+    assert plain[0] == 200 and "Content-Encoding" not in plain[1]
+    gz = get(srv, "/", headers={"Accept-Encoding": "gzip, deflate"})
+    assert gz[0] == 200 and gz[1]["Content-Encoding"] == "gzip"
+    assert gz[1]["Vary"] == "Accept-Encoding"
+    assert gzip.decompress(gz[2]) == plain[2]                # same bytes, fewer on the wire
+    assert len(gz[2]) < len(plain[2])
+    assert int(gz[1]["Content-Length"]) == len(gz[2])        # length describes the encoded body
+    # already-compressed bodies are left alone
+    img = get(srv, "/page/Chen2021Sys/0.jpg?w=828", headers={"Accept-Encoding": "gzip"})
+    assert img[0] == 200 and "Content-Encoding" not in img[1]
+
+
+def test_page_render_serves_jpeg_at_a_requested_width(srv):
+    # the mobile path: the client asks for the width it will actually paint and gets JPEG, which
+    # is ~7x smaller than the old full-width PNG for the same page
+    status, headers, jpg = get(srv, "/page/Chen2021Sys/0.jpg?w=828")
+    assert status == 200 and headers["Content-Type"] == "image/jpeg"
+    assert jpg.startswith(b"\xff\xd8\xff")                   # JPEG SOI
+    png = get(srv, "/page/Chen2021Sys/0.png")[2]
+    assert len(jpg) < len(png)
+    assert get(srv, "/page/Chen2021Sys/9.jpg?w=828")[0] == 404
+    assert get(srv, "/page/Nope2020Xyz/0.jpg?w=828")[0] == 404
+
+
+def test_page_width_snaps_to_a_shared_ladder_rung(srv):
+    # every phone viewport in a rung shares one render + one cache entry, so the raster cache
+    # can't fragment across the arbitrary widths real devices report
+    a = get(srv, "/page/Chen2021Sys/0.jpg?w=390")
+    b = get(srv, "/page/Chen2021Sys/0.jpg?w=412")
+    assert a[2] == b[2] and a[1]["ETag"] == b[1]["ETag"]     # both snap to the 480 rung
+    wide = get(srv, "/page/Chen2021Sys/0.jpg?w=1100")
+    assert wide[1]["ETag"] != a[1]["ETag"] and len(wide[2]) > len(a[2])
+    # an absurd width is clamped to the top rung rather than honoured
+    assert get(srv, "/page/Chen2021Sys/0.jpg?w=99999")[1]["ETag"] == \
+        get(srv, f"/page/Chen2021Sys/0.jpg?w={pdfview.WIDTHS[-1]}")[1]["ETag"]
+    # no ?w= at all (a static build, or a viewer cached before this existed) still works
+    assert get(srv, "/page/Chen2021Sys/0.png")[0] == 200
+
+
+def test_pdf_derived_bodies_revalidate_with_an_etag(srv):
+    # a revisit costs one bodiless 304 instead of re-downloading (and re-rendering) the document
+    for path in ("/page/Chen2021Sys/0.jpg?w=828", "/words/Chen2021Sys/0.json",
+                 "/pages/Chen2021Sys.json", "/preview/Chen2021Sys.png"):
+        status, headers, body = get(srv, path)
+        assert status == 200 and body, path
+        etag = headers["ETag"]
+        assert "max-age=86400" in headers["Cache-Control"], path
+        s2, h2, b2 = get(srv, path, headers={"If-None-Match": etag})
+        assert (s2, b2) == (304, b""), path
+        assert h2["ETag"] == etag, path
+        # a stale validator still gets the real body
+        assert get(srv, path, headers={"If-None-Match": '"stale"'})[0] == 200, path
+
+
+def test_etag_changes_when_the_pdf_does(srv, repo):
+    before = get(srv, "/page/Chen2021Sys/0.jpg?w=828")[1]["ETag"]
+    with fitz.open() as doc:                                 # a different one-page PDF
+        doc.new_page().insert_text((72, 100), "revised paper")
+        (repo / "pdfs" / "Chen2021Sys.pdf").write_bytes(doc.tobytes())
+    after = get(srv, "/page/Chen2021Sys/0.jpg?w=828")
+    assert after[1]["ETag"] != before                        # re-ingest invalidates immediately
+    assert get(srv, "/page/Chen2021Sys/0.jpg?w=828",
+               headers={"If-None-Match": before})[0] == 200  # the old validator no longer matches
 
 
 def test_words_endpoint_serves_page_fraction_boxes(srv):

@@ -817,8 +817,9 @@ function rebuild(){
   redraw();
 }
 
-// Where does `key` already sit? Prefer the instance nearest `near`; every paper is in
-// the landing column, so level 0 is the guaranteed fallback.
+// Where does `key` already sit? Prefer the instance nearest `near`; every paper the graph can
+// point at is in the landing column (landingKeys keeps the referenced stubs), so level 0 is the
+// guaranteed fallback. Callers that could still miss check for the element before using it.
 function findCardLevel(key,near){
   let best=null;
   for(const lvl of Object.keys(cols).map(Number)){
@@ -940,21 +941,15 @@ function broadExtraEdges(iso,slug){
   }
   return extra;
 }
+// Strictly two-phase: every layout READ happens before every DOM WRITE.
+//
+// This used to be one loop that measured an endpoint, then set .hl on a card, then measured the
+// next endpoint — and each write invalidates layout, so each following read forces the browser to
+// re-lay-out the whole board synchronously. With ~3.7k cards in the landing column that penalty
+// was measured at 192x (1 µs for a clean getBoundingClientRect, 192 µs for one straight after a
+// class write), paid once per edge. Splitting the phases means at most ONE relayout per redraw
+// instead of one per edge, which is what made pinning a broad claim feel slow.
 function redraw(){
-  const bb=board.getBoundingClientRect();
-  const W=board.scrollWidth, H=board.scrollHeight;
-  svg.setAttribute("width",W); svg.setAttribute("height",H);
-  while(svg.firstChild) svg.removeChild(svg.firstChild);
-  // arrowheads
-  const defs=document.createElementNS(NS,"defs");
-  defs.innerHTML=`
-    <marker id="ar" markerWidth="8" markerHeight="8" refX="0" refY="3" orient="auto">
-      <path d="M0,0 L6,3 L0,6 Z" fill="${cssv('--grounded')}"/></marker>
-    <marker id="arx" markerWidth="8" markerHeight="8" refX="0" refY="3" orient="auto">
-      <path d="M0,0 L6,3 L0,6 Z" fill="${cssv('--cross')}"/></marker>
-    <marker id="arq" markerWidth="8" markerHeight="8" refX="0" refY="3" orient="auto">
-      <path d="M0,0 L6,3 L0,6 Z" fill="${cssv('--question')}"/></marker>`;
-  svg.appendChild(defs);
   // Isolation: the bright set is every pinned target (persisted, accumulating) ∪ the current
   // hover (transient). An edge incident on any target is drawn bright and its counterpart card
   // gets .hl; every other edge stays dim — faint scaffolding rather than a bright tangle.
@@ -963,15 +958,34 @@ function redraw(){
   const atT=(end,t)=>end.cardId===t.cardId&&end.sid===t.sid;
   const isTarget=end=>targets.some(t=>atT(end,t));
   const inc=e=>targets.some(t=>atT(e.from,t)||atT(e.to,t));   // incident on any target
-  document.querySelectorAll(".hl").forEach(el=>el.classList.remove("hl"));
   let work=edges.slice();
   for(const t of targets){                                    // broad target → connect collapsed papers too
     const slug=broadIsoSlug(t);
     if(slug) work=work.concat(broadExtraEdges(t,slug));
   }
   work.sort((a,b)=>(inc(a)?1:0)-(inc(b)?1:0));     // draw incident (bright) last → on top of dim
+
+  // ── phase 1: read ──────────────────────────────────────────────────────────────────────
+  // Nothing here may touch the DOM, so the browser answers every measurement from one layout.
+  const bb=board.getBoundingClientRect();
+  // Size the overlay from the COLUMNS, not from board.scrollWidth/scrollHeight. #edges is an
+  // absolutely-positioned child of #board, so it contributes to the board's own scroll extent —
+  // measuring the board to size the SVG fed the SVG's height back into the number that sets it,
+  // a ratchet that could only grow. Once the landing column made the board ~187k px tall at boot
+  // it stayed that tall forever, even when the content collapsed to a few hundred px, leaving a
+  // vast empty scroll region and making every forced relayout far more expensive than the visible
+  // content warranted. Columns share the SVG's origin (#board is the offsetParent), so their
+  // extent is the right measure and reading it costs no extra layout.
+  let W=0,H=0;
+  for(const lvl of Object.keys(cols)){
+    const el=cols[lvl].el;
+    W=Math.max(W,el.offsetLeft+el.offsetWidth); H=Math.max(H,el.offsetTop+el.offsetHeight);
+  }
+  W=Math.max(W,board.clientWidth); H=Math.max(H,board.clientHeight);   // always cover the viewport
+  const sTop=board.scrollTop, sLeft=board.scrollLeft;
+  const stroke={grounded:cssv('--grounded'),cross:cssv('--cross'),question:cssv('--question')};
+  const plan=[];
   for(const e of work){
-    const on=inc(e);                               // incident → bright; every other edge stays dim
     const ra=anchorRect(e.from), rb=anchorRect(e.to);
     if(!ra||!rb) continue;                          // no visible endpoint yet
     // Both ends name a specific slice but neither is on screen (e.g. a source→method grounding
@@ -980,34 +994,56 @@ function redraw(){
     // container→container line — piling up with its siblings into one opaque, never-dimming
     // arrow at the card border. Skip it until a drill reveals a row for it to sharpen onto.
     if(e.from.sid && e.to.sid && !rowVisible(e.from) && !rowVisible(e.to)) continue;
-    if(on){                                         // light up each non-target endpoint's card
-      for(const end of [e.from,e.to]){
-        const oc=document.getElementById(end.cardId);
-        if(oc&&!isTarget(end)) oc.classList.add("hl");
-      }
-    }
-    const ya=(ra.top+ra.bottom)/2-bb.top+board.scrollTop;
-    const yb=(rb.top+rb.bottom)/2-bb.top+board.scrollTop;
+    plan.push({e,ra,rb,on:inc(e)});
+  }
+
+  // ── phase 2: write ─────────────────────────────────────────────────────────────────────
+  svg.setAttribute("width",W); svg.setAttribute("height",H);
+  while(svg.firstChild) svg.removeChild(svg.firstChild);
+  const defs=document.createElementNS(NS,"defs");   // arrowheads
+  defs.innerHTML=`
+    <marker id="ar" markerWidth="8" markerHeight="8" refX="0" refY="3" orient="auto">
+      <path d="M0,0 L6,3 L0,6 Z" fill="${stroke.grounded}"/></marker>
+    <marker id="arx" markerWidth="8" markerHeight="8" refX="0" refY="3" orient="auto">
+      <path d="M0,0 L6,3 L0,6 Z" fill="${stroke.cross}"/></marker>
+    <marker id="arq" markerWidth="8" markerHeight="8" refX="0" refY="3" orient="auto">
+      <path d="M0,0 L6,3 L0,6 Z" fill="${stroke.question}"/></marker>`;
+  const frag=document.createDocumentFragment();
+  frag.appendChild(defs);
+  // .hl is recomputed as a set difference so a card that stays lit is never touched — a no-op
+  // hover (the common case while the pointer drifts inside one card) writes nothing at all.
+  const lit=new Set();
+  for(const {e,on} of plan){
+    if(!on) continue;                               // light up each non-target endpoint's card
+    for(const end of [e.from,e.to]) if(!isTarget(end)) lit.add(end.cardId);
+  }
+  for(const el of document.querySelectorAll(".hl"))
+    if(!lit.has(el.id)) el.classList.remove("hl"); else lit.delete(el.id);
+  for(const id of lit){ const oc=document.getElementById(id); if(oc) oc.classList.add("hl"); }
+
+  for(const {e,ra,rb,on} of plan){
+    const ya=(ra.top+ra.bottom)/2-bb.top+sTop;
+    const yb=(rb.top+rb.bottom)/2-bb.top+sTop;
     const contra=e.kind==="contra"||e.kind==="contradict";
     const ans=e.kind==="answers";
     const lat=e.kind==="corr"||contra;
     let d;
     if(Math.abs((ra.left+ra.right)-(rb.left+rb.right))<80){
       // same column (e.g. a lateral edge between two landing cards): bow out the right side
-      const x1=ra.right-bb.left+board.scrollLeft, x2=rb.right-bb.left+board.scrollLeft;
+      const x1=ra.right-bb.left+sLeft, x2=rb.right-bb.left+sLeft;
       const bow=Math.max(x1,x2)+26;
       d=`M${x1},${ya} C${bow},${ya} ${bow},${yb} ${x2},${yb}`;
     } else {                                          // cross-paper: connect the facing edges
       const aLeft=(ra.left+ra.right)/2 < (rb.left+rb.right)/2;
-      const x1=(aLeft?ra.right:ra.left)-bb.left+board.scrollLeft;
-      const x2=(aLeft?rb.left:rb.right)-bb.left+board.scrollLeft;
+      const x1=(aLeft?ra.right:ra.left)-bb.left+sLeft;
+      const x2=(aLeft?rb.left:rb.right)-bb.left+sLeft;
       const mx=(x1+x2)/2;
       d=`M${x1},${ya} C${mx},${ya} ${mx},${yb} ${x2},${yb}`;
     }
     const path=document.createElementNS(NS,"path");
     path.setAttribute("d",d);
     path.setAttribute("fill","none");
-    path.setAttribute("stroke",contra?cssv('--cross'):ans?cssv('--question'):cssv('--grounded'));
+    path.setAttribute("stroke",contra?stroke.cross:ans?stroke.question:stroke.grounded);
     path.setAttribute("stroke-width","1.6");
     if(lat) path.setAttribute("stroke-dasharray","5 4");
     else if(ans) path.setAttribute("stroke-dasharray","2 3");   // dotted: answers ≠ support
@@ -1015,8 +1051,9 @@ function redraw(){
     if(ans) path.setAttribute("marker-end","url(#arq)");
     else if(!lat) path.setAttribute("marker-end","url(#ar)");
     else if(contra) path.setAttribute("marker-end","url(#arx)");
-    svg.appendChild(path);
+    frag.appendChild(path);
   }
+  svg.appendChild(frag);                            // one insertion, not one per edge
 }
 function cssv(n){return getComputedStyle(document.documentElement).getPropertyValue(n).trim();}
 // Resolve an endpoint: the first visible row carrying the endpoint's sid — a slice row
@@ -1242,10 +1279,28 @@ function showTip(e, key, el, force){
   tip.style.left = x + "px"; tip.style.top = y + "px";
 }
 
+// ── page raster sizing ───────────────────────────────────────────────────────────────────
+// The server used to hand every client the same 1600px-wide PNG — about 1.1 MB per page, which
+// on a phone is ~7x the bytes needed to fill a 390px-wide pane and the difference between a
+// viewer that scrolls and one that stalls. Now the client asks for the width it will actually
+// paint and the server snaps up to a shared rung (keep RUNGS in step with pdfview.WIDTHS).
+const RUNGS = [480, 640, 828, 1100, 1600];
+// Cap the device pixel ratio at 2: a 3x phone gains nothing legible on a rasterized page and
+// pays 2.25x the bytes for it. Desktop dock at 44% of a 1440px window lands on 1100.
+const DPR = Math.min(window.devicePixelRatio || 1, 2);
+function rung(cssW, zoom){                          // narrowest rung that covers this paint width
+  const want = Math.ceil(cssW * DPR * (zoom || 1));
+  return RUNGS.find(r => want <= r) || RUNGS[RUNGS.length - 1];
+}
+// JPEG at the server's quality 82 is ~2.5x smaller than PNG for a rendered page and visually
+// indistinguishable at reading zoom — these are photographs of text, not line art needing exact
+// pixels. Highlights and the text overlay are DOM on top, so nothing lossy touches them.
+const pageSrc = (key, n, w) => `page/${key}/${n}.jpg?w=${w}`;
+
 // ── PDF quote location resolution ────────────────────────────────────────────────────────
 // A slice's weld is no longer shown as text — the PDF *is* the link. The quote's location is
 // resolved from its stored quote_loc (lit locate) or live server-side (/resolve → page +
-// highlight rects) and cached per session; the page is rendered by /page/<key>/<n>.png.
+// highlight rects) and cached per session; the page is rendered by /page/<key>/<n>.jpg.
 // Live only — needs `lit serve`.
 const locCache = new Map();                        // "key:sid" -> {page,rects} | null (a miss)
 async function resolveLoc(key, sid){
@@ -1495,6 +1550,7 @@ function mountPage(win, key, page, rects, opts){
     stage.appendChild(hl);
   }
   const view = {z: 1, W0: 0, H0: 0};             // W0/H0 = base (fit-width) page size in px
+  view.rw = rung(body.clientWidth, 1);           // raster rung in force; grows as the user zooms
   let ready; win._ready = new Promise(r => ready = r);   // text layer waits on W0/H0 being known
   const zoomTo = (z1, cx, cy) => {               // zoom around viewport point (cx,cy), keep it fixed
     z1 = Math.max(1, Math.min(12, z1));          // min zoom = fit-width (never a stamp in grey)
@@ -1503,8 +1559,17 @@ function mountPage(win, key, page, rects, opts){
     stage.style.transform = `scale(${z1})`;
     body.scrollLeft = ax / z0 * z1 - cx; body.scrollTop = ay / z0 * z1 - cy;
     view.z = z1;
+    const r = rung(view.W0 || body.clientWidth, z1);   // zoomed past this raster → fetch it sharper
+    if (r > view.rw) { view.rw = r;
+      const next = new Image();                  // decode off-screen, then swap: no blink
+      next.onload = () => { img.src = next.src; };
+      next.src = pageSrc(key, page, r); }
   };
   img.onload = () => {
+    // Only the first raster lays the stage out. A sharper one swapped in by zoomTo fires onload
+    // again, and re-running this would snap the reader back to fit-width mid-zoom.
+    if (view.laidOut) return;
+    view.laidOut = true;
     const load = win.querySelector(".pw-loading"); if (load) load.remove();
     view.W0 = body.clientWidth;                  // fit-width (scrollbar-gutter keeps this stable)
     view.H0 = view.W0 * (img.naturalHeight / img.naturalWidth);
@@ -1517,7 +1582,8 @@ function mountPage(win, key, page, rects, opts){
     ready();
   };
   img.onerror = () => { const l = win.querySelector(".pw-loading"); if (l) l.textContent = "page render failed"; };
-  img.src = `page/${key}/${page}.png`;
+  img.decoding = "async";
+  img.src = pageSrc(key, page, view.rw);
   if (opts.interactive === false) return;
 
   body.addEventListener("wheel", e => {          // ctrl/⌘-wheel (and trackpad pinch) zooms; plain wheel scrolls
@@ -1610,8 +1676,28 @@ async function mountDoc(win, key, page, rects, opts){
   if (rects.length) { let y0 = 1, y1 = 0; for (const r of rects) { y0 = Math.min(y0, r[1]); y1 = Math.max(y1, r[3]); } hy = qp.top + (y0 + y1) / 2 * qp.h; }
   body.scrollTop = Math.max(0, Math.min(view.H - body.clientHeight, hy - body.clientHeight / 2));
 
+  view.rw = rung(W0, 1);                          // raster rung in force; grows as the user zooms
   const loadImg = p => { if (p.imgLoaded) return; p.imgLoaded = true;
-    const img = new Image(); img.className = "pw-img"; img.src = `page/${key}/${p.n}.png`; p.div.appendChild(img); };
+    if (!p.img) {                                 // one <img> per page box, reused on re-entry
+      p.img = new Image(); p.img.className = "pw-img"; p.img.decoding = "async";
+      p.div.appendChild(p.img);                   // stays under the absolutely-positioned overlays
+    }
+    p.rw = view.rw; p.img.src = pageSrc(key, p.n, view.rw); };
+  // Zooming past the rung a page was rasterized at would just magnify its pixels, so re-fetch the
+  // on-screen pages one rung up. Only pages actually in view are upgraded (the rest re-fetch
+  // lazily when the observer reaches them), and the new raster is decoded off-screen before it
+  // replaces the old one, so a zoom never blinks the page out.
+  const upgradeRasters = () => {
+    const br = body.getBoundingClientRect();
+    for (const p of pages) {
+      if (!p.imgLoaded || p.rw >= view.rw) continue;
+      const r = p.div.getBoundingClientRect();
+      if (r.bottom < br.top - 400 || r.top > br.bottom + 400) { p.imgLoaded = false; continue; }
+      const want = view.rw, next = new Image();
+      next.onload = () => { if (p.img && p.rw < want) { p.img.src = next.src; p.rw = want; } };
+      next.src = pageSrc(key, p.n, want);
+    }
+  };
   const buildText = async p => {                 // transparent selectable overlay for one page (pdf.js trick)
     if (p.textBuilt) return; p.textBuilt = true;
     let words = []; try { words = await fetch(`words/${key}/${p.n}.json`).then(r => r.ok ? r.json() : []); } catch { words = []; }
@@ -1623,10 +1709,14 @@ async function mountDoc(win, key, page, rects, opts){
     p.div.appendChild(layer);
     for (const [sp, tw] of spans) { const nw = sp.offsetWidth; if (nw > 0) sp.style.transform = `scaleX(${tw / nw})`; sp.appendChild(document.createTextNode(" ")); }
   };
+  // Prefetch reach: a screen and a bit on touch, where bandwidth is the scarce thing and a fast
+  // flick would otherwise queue a dozen page fetches the reader scrolls straight past; the old
+  // 1200px stays on desktop, where the pages are already local.
+  const REACH = matchMedia("(hover:none) and (pointer:coarse)").matches ? "500px 0px" : "1200px 0px";
   const io = new IntersectionObserver(es => {    // render (+ text, in text mode) pages as they near view
     for (const e of es) { if (!e.isIntersecting) continue; const p = pages[+e.target.dataset.n];
       loadImg(p); if (win.dataset.tool === "text") buildText(p); }
-  }, {root: body, rootMargin: "1200px 0px"});
+  }, {root: body, rootMargin: REACH});
   pages.forEach(p => io.observe(p.div));
 
   const zoomTo = (z1, cx, cy) => {               // zoom around viewport point, keep it fixed
@@ -1635,6 +1725,8 @@ async function mountDoc(win, key, page, rects, opts){
     sizer.style.width = view.W0 * z1 + "px"; sizer.style.height = view.H * z1 + "px";
     stage.style.transform = `scale(${z1})`;
     body.scrollLeft = ax / z0 * z1 - cx; body.scrollTop = ay / z0 * z1 - cy; view.z = z1;
+    const r = rung(view.W0, z1);                 // zoomed in past this raster's rung → sharpen
+    if (r > view.rw) { view.rw = r; upgradeRasters(); }
   };
   body.addEventListener("wheel", e => {          // ctrl/⌘-wheel (and pinch) zooms; plain wheel scrolls
     if (!(e.ctrlKey || e.metaKey)) return; e.preventDefault();
@@ -1680,9 +1772,27 @@ function dragBy(handle, onMove, base, guard){
 }
 
 // ── boot: the landing list (column 0), ranked by pass desc, then year desc ───────────────
+// The landing column lists CURATED papers only. ORDER carries the whole bibliography (~3.7k
+// entries against 54 curated ones), and rendering a card for each built a ~187k-px column whose
+// mere existence taxed every forced relayout — one per click, one per hover. Measured at 4x CPU
+// throttle, trimming it cut a click from 34.8 ms to 13.6 ms and rebuild() from 23.2 to 10.2 ms.
+//
+// Nothing becomes unreachable. Stubs stay indexed by the search box, which materializes a landing
+// card on demand (gotoPaper), and the two ways a stub is drawn *into* the graph both still work:
+// uncurated grounds fold into the per-card source stack (they never had a landing card of their
+// own to anchor on), and a lateral/answers target that is only a stub is materialized up front by
+// landingKeys so its arrow still lands.
+function landingKeys(){
+  const keep=new Set(ORDER.filter(k=>PAPERS[k]));
+  for(const p of Object.values(PAPERS))
+    for(const f of ["lateral","ans"])
+      for(const l of p[f]||[])
+        if(!l.slug && !PAPERS[l.key] && STUBS[l.key]) keep.add(l.key);
+  return ORDER.filter(k=>keep.has(k));               // ORDER's ranking, filtered — never resorted
+}
 function boot(){
-  ensureCol(0,"all papers · ranked by curation");
-  ORDER.forEach(k=>{ if(!ACTIVE.has(k)) addPaper(0,k); });   // in-progress papers live in their own windows
+  ensureCol(0,"curated papers · search finds the rest");
+  landingKeys().forEach(k=>{ if(!ACTIVE.has(k)) addPaper(0,k); });  // in-progress papers live in their own windows
   ensureBroadBand();                                 // synthesis band present from the landing view
   redraw();
 }
@@ -1742,8 +1852,10 @@ if (PDFWIN) {
 // ── find a paper (build + serve) ─────────────────────────────────────────────────────────
 // A paper-finding search: type fragments of what you remember (title, author, journal, year,
 // tag) and jump to the matching card. NOT a knowledge search over claims/quotes. Purely
-// client-side, so a static `lit build` keeps it working offline. Curated papers rank above
-// stubs (ORDER is already curated-first); in-progress (ACTIVE) papers live in their own curation
+// client-side, so a static `lit build` keeps it working offline. It indexes the WHOLE
+// bibliography, curated or not — since the landing column trimmed down to curated papers, this is
+// the only path to a stub, and gotoPaper mints its card on demand. Curated papers rank above stubs
+// (ORDER is already curated-first); in-progress (ACTIVE) papers live in their own curation
 // windows, not the browse column, so they're left out — there's no landing card to jump to.
 const searchInput = document.getElementById("search");
 const searchResults = document.getElementById("searchResults");
@@ -1796,8 +1908,14 @@ function renderResults(q){
 }
 function gotoPaper(key){
   closeSearch();
-  const el = document.getElementById(`card-0:${key}`);   // every browse paper has a landing card
-  if(!el) return;
+  let el = document.getElementById(`card-0:${key}`);
+  if(!el){                                   // an uncurated stub: the landing list carries only
+    if(!STUBS[key] && !PAPERS[key]) return;  // curated papers, so mint its card now and keep it
+    addPaper(0, key);                        // (appended below the ranking — it's a search result,
+    el = document.getElementById(`card-0:${key}`);       // not part of the curation order)
+    if(!el) return;
+    redraw();                                            // the column grew; edges re-anchor
+  }
   el.scrollIntoView({behavior: "smooth", block: "center"});
   el.classList.remove("found"); void el.offsetWidth;     // restart the flash if it's still running
   el.classList.add("found");

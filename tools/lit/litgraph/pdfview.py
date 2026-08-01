@@ -15,24 +15,70 @@ from pathlib import Path
 import fitz  # pymupdf — a litgraph hard dependency
 
 PREVIEW_WIDTH = 552  # px (2x the ~276px tooltip box — crisp on retina, still tiny)
-PAGE_WIDTH = 1600    # px — full-page render for the floating quote window (crisp under zoom)
+PAGE_WIDTH = 1600    # px — the widest rung: a desktop dock at full zoom
 _MAX_PX = 4_000_000  # cap rasterized pixels (oversized-mediabox guard)
 
-_PAGES: dict[tuple, tuple[float, bytes]] = {}   # (name, n, width) -> (mtime, png)
-_WORDS: dict[tuple, tuple[float, list]] = {}    # (name, n)        -> (mtime, [word,...])
-_SIZES: dict[str, tuple[float, list]] = {}      # name             -> (mtime, [[w,h],...])
+# The rungs a page may be rasterized at. The client asks for the width it will actually paint
+# (CSS width × capped DPR — the viewer's `rung()`, whose RUNGS must mirror this list) and the
+# server snaps *up* to a rung, so a 390px phone and a 412px phone share one cache entry and one
+# render instead of each minting their own. 828 is the phone rung, 1100 a desktop dock's, and the
+# ladder tops out where the old hardcoded PAGE_WIDTH was.
+WIDTHS = (480, 640, 828, 1100, 1600)
+
+# Rendered pages are photographs of text: PNG stores them losslessly and pays ~2.5x the bytes
+# for it. JPEG at 82 is the knee of the quality/size curve here — measured on a text-heavy and a
+# figure-heavy page, past 82 the size climbs faster than anything the eye picks up.
+JPEG_QUALITY = 82
+
+_PAGES: dict[tuple, tuple[float, bytes]] = {}   # (name, n, width, fmt) -> (mtime, image bytes)
+_WORDS: dict[tuple, tuple[float, list]] = {}    # (name, n)             -> (mtime, [word,...])
+_SIZES: dict[str, tuple[float, list]] = {}      # name                  -> (mtime, [[w,h],...])
+
+# The raster cache is bounded by bytes, not entries, because entry size swings ~20x across rungs.
+# It matters more than it used to: a page can now be cached at several widths and two formats, so
+# a long session over a 20-paper worklist would otherwise grow without limit. Insertion order is
+# the eviction order (dicts are ordered) and a hit moves its key to the end, giving a plain LRU.
+_PAGE_BUDGET = 256 * 1024 * 1024
+_pages_bytes = 0
 
 
-def render_page(pdf: Path, n: int, width: int) -> bytes:
-    """Page ``n`` of ``pdf`` rendered to a ``width``-px PNG, cached until the file's mtime
-    changes. n=0 + :data:`PREVIEW_WIDTH` is the tooltip thumbnail; any page at
-    :data:`PAGE_WIDTH` feeds the floating quote window. Raises ``IndexError`` on an out-of-range
-    page (the HTTP layer turns that into a 404)."""
+def _cache_page(key: tuple, mtime: float, img: bytes) -> None:
+    """Store a rendered page, evicting least-recently-used entries to stay under the budget."""
+    global _pages_bytes
+    old = _PAGES.pop(key, None)
+    if old is not None:
+        _pages_bytes -= len(old[1])
+    _PAGES[key] = (mtime, img)
+    _pages_bytes += len(img)
+    while _pages_bytes > _PAGE_BUDGET and len(_PAGES) > 1:
+        oldest = next(iter(_PAGES))
+        _pages_bytes -= len(_PAGES.pop(oldest)[1])
+
+
+def snap_width(width: int | None) -> int:
+    """The ladder rung to render at for a requested ``width``: the narrowest rung that still
+    covers it, or the widest rung if it overshoots. ``None`` (an unversioned client that sends no
+    ``?w=``) gets :data:`PAGE_WIDTH`, so the old behaviour is the default. Snapping is what keeps
+    the render cache from fragmenting across every distinct viewport on the network."""
+    if width is None:
+        return PAGE_WIDTH
+    for rung in WIDTHS:
+        if width <= rung:
+            return rung
+    return WIDTHS[-1]
+
+
+def render_page(pdf: Path, n: int, width: int, fmt: str = "png") -> bytes:
+    """Page ``n`` of ``pdf`` rendered to a ``width``-px image in ``fmt`` (``"png"`` or ``"jpg"``),
+    cached until the file's mtime changes. n=0 + :data:`PREVIEW_WIDTH` is the tooltip thumbnail;
+    any page feeds the floating quote window. Raises ``IndexError`` on an out-of-range page (the
+    HTTP layer turns that into a 404)."""
     pdf = Path(pdf)
     mtime = pdf.stat().st_mtime
-    key = (pdf.name, n, width)
+    key = (pdf.name, n, width, fmt)
     hit = _PAGES.get(key)
     if hit and hit[0] == mtime:
+        _PAGES[key] = _PAGES.pop(key)      # touch: most-recently-used goes to the end
         return hit[1]
     with fitz.open(pdf) as doc:
         page = doc[n]
@@ -42,9 +88,11 @@ def render_page(pdf: Path, n: int, width: int) -> bytes:
         px = width * (page.rect.height * zoom)
         if px > _MAX_PX:
             zoom *= (_MAX_PX / px) ** 0.5
-        png = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom)).tobytes("png")
-    _PAGES[key] = (mtime, png)
-    return png
+        pix = page.get_pixmap(matrix=fitz.Matrix(zoom, zoom))
+        img = (pix.tobytes("jpg", jpg_quality=JPEG_QUALITY) if fmt == "jpg"
+               else pix.tobytes("png"))
+    _cache_page(key, mtime, img)
+    return img
 
 
 def page_sizes(pdf: Path) -> list[list[float]]:

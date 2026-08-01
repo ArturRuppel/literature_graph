@@ -9,10 +9,19 @@ BuildError as a 500 (the server survives; fix the YAML and refresh). (2) The cur
 `/pdf/<citekey>.pdf` (the file) and `/preview/<citekey>.png` (its first page rendered
 server-side — an <img> previews everywhere, unlike embedding a PDF), which the viewer
 tooltip upgrades on: hover previews the paper, click opens it. A loopback convenience
-for one curator, not a deployment server."""
+for one curator, not a deployment server.
+
+Serving pages to a phone is a bandwidth problem, so three things are negotiated rather than
+fixed. `/page/<citekey>/<n>.<png|jpg>?w=` lets the client name the width it will actually paint
+(snapped to a `pdfview.WIDTHS` rung) and pick JPEG, which together cut a page from ~1.1 MB to
+~165 KB; every PDF-derived body carries an mtime-keyed ETag so a revisit costs a bodiless 304
+instead of the whole document again; and text bodies gzip on demand, which matters most for the
+~2 MB graph page itself. Omitting `?w=` and asking for `.png` reproduces the old behaviour
+exactly, so a static `lit build` artifact and any cached older viewer keep working."""
 
 from __future__ import annotations
 
+import gzip
 import json
 import os
 import re
@@ -40,12 +49,22 @@ _PDF_NAME = re.compile(r"^[A-Za-z0-9]+\.pdf$")
 _PNG_NAME = re.compile(r"^[A-Za-z0-9]+\.png$")
 _CITEKEY = re.compile(r"^[A-Za-z0-9]+$")
 _SLICE_ID = re.compile(r"^[cqm]\d+$")
-_PAGE_REQ = re.compile(r"^/page/([A-Za-z0-9]+)/(\d+)\.png$")
+_PAGE_REQ = re.compile(r"^/page/([A-Za-z0-9]+)/(\d+)\.(png|jpg)$")
 _WORDS_REQ = re.compile(r"^/words/([A-Za-z0-9]+)/(\d+)\.json$")
 _PAGES_REQ = re.compile(r"^/pages/([A-Za-z0-9]+)\.json$")
 
-_IMG_CACHE = "max-age=600"  # page/preview PNGs are immutable until the PDF's mtime changes
+# Page rasters, word geometry and the size manifest are all pure functions of the PDF's bytes, so
+# they're cacheable for a good long while — a day, then one cheap ETag revalidation that comes
+# back 304 with an empty body. (Before this they carried max-age=600, which meant a phone that
+# came back after lunch re-downloaded and re-rendered the entire document.) The ETag is keyed on
+# the PDF's mtime plus the render parameters, so re-ingesting a PDF invalidates it immediately
+# and a revalidation inside the day still gets the right answer.
+_IMG_CACHE = "public, max-age=86400"
 _PWA_CACHE = "public, max-age=86400"
+
+# Content types worth gzipping: markup, JSON, plain text. PNG/JPEG/PDF are already compressed and
+# would only burn CPU to get marginally bigger.
+_TEXTISH = re.compile(r"^(text/|application/(json|manifest\+json|javascript))")
 _VIEWER_ASSETS = Path(__file__).parent / "viewer"
 
 
@@ -148,6 +167,22 @@ def _valid_rects(rects) -> bool:
     return True
 
 
+def _etag(pdf: Path, kind: str, *params) -> str:
+    """A validator for anything derived from `pdf`: its mtime + size, plus whatever render
+    parameters distinguish this body from its siblings. Cheap (one stat) and exact — re-ingesting
+    a PDF changes the mtime, so every derived raster, word list and manifest invalidates at once."""
+    st = pdf.stat()
+    bits = "-".join(str(p) for p in params)
+    return f'"{kind}-{st.st_mtime_ns:x}-{st.st_size:x}{"-" + bits if bits else ""}"'
+
+
+def _int_param(url: str, name: str) -> int | None:
+    """A non-negative integer query parameter, or None when absent or malformed. Callers treat
+    None as "client didn't say", never as zero."""
+    raw = parse_qs(urlparse(url).query).get(name, [""])[0]
+    return int(raw) if raw.isdigit() else None
+
+
 def _data_version(root: Path) -> int:
     """Max mtime (ns) over the YAML the card is built from — curated/*.yaml + stubs.yaml.
     The viewer piggybacks this on the focus poll and reloads the cockpit card when it bumps,
@@ -196,16 +231,42 @@ class _Server(ThreadingHTTPServer):
 class _Handler(BaseHTTPRequestHandler):
     server_version = "litserve"
 
-    def _send(self, status: int, ctype: str, body: bytes, cache: str = "no-store") -> None:
+    def _send(self, status: int, ctype: str, body: bytes, cache: str = "no-store",
+              etag: str | None = None) -> None:
+        # The graph page is ~2 MB of HTML-wrapped JSON and it's `no-store`, so a phone re-downloads
+        # all of it on every refresh. It gzips ~4x for ~30 ms of CPU, which over anything but
+        # loopback is a trade worth making every time. Images are already compressed — skip them.
+        enc = None
+        if (len(body) > 1024 and _TEXTISH.match(ctype)
+                and "gzip" in self.headers.get("Accept-Encoding", "")):
+            body, enc = gzip.compress(body, 6), "gzip"
         self.send_response(status)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
+        if enc:
+            self.send_header("Content-Encoding", enc)
+            self.send_header("Vary", "Accept-Encoding")
         # HTML/JSON are live-rebuilt → never cache; page/preview images are immutable until the
         # PDF changes → let the browser reuse them so reopening a window doesn't refetch/redecode
         self.send_header("Cache-Control", cache)
+        if etag:
+            self.send_header("ETag", etag)
         self.end_headers()
         if self.command != "HEAD":
             self.wfile.write(body)
+
+    def _send_cached(self, ctype: str, body_fn, etag: str, cache: str = _IMG_CACHE) -> None:
+        """Serve a PDF-derived body under an ETag, answering a matching `If-None-Match` with a
+        bodiless 304. `body_fn` is called only on a miss, so a revalidation costs neither the
+        render nor the bytes — the difference between a phone re-fetching 15 MB of page rasters on
+        every reopen and it fetching nothing at all."""
+        if self.headers.get("If-None-Match") == etag:
+            self.send_response(HTTPStatus.NOT_MODIFIED)
+            self.send_header("ETag", etag)
+            self.send_header("Cache-Control", cache)
+            self.end_headers()
+            return
+        self._send(HTTPStatus.OK, ctype, body_fn(), cache=cache, etag=etag)
 
     def _payload_dict(self) -> dict:
         """graph.json as a dict, rebuilt from the repo's YAML on every request (may raise
@@ -301,24 +362,35 @@ class _Handler(BaseHTTPRequestHandler):
                     return self._send(HTTPStatus.NOT_FOUND, "text/plain; charset=utf-8",
                                       f"no preview: {name}\n".encode())
                 try:
-                    png = pdfview.preview(pdf)
+                    return self._send_cached("image/png", lambda: pdfview.preview(pdf),
+                                             _etag(pdf, "preview"))
                 except Exception:
                     return self._send(HTTPStatus.INTERNAL_SERVER_ERROR,
                                       "text/plain; charset=utf-8",
                                       f"preview failed: {name}\n".encode())
-                return self._send(HTTPStatus.OK, "image/png", png, cache=_IMG_CACHE)
             m = _PAGE_REQ.match(path)
             if m:
                 pdf = self.server.pdf_dir / (m.group(1) + ".pdf")
                 if not pdf.is_file():
                     return self._send(HTTPStatus.NOT_FOUND, "text/plain; charset=utf-8",
                                       f"no PDF: {m.group(1)}\n".encode())
+                n, fmt = int(m.group(2)), m.group(3)
+                # `?w=` is the client telling us the width it will actually paint; we snap it to a
+                # ladder rung. No `?w=` (a static build, or a cached older viewer) keeps the old
+                # full-width render, so the route stays backward compatible.
+                width = pdfview.snap_width(_int_param(self.path, "w"))
+                ctype = "image/jpeg" if fmt == "jpg" else "image/png"
                 try:
-                    png = pdfview.render_page(pdf, int(m.group(2)), pdfview.PAGE_WIDTH)
+                    # bound-check off the cached manifest, so an out-of-range page 404s without
+                    # paying for a render (and a revalidation never renders at all)
+                    if n >= len(pdfview.page_sizes(pdf)):
+                        raise IndexError(n)
+                    return self._send_cached(
+                        ctype, lambda: pdfview.render_page(pdf, n, width, fmt),
+                        _etag(pdf, "page", n, width, fmt))
                 except Exception:
                     return self._send(HTTPStatus.NOT_FOUND, "text/plain; charset=utf-8",
                                       b"no such page\n")
-                return self._send(HTTPStatus.OK, "image/png", png, cache=_IMG_CACHE)
             m = _PAGES_REQ.match(path)
             if m:
                 pdf = self.server.pdf_dir / (m.group(1) + ".pdf")
@@ -326,25 +398,28 @@ class _Handler(BaseHTTPRequestHandler):
                     return self._send(HTTPStatus.NOT_FOUND, "text/plain; charset=utf-8",
                                       f"no PDF: {m.group(1)}\n".encode())
                 try:
-                    sizes = pdfview.page_sizes(pdf)
+                    return self._send_cached(
+                        "application/json; charset=utf-8",
+                        lambda: json.dumps(pdfview.page_sizes(pdf)).encode(),
+                        _etag(pdf, "pages"))
                 except Exception:
                     return self._send(HTTPStatus.INTERNAL_SERVER_ERROR, "text/plain; charset=utf-8",
                                       f"page manifest failed: {m.group(1)}\n".encode())
-                return self._send(HTTPStatus.OK, "application/json; charset=utf-8",
-                                  json.dumps(sizes).encode(), cache=_IMG_CACHE)
             m = _WORDS_REQ.match(path)
             if m:
                 pdf = self.server.pdf_dir / (m.group(1) + ".pdf")
                 if not pdf.is_file():
                     return self._send(HTTPStatus.NOT_FOUND, "text/plain; charset=utf-8",
                                       f"no PDF: {m.group(1)}\n".encode())
+                n = int(m.group(2))
                 try:
-                    words = pdfview.page_words(pdf, int(m.group(2)))
+                    return self._send_cached(
+                        "application/json; charset=utf-8",
+                        lambda: json.dumps(pdfview.page_words(pdf, n)).encode(),
+                        _etag(pdf, "words", n))
                 except Exception:
                     return self._send(HTTPStatus.NOT_FOUND, "text/plain; charset=utf-8",
                                       b"no such page\n")
-                return self._send(HTTPStatus.OK, "application/json; charset=utf-8",
-                                  json.dumps(words).encode(), cache=_IMG_CACHE)
             return self._send(HTTPStatus.NOT_FOUND, "text/plain; charset=utf-8",
                               b"not found\n")
         except BuildError as e:
