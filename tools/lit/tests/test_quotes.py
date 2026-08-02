@@ -4,8 +4,10 @@ polish_graph integration (offline — inline `.md` text, no network)."""
 
 from pathlib import Path
 
+import fitz
+
 from litgraph.graph import Graph, Paper, Slice
-from litgraph.quotes import polish, polish_graph, strip_artifacts
+from litgraph.quotes import polish, polish_graph, quote_loc_covers, strip_artifacts, verify_quote_locs_graph
 
 
 # --- strip_artifacts ---------------------------------------------------------
@@ -133,3 +135,105 @@ def test_polish_graph_skips_stubs_and_quoteless(tmp_path: Path):
     g = Graph(papers={"Stub2019Jour": p_stub}, broad={}, order=["Stub2019Jour"])
     assert polish_graph(g, tmp_path) == []
     assert p_stub.slices[0].quote_display is None
+
+
+# --- quote_loc_covers: tolerant comparison ------------------------------------
+
+def test_quote_loc_covers_exact_match():
+    assert quote_loc_covers("cells jam near the transition", "cells jam near the transition")
+
+
+def test_quote_loc_covers_tolerates_ligatures():
+    # the PDF text layer yields a ligature glyph where the authored quote spells it out
+    assert quote_loc_covers("the tissue is ﬂuid-like at low density",
+                             "the tissue is fluid-like at low density")
+
+
+def test_quote_loc_covers_tolerates_end_of_line_hyphenation():
+    for extracted, quote in [
+        ("a three-dimen-\nsional structure emerges", "a three-dimensional structure emerges"),
+        ("carefully consid-\nered before publication", "carefully considered before publication"),
+        ("worth ex-\nplaining in detail here", "worth explaining in detail here"),
+    ]:
+        assert quote_loc_covers(extracted, quote)
+
+
+def test_quote_loc_covers_tolerates_arbitrary_whitespace():
+    assert quote_loc_covers("cells   jam\nnear   the\ntransition", "cells jam near the transition")
+
+
+def test_quote_loc_covers_tolerates_watermark_prefix_junk():
+    # a diagonal "Downloaded from ..." watermark bleeds a few glyphs into the clip rect
+    for junk in ("gpg", "ygyy", "p"):
+        extracted = junk + "cells jam near the transition boundary"
+        assert quote_loc_covers(extracted, "cells jam near the transition boundary")
+
+
+def test_quote_loc_covers_flags_a_genuinely_different_sentence():
+    extracted = "temperature increases steadily throughout the whole experiment"
+    quote = "cells jam near the transition boundary in every replicate"
+    assert not quote_loc_covers(extracted, quote)
+
+
+def test_quote_loc_covers_is_inconclusive_on_tiny_inputs():
+    # too short to fingerprint reliably -> prefer the false negative, don't flag
+    assert quote_loc_covers("ab", "cells jam near the transition")
+    assert quote_loc_covers("cells jam near the transition", "ab")
+    assert quote_loc_covers("", "cells jam near the transition")
+
+
+# --- verify_quote_locs_graph: PDF-backed integration --------------------------
+
+def _rect_frac(page: "fitz.Page", text: str) -> list[list[float]]:
+    w, h = page.rect.width, page.rect.height
+    return [[r.x0 / w, r.y0 / h, r.x1 / w, r.y1 / h] for r in page.search_for(text)]
+
+
+def _two_line_pdf(path: Path) -> None:
+    with fitz.open() as doc:
+        pg = doc.new_page()
+        pg.insert_text((72, 100), "cells jam near the transition boundary")
+        pg.insert_text((72, 140), "temperature increases steadily afterward")
+        doc.save(str(path))
+
+
+def test_verify_quote_locs_graph_passes_a_correct_weld(tmp_path: Path):
+    pdf_path = tmp_path / "Demo2020Jour.pdf"
+    _two_line_pdf(pdf_path)
+    with fitz.open(pdf_path) as doc:
+        good_rects = _rect_frac(doc[0], "cells jam near the transition boundary")
+    g = _graph(Slice(id="c1", kind="claim", text="x", quote="cells jam near the transition boundary",
+                      quote_loc={"page": 0, "rects": good_rects}))
+    assert verify_quote_locs_graph(g, tmp_path) == []
+
+
+def test_verify_quote_locs_graph_flags_a_mis_parented_weld(tmp_path: Path):
+    # simulates the silent re-parenting bug: a slice's quote_loc ends up pointing at a
+    # DIFFERENT slice's sentence (store._place_quote_loc fixes the write path; this is the
+    # standing check that would have caught it even if the write path regressed).
+    pdf_path = tmp_path / "Demo2020Jour.pdf"
+    _two_line_pdf(pdf_path)
+    with fitz.open(pdf_path) as doc:
+        wrong_rects = _rect_frac(doc[0], "temperature increases steadily afterward")
+    g = _graph(Slice(id="c1", kind="claim", text="x", quote="cells jam near the transition boundary",
+                      quote_loc={"page": 0, "rects": wrong_rects}))
+    warns = verify_quote_locs_graph(g, tmp_path)
+    assert len(warns) == 1
+    assert "c1" in warns[0] and "quote_loc does not cover its quote" in warns[0]
+
+
+def test_verify_quote_locs_graph_skips_missing_pdf_and_uncovered_slices(tmp_path: Path):
+    g = _graph(
+        Slice(id="c1", kind="claim", text="x", quote="anything at all"),                # no quote_loc
+        Slice(id="c2", kind="claim", text="y", quote_loc={"page": 0, "rects": [[0, 0, 1, 1]]}),  # no quote
+    )
+    assert verify_quote_locs_graph(g, tmp_path) == []   # no Demo2020Jour.pdf on disk -> skipped
+
+
+def test_verify_quote_locs_graph_flags_out_of_range_page(tmp_path: Path):
+    pdf_path = tmp_path / "Demo2020Jour.pdf"
+    _two_line_pdf(pdf_path)
+    g = _graph(Slice(id="c1", kind="claim", text="x", quote="cells jam near the transition boundary",
+                      quote_loc={"page": 3, "rects": [[0.1, 0.1, 0.5, 0.2]]}))
+    warns = verify_quote_locs_graph(g, tmp_path)
+    assert len(warns) == 1 and "c1" in warns[0] and "out of range" in warns[0]

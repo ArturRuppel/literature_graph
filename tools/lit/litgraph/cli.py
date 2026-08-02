@@ -12,7 +12,7 @@ from .ingest import IngestError, Report, ingest
 from .graph import build_graph, BuildError
 from .build import emit
 from .preview import build_preview_graph, emit_preview
-from .quotes import polish_graph
+from .quotes import polish_graph, verify_quote_locs_graph
 from .serve import serve
 
 
@@ -193,6 +193,8 @@ def main(argv: list[str] | None = None) -> int:
             print(f"error: {e}", file=sys.stderr)
             return 1
         for w in polish_graph(graph, pdf_dir):
+            print(f"quote-flag: {w}", file=sys.stderr)
+        for w in verify_quote_locs_graph(graph, pdf_dir):
             print(f"quote-flag: {w}", file=sys.stderr)
         emit(graph, out)
         print(f"built {len(graph.papers)} papers -> {out}/index.html")

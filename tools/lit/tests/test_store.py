@@ -57,6 +57,75 @@ def test_write_quote_loc_round_trips_and_preserves_comments(tmp_path):
     assert "quote_loc" not in next(s for s in doc["claims"] if s["id"] == "c1")  # only the target changed
 
 
+def test_write_quote_loc_lands_immediately_after_quote(tmp_path):
+    # quote_loc must sit right after `quote`, not at the tail of the mapping (behind whatever
+    # other keys the slice happens to carry) — that tail position is exactly what let a
+    # trailing comment silently re-parent it (see the trap test below).
+    (tmp_path / "curated").mkdir(parents=True)
+    p = tmp_path / "curated" / "Chen2021Sys.yaml"
+    p.write_text(
+        "claims:\n"
+        '  - {id: c1, text: "t", quote: "throughput increased monotonically", '
+        "grounded_in: [m1], leads_to: [x]}\n")
+    store.write_quote_loc(tmp_path, "Chen2021Sys", "c1", 2, [[0.0, 0.0, 0.1, 0.1]])
+    text = p.read_text()
+    i_quote, i_loc, i_ground = text.index("quote:"), text.index("quote_loc:"), text.index("grounded_in:")
+    assert i_quote < i_loc < i_ground        # quote_loc wedged between quote and the next key
+
+
+def test_write_quote_loc_avoids_the_silent_reparenting_trap(tmp_path):
+    # Reproduces the real bug: a slice ends in a `note:` followed by a section-header comment.
+    # The OLD behaviour (append quote_loc at the tail of the mapping) put quote_loc textually
+    # AFTER that comment; when a curator later inserts a new slice "above" the comment — the
+    # natural place to add content to that section — the orphaned quote_loc block silently
+    # re-parents onto the newly-last slice instead of staying with c6. Placing quote_loc right
+    # after `quote` (well before `note`) makes that insertion point irrelevant to it.
+    (tmp_path / "curated").mkdir(parents=True)
+    p = tmp_path / "curated" / "Trap2020Jour.yaml"
+    p.write_text(
+        "# curated paper — comments must survive a write-back\n"
+        'title: "T"\n'
+        "type: original\n"
+        "claims:\n"
+        "  - id: c6\n"
+        '    text: "some claim"\n'
+        '    quote: "verbatim sentence"\n'
+        "    note: >-\n"
+        "      some curator note\n"
+        "\n"
+        "  # ─── Intro · section header comment\n"
+        "  - id: c7\n"
+        '    text: "another"\n'
+        '    quote: "another quote"\n')
+
+    store.write_quote_loc(tmp_path, "Trap2020Jour", "c6", 1, [[0.1, 0.2, 0.5, 0.23]])
+    text = p.read_text()
+    assert "# ─── Intro · section header comment" in text                 # comment preserved
+    assert text.index("quote_loc:") < text.index("note:")                 # wedged before note,
+    assert text.index("quote_loc:") < text.index("# ─── Intro")           # well before the comment
+
+    from ruamel.yaml import YAML
+    doc = YAML(typ="safe").load(text)
+    assert next(s for s in doc["claims"] if s["id"] == "c6")["quote_loc"]["page"] == 1
+    assert "quote_loc" not in next(s for s in doc["claims"] if s["id"] == "c7")
+
+    # Now simulate a curator inserting a new slice immediately ABOVE that comment — the
+    # re-parenting trigger from the bug report.
+    injected = text.replace(
+        "  # ─── Intro · section header comment\n",
+        "  - id: c6.5\n"
+        '    text: "urgent addition"\n'
+        '    quote: "urgent quote"\n'
+        "\n"
+        "  # ─── Intro · section header comment\n")
+    p.write_text(injected)
+    doc2 = YAML(typ="safe").load(p.read_text())
+    by_id = {s["id"]: s for s in doc2["claims"]}
+    assert by_id["c6"]["quote_loc"]["page"] == 1        # still c6's, untouched
+    assert "quote_loc" not in by_id["c6.5"]             # the newly-inserted slice did NOT inherit it
+    assert "quote_loc" not in by_id["c7"]
+
+
 def test_write_quote_loc_replaces_an_existing_location(tmp_path):
     _paper(tmp_path)
     store.write_quote_loc(tmp_path, "Chen2021Sys", "c1", 0, [[0.0, 0.0, 0.1, 0.1]])
@@ -79,6 +148,37 @@ def test_write_quote_locs_batch(tmp_path):
     assert next(s for s in doc["claims"] if s["id"] == "c1")["quote_loc"]["page"] == 0
     assert next(s for s in doc["claims"] if s["id"] == "c2")["quote_loc"]["page"] == 2
     assert "# a hand-authored curated file" in (tmp_path / "curated" / "Chen2021Sys.yaml").read_text()
+
+
+def test_write_quote_locs_batch_also_lands_after_quote(tmp_path):
+    # the batch writer (used by `lit locate`) must place quote_loc the same way as the
+    # single-slice writer — this is where the real-world bug was actually triggered from.
+    _paper(tmp_path)
+    store.write_quote_locs(tmp_path, "Chen2021Sys", {"c2": {"page": 2, "rects": [[0.1, 0.1, 0.2, 0.2]]}})
+    text = (tmp_path / "curated" / "Chen2021Sys.yaml").read_text()
+    assert text.index('quote: "median latency grew"') < text.index("quote_loc:")
+
+
+def test_write_quote_loc_overwrite_does_not_move_an_existing_quote_loc(tmp_path):
+    # the --force path: re-locating must overwrite the value in place, not relocate the key —
+    # otherwise a repeated `lit locate --force` would churn the diff for no reason.
+    (tmp_path / "curated").mkdir(parents=True)
+    p = tmp_path / "curated" / "Chen2021Sys.yaml"
+    p.write_text(
+        "claims:\n"
+        "  - id: c1\n"
+        '    quote: "throughput increased monotonically"\n'
+        "    quote_loc:\n"
+        "      page: 0\n"
+        "      rects: [[0.0, 0.0, 0.1, 0.1]]\n"
+        "    note: >-\n"
+        "      a trailing note\n")
+    store.write_quote_loc(tmp_path, "Chen2021Sys", "c1", 5, [[0.5, 0.5, 0.6, 0.6]])
+    text = p.read_text()
+    assert text.index("quote_loc:") < text.index("note:")   # position unchanged — still before note
+    from ruamel.yaml import YAML
+    doc = YAML(typ="safe").load(text)
+    assert doc["claims"][0]["quote_loc"]["page"] == 5
 
 
 def test_write_quote_loc_errors(tmp_path):

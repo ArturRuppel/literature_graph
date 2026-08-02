@@ -22,7 +22,10 @@ Clause-level trimming ("as illustrated in Fig. 3") is a curator judgement, autho
 from __future__ import annotations
 
 import re
+import unicodedata
 from pathlib import Path
+
+import fitz  # pymupdf — a litgraph hard dependency
 
 from .fulltext import _normalize
 
@@ -187,4 +190,113 @@ def polish_graph(graph, pdf_dir: Path | None) -> list[str]:
                 warnings.append(f"{ck}:{s.id} quote not found verbatim in the full text{where}")
             elif status == "joined":
                 warnings.append(f"{ck}:{s.id} authored [...] join — verify both segments")
+    return warnings
+
+
+# --- quote_loc coverage (SCHEMA §6.4 / the silent-re-parenting failure mode) ----------
+
+_LIGATURES = {"ﬁ": "fi", "ﬂ": "fl", "ﬀ": "ff", "ﬃ": "ffi", "ﬄ": "ffl"}
+
+
+def _fold(text: str) -> str:
+    """Fold text for tolerant `quote_loc` comparison: casefold, expand ligatures, drop every
+    hyphen and run of whitespace. This is deliberately the same kind of aggressive fold as the
+    PDF word-geometry matcher uses to *place* a quote_loc in the first place (serve._norm_search)
+    — the two should agree on what "the same text" means. NFKD alone already expands the named
+    ligatures (they carry a compatibility decomposition), the explicit table is just insurance for
+    any that a given Unicode version doesn't decompose that way."""
+    for lig, expansion in _LIGATURES.items():
+        text = text.replace(lig, expansion)
+    text = unicodedata.normalize("NFKD", text)
+    text = text.casefold()
+    return re.sub(r"[\s\-]+", "", text)
+
+
+def _rect_text(page: "fitz.Page", rect: list[float]) -> str:
+    """Text inside one `quote_loc` rect (a page-fraction box) on `page`."""
+    w, h = page.rect.width, page.rect.height
+    x0, y0, x1, y1 = rect
+    clip = fitz.Rect(x0 * w, y0 * h, x1 * w, y1 * h)
+    return page.get_text("text", clip=clip)
+
+
+def quote_loc_covers(extracted: str, quote: str, window: int = 16, scan: int = 60,
+                      floor: int = 6) -> bool:
+    """Does the text PyMuPDF extracts from a `quote_loc`'s rects plausibly cover `quote`?
+
+    Both sides are folded (casefold, ligatures expanded, hyphens/whitespace dropped) so
+    end-of-line hyphenation ("three-dimen- sional"), ligatures ("ﬂuid-like" vs "fluid-like"),
+    and arbitrary line-wrap whitespace never cause a false flag. A watermark ("Downloaded
+    from ...") printed diagonally across the page can intrude a few junk glyphs (e.g. "gpg",
+    "ygyy") at the start of an extracted rect — sometimes that rect is itself short (a single
+    short line), so the junk can be a large fraction of the whole extraction — so instead of
+    anchoring at the extracted text's own start we slide a window across it (up to `window`
+    wide, shrinking near the end) and ask whether *any* slide of at least `floor` characters
+    occurs in the folded quote: a healthy run of genuine overlap anywhere near the front,
+    tolerant of a corrupted prefix of any length up to `scan` characters.
+
+    Deliberately permissive: inputs too short to fingerprint reliably (or empty) are treated as
+    inconclusive and NOT flagged — a check that flags a correct weld is worse than useless.
+    """
+    ext = _fold(extracted)
+    quo = _fold(quote)
+    if not ext or not quo or len(ext) < floor or len(quo) < floor:
+        return True
+    w = min(window, len(quo))
+    limit = min(scan, len(ext) - floor)
+    for i in range(limit + 1):
+        seg = ext[i:i + w]
+        if len(seg) < floor:
+            continue
+        if seg in quo:
+            return True
+    return False
+
+
+def _open_pdf(pdf_dir: Path | None, citekey: str) -> "fitz.Document | None":
+    if pdf_dir is None:
+        return None
+    f = Path(pdf_dir) / f"{citekey}.pdf"
+    if not f.is_file():
+        return None
+    try:
+        return fitz.open(f)
+    except Exception:
+        return None
+
+
+def verify_quote_locs_graph(graph, pdf_dir: Path | None) -> list[str]:
+    """Check every curated slice's `quote_loc` against its own `quote` (SCHEMA §6.4): does the
+    PDF text under the stored rects, on the stored page, actually plausibly read as the quote?
+
+    This catches a `quote_loc` that has been mis-parented onto the wrong slice (a stale or
+    re-parented block silently welded to the wrong sentence — see store._place_quote_loc) or
+    has simply gone stale (the quote text was edited after locating). `lit build` sees valid
+    YAML and, on its own, has no way to notice the mismatch — this is the automated stand-in
+    for eyeballing every highlight against its PDF. Non-fatal: returns human-readable
+    "quote-flag:"-style warnings for the curator, same shape as `polish_graph`'s."""
+    warnings: list[str] = []
+    for ck, p in graph.papers.items():
+        if not p.curated or not any(s.quote and s.quote_loc for s in p.slices):
+            continue
+        doc = _open_pdf(pdf_dir, ck)
+        if doc is None:
+            continue
+        try:
+            for s in p.slices:
+                if not s.quote or not s.quote_loc:
+                    continue
+                page_no = s.quote_loc.get("page")
+                rects = s.quote_loc.get("rects") or []
+                if page_no is None or not rects:
+                    continue
+                if not (0 <= page_no < len(doc)):
+                    warnings.append(f"{ck}:{s.id} quote_loc page {page_no} out of range")
+                    continue
+                page = doc[page_no]
+                extracted = " ".join(_rect_text(page, r) for r in rects)
+                if not quote_loc_covers(extracted, s.quote):
+                    warnings.append(f"{ck}:{s.id} quote_loc does not cover its quote")
+        finally:
+            doc.close()
     return warnings

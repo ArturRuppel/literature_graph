@@ -223,6 +223,29 @@ def _loc_cm(page: int, rects: list[list[float]]):
     return loc
 
 
+def _place_quote_loc(slice_map, loc) -> None:
+    """Set `quote_loc` on `slice_map`, positioned right after `quote` rather than appended at
+    the tail of the mapping.
+
+    A tail-appended `quote_loc` lands after any trailing comment the curator wrote (e.g. a
+    `note:` followed by a section-header comment) — still valid YAML, since comments are
+    ignored, but a trap: when a human later inserts new slices immediately above that comment,
+    the orphaned `quote_loc` block silently re-parents onto the newly-last slice before it,
+    because it was never actually attached to `quote` — only to "wherever the mapping happened
+    to end". Anchoring it right after `quote` makes that mis-parenting impossible. If a
+    `quote_loc` already exists (the `--force` path), overwrite in place — do not move it, so a
+    re-`locate` doesn't churn the diff.
+    """
+    if "quote_loc" in slice_map:
+        slice_map["quote_loc"] = loc
+        return
+    if "quote" in slice_map:
+        idx = list(slice_map).index("quote")
+        slice_map.insert(idx + 1, "quote_loc", loc)
+    else:
+        slice_map["quote_loc"] = loc
+
+
 def write_quote_loc(root: Path, citekey: str, slice_id: str, page: int,
                     rects: list[list[float]]) -> Path:
     """Set (or replace) `quote_loc` on one slice of curated/<citekey>.yaml, round-tripped so
@@ -244,7 +267,7 @@ def write_quote_loc(root: Path, citekey: str, slice_id: str, page: int,
     if target is None:
         raise KeyError(f"no slice {slice_id} in {citekey}")
 
-    target["quote_loc"] = _loc_cm(page, rects)
+    _place_quote_loc(target, _loc_cm(page, rects))
     with path.open("w") as fh:
         _yaml_rt.dump(doc, fh)
     return path
@@ -267,7 +290,7 @@ def write_quote_locs(root: Path, citekey: str, locs: dict[str, dict]) -> int:
         s = by_id.get(sid)
         if s is None:
             continue
-        s["quote_loc"] = _loc_cm(loc["page"], loc["rects"])
+        _place_quote_loc(s, _loc_cm(loc["page"], loc["rects"]))
         n += 1
     if n:
         with path.open("w") as fh:
