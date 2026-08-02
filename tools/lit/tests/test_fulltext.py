@@ -94,3 +94,70 @@ def test_cli_suggest_missing_fulltext_errors(tmp_path, capsys):
     rc = cli.main(["tag", "Chen2021Sys", "--suggest", "--root", str(tmp_path)])
     assert rc == 1
     assert "no full text to scan" in capsys.readouterr().err
+
+
+from litgraph.fulltext import extract_reference_dois
+
+
+def test_reference_dois_read_off_the_printed_list():
+    # Shaped like a real pymupdf4llm extraction: "- " bullets, DOIs sprayed with spaces and
+    # newlines by the PDF text layer, page furniture interleaved.
+    md = (
+        "## INTRODUCTION\n\nSee the references for detail.\n\n"
+        "## REFERENCES\n\n"
+        "- Aiello NM, Maddipati R. 2018. EMT subtype influences plasticity. Dev Cell 45:\n"
+        "681-695. doi:10.1016/j .devcel.2018.05.027\n\n"
+        "- Angelini TE, Hannezo E. 2011. Glass-like dynamics. Proc Natl Acad Sci 108:\n"
+        "4714-4719. doi:10\n.1073/pnas.1010059108\n\n"
+        "Cite this article as Cold Spring Harb Perspect Biol 2026;18:a041794\n\n"
+        "- Friedl P, Mayor R. 2017. Tuning collective cell migration. Cold Spring Harb\n"
+        "Perspect Biol 9: a029199. doi: 10.1101/cshperspect.a029199\n\n"
+        "- Friedl P, Noble PB. 1995. Migration of coordinated cell clusters. Cancer Res 55:\n"
+        "4557-4560.\n"
+    )
+    assert extract_reference_dois(md) == [
+        "10.1016/j.devcel.2018.05.027",
+        "10.1073/pnas.1010059108",
+        "10.1101/cshperspect.a029199",
+    ]
+
+
+def test_reference_dois_dedupe_and_trim_trailing_punctuation():
+    md = ("## References\n\n"
+          "- A. 2020. Title. J 1: 1. doi:10.1000/abc.\n\n"
+          "- B. 2021. Title. J 2: 2. doi:10.1000/ABC\n\n"
+          "- C. 2022. Title. J 3: 3. doi:10.1000/xyz)\n")
+    assert extract_reference_dois(md) == ["10.1000/abc", "10.1000/xyz"]
+
+
+def test_reference_dois_absent_when_no_section_or_no_dois():
+    assert extract_reference_dois("## Results\n\nWe measured doi-free things.\n") == []
+    assert extract_reference_dois("## References\n\n- Friedl P. 1995. No DOI here.\n") == []
+
+
+def test_reference_dois_take_the_last_heading():
+    # "References" as a prose line early on must not shadow the real section.
+    md = ("References\n\nare discussed below.\n\n"
+          "- Nothing. doi:10.9999/decoy\n\n"
+          "## REFERENCES\n\n- Real A. 2020. T. J 1: 1. doi:10.1000/real\n")
+    assert extract_reference_dois(md) == ["10.1000/real"]
+
+
+def test_reference_dois_do_not_swallow_prose_after_the_doi():
+    # The journal footer that broke the first real run: the DOI is followed by prose on the
+    # same line, and naive whitespace-stripping produced ".../a041794originallypublished...".
+    md = ("## REFERENCES\n\n"
+          "- A. 2020. T. J 1: 1. doi:10.1000/aaa\n\n"
+          "_Cold Spring Harb Perspect Biol_ 2026; doi: 10.1101/cshperspect.a041794 "
+          "originally published online November 24, 2025\n")
+    assert extract_reference_dois(md) == ["10.1000/aaa", "10.1101/cshperspect.a041794"]
+
+
+def test_reference_dois_rejoin_breaks_but_stop_at_a_word_boundary():
+    from litgraph.fulltext import _stitch_doi
+    assert _stitch_doi("10.1016/j .devcel.2018.05.027") == "10.1016/j.devcel.2018.05.027"
+    assert _stitch_doi("10\n.1073/pnas.1010059108") == "10.1073/pnas.1010059108"
+    assert _stitch_doi("10.1038/s41580-\n023-00688-7") == "10.1038/s41580-023-00688-7"
+    assert _stitch_doi("10.1101/x.a041794 originally published online") == "10.1101/x.a041794"
+    assert _stitch_doi("not a doi at all") is None
+    assert _stitch_doi("") is None

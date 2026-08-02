@@ -52,8 +52,17 @@ def _print_report(r: Report) -> None:
         refnote = f" of {r.n_referenced} referenced ({r.n_referenced - r.n_refs} not resolved)"
     print(f"  references : {r.n_refs} fetched{refnote} | {len(r.stubs_added)} new stubs | "
           f"{len(r.stubs_deduped)} deduped | {r.refs_skipped} skipped")
+    if r.refs_from_fulltext:
+        print("  ⚠ neither OpenAlex nor Crossref carries this paper's reference list — DOIs read "
+              "off the printed list in the PDF. References that print no DOI are not recovered.")
     if r.stubs_pruned:
         print(f"  promoted   : {', '.join(r.stubs_pruned)} (stub -> curated, dropped from stubs.yaml)")
+    if r.stubs_only:
+        print(f"  curated    : {r.curated_path}  (stubs-only run — left untouched)")
+        for w in r.warnings:
+            print(f"  ⚠ {w}")
+        print()
+        return
     print(f"  curated    : {r.curated_path}")
     if r.pdf_renamed_to:
         print(f"  pdf -> {r.pdf_renamed_to}")
@@ -75,6 +84,9 @@ def main(argv: list[str] | None = None) -> int:
     p_ing.add_argument("--root", default=".", help="data root holding curated/ and stubs.yaml (default: .)")
     p_ing.add_argument("--dry-run", action="store_true", help="print the plan; write/rename nothing")
     p_ing.add_argument("--force", action="store_true", help="overwrite an existing curated/<citekey>.yaml")
+    p_ing.add_argument("--stubs-only", action="store_true",
+                       help="backfill citation stubs for an already-ingested paper: merge stubs and "
+                            "leave curated/<citekey>.yaml, the PDF and the .md untouched")
 
     p_build = sub.add_parser("build", help="build the static graph viewer from a data repo")
     p_build.add_argument("--root", default=".", help="data root (curated/, stubs.yaml, ...)")
@@ -160,6 +172,7 @@ def main(argv: list[str] | None = None) -> int:
                 doi=args.doi,
                 dry_run=args.dry_run,
                 force=args.force,
+                stubs_only=args.stubs_only,
             )
         except IngestError as e:
             print(f"error: {e}", file=sys.stderr)

@@ -72,3 +72,83 @@ def extract_keywords(text: str) -> list[str]:
             seen.add(kw.lower())
             out.append(kw)
     return out
+
+
+# ── Reference list -> DOIs (ingest Stage C fallback).
+# Some publishers never deposit their reference list to Crossref, and OpenAlex mirrors
+# Crossref for references — so `referenced_works`/`reference` come back empty and a paper
+# ingests with zero stubs. The list is still printed in the PDF, hence in our extracted
+# markdown; this recovers the DOIs from there.
+_REF_HEADING = re.compile(
+    r"^[ \t]*#{0,6}[ \t]*\*{0,3}[ \t]*(?:references|bibliography|literature[ \t]+cited)"
+    r"[ \t]*\*{0,3}[ \t]*$",
+    re.IGNORECASE | re.MULTILINE,
+)
+_DOI_LABEL = re.compile(r"\bdoi:", re.IGNORECASE)
+_DOI_BODY = re.compile(r"^10\.\d{4,9}/\S+$")
+_DOI_TRIM = ".,;:)]}"
+# A reference entry ends at a blank line or at the next "- " bullet the markdown emits.
+_ENTRY_SPLIT = re.compile(r"\n\s*\n|\n(?=-[ \t])")
+_JOINABLE = (".", "/", "-", "_")
+_MAX_JOINS = 4
+_WS_SPLIT = re.compile(r"(\s+)")
+
+
+def _stitch_doi(chunk: str) -> str | None:
+    """Reassemble one DOI from the whitespace-broken pieces following a `doi:` label.
+
+    PDF text layers break DOIs two ways, and the two need opposite treatment:
+
+    * **wrapped across a line** — the DOI simply ran off the column ("10.1083/jcb.2015\\n05105",
+      "10.1038/na\\nture21718"). The break can land anywhere, including mid-token, so a newline
+      is always a join.
+    * **spaced within a line** — a stray space from the text layer ("10.1016/j .devcel.2018").
+      But a space just as often separates the DOI from prose that follows it on the same line
+      ("10.1101/cshperspect.a041794 originally published online November 24, 2025"), and
+      joining *that* yields a garbage DOI that poisons a whole API batch. So a space joins
+      only across a seam: the left part ends with `.`/`/`/`-`/`_`, or the right part starts
+      with one. Prose never leaves that seam.
+    """
+    parts = _WS_SPLIT.split(chunk.strip())
+    if not parts or not parts[0]:
+        return None
+    doi, joins = parts[0], 0
+    for i in range(1, len(parts) - 1, 2):
+        whitespace, token = parts[i], parts[i + 1]
+        if joins >= _MAX_JOINS or not token:
+            break
+        seam = doi.endswith(_JOINABLE) or token.startswith(_JOINABLE)
+        if "\n" not in whitespace and not seam:
+            break
+        doi += token
+        joins += 1
+    doi = doi.rstrip(_DOI_TRIM)
+    return doi if _DOI_BODY.match(doi) else None
+
+
+def extract_reference_dois(text: str) -> list[str]:
+    """DOIs printed in a paper's own reference list, in order, case-insensitively deduped.
+
+    Scans from the *last* `References` heading (a mid-body occurrence would be prose, not
+    the section) and reads one DOI per `doi:` label per entry. Returns [] when the paper
+    prints no reference section or no DOIs — pre-DOI references (a 1995 paper, a book) are
+    invisible here by construction, so this recovers most of a reference list, never all of
+    it. Callers should drop the focal paper's own DOI: journal footers repeat it.
+    """
+    heading = None
+    for heading in _REF_HEADING.finditer(text):
+        pass
+    if heading is None:
+        return []
+
+    out: list[str] = []
+    seen: set[str] = set()
+    for entry in _ENTRY_SPLIT.split(text[heading.end():]):
+        labels = list(_DOI_LABEL.finditer(entry))
+        for i, label in enumerate(labels):
+            stop = labels[i + 1].start() if i + 1 < len(labels) else len(entry)
+            doi = _stitch_doi(entry[label.end():stop])
+            if doi and doi.lower() not in seen:
+                seen.add(doi.lower())
+                out.append(doi)
+    return out

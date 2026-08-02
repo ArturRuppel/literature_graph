@@ -199,6 +199,67 @@ def test_crossref_fallback_when_openalex_lacks_focal(workspace):
     assert 'abstract: "Tissue folds on a chip."' in curated.read_text()
 
 
+def test_reference_list_falls_back_to_the_printed_dois(workspace, monkeypatch):
+    """Publisher deposited no reference list: recover the DOIs printed in the PDF."""
+    root, pdf = workspace
+    focal_doi = "10.1101/cshperspect.a041794"
+    printed = ["10.1016/j.bbamcr.2015.05.028", "10.1016/j.devcel.2015.03.016"]
+    md = ("## REFERENCES\n\n"
+          + "".join(f"- Ref {i}. 2015. Title. J 1: 1. doi:{d}\n\n"
+                    for i, d in enumerate(printed))
+          # journal footer repeats the focal DOI inside the section — must not self-cite
+          + f"Cite this article as Cold Spring Harb Perspect Biol 2026. doi:{focal_doi}\n")
+    monkeypatch.setattr("litgraph.ingest.to_markdown", lambda p: md)
+
+    # Crossref carries the focal metadata but only a DOI-less reference -> referenced_dois empty.
+    cr = _crossref_focal(focal_doi, [], venue="Cold Spring Harb Perspect Biol", year=2026)
+    r = ingest(str(pdf), root=root, doi=focal_doi,
+               openalex=_openalex_no_focal_doi_batch(), crossref=cr)
+
+    assert r.refs_from_fulltext is True
+    assert r.n_referenced == 2 and r.n_refs == 2      # focal DOI dropped, both refs resolved
+    assert len(r.stubs_added) == 2
+
+
+def test_fulltext_fallback_stays_off_when_an_api_carries_refs(workspace, monkeypatch):
+    root, pdf = workspace
+    monkeypatch.setattr("litgraph.ingest.to_markdown",
+                        lambda p: "## REFERENCES\n\n- X. 2020. T. J 1: 1. doi:10.9999/decoy\n")
+    r = ingest(str(pdf), root=root, openalex=_openalex(), crossref=_crossref())
+    assert r.refs_from_fulltext is False
+    assert len(r.stubs_added) == 3                    # the OpenAlex list, not the decoy
+
+
+def test_stubs_only_backfills_the_frontier_without_touching_the_card(workspace):
+    """The backfill path: re-running a normal ingest would need --force and flatten the card."""
+    root, pdf = workspace
+    ingest(str(pdf), root=root, openalex=_openalex(), crossref=_crossref())
+    card = root / "curated" / "Ruppel2023eLife.yaml"
+    card.write_text(card.read_text() + '\nclaims:\n  - id: c1\n    text: "hand-curated"\n')
+    before = card.read_text()
+    (root / "stubs.yaml").unlink()                    # frontier never got written
+    md = (pdf.parent / "Ruppel2023eLife.md").read_text()
+
+    pdf2 = pdf.parent / "Ruppel2023eLife.pdf"
+    r = ingest(str(pdf2), root=root, stubs_only=True,
+               openalex=_openalex(), crossref=_crossref())
+
+    assert r.stubs_only is True
+    assert len(r.stubs_added) == 3                    # frontier restored
+    assert card.read_text() == before                 # card survived, no --force needed
+    assert r.fulltext_path is None and r.pdf_renamed_to is None
+    assert (pdf.parent / "Ruppel2023eLife.md").read_text() == md
+
+
+def test_stubs_only_refuses_nothing_when_the_card_is_absent(workspace):
+    """Harmless on a paper that was never curated: stubs merge, no curated file appears."""
+    root, pdf = workspace
+    r = ingest(str(pdf), root=root, stubs_only=True,
+               openalex=_openalex(), crossref=_crossref())
+    assert len(r.stubs_added) == 3
+    assert not (root / "curated" / "Ruppel2023eLife.yaml").exists()
+
+
 from litgraph.sources.openalex import _deinvert
 from litgraph.sources.crossref import _plain_abstract
 
@@ -229,3 +290,25 @@ def test_doi_unresolvable_in_both_raises(workspace):
     cr = Crossref(mailto="t@e", get_json=lambda url: {})  # empty message -> None
     with pytest.raises(Exception):
         ingest(str(pdf), root=root, doi="10.0000/nope", openalex=oa, crossref=cr)
+
+
+def test_reference_scan_reuses_the_stored_markdown(workspace, monkeypatch):
+    """A backfill must not re-extract: the .md is on disk, and re-running the PDF parser can
+    hit an OCR path that fails on a machine without tesseract data."""
+    root, pdf = workspace
+    focal_doi = "10.1101/cshperspect.a041794"
+    stored = pdf.parent / "Zegers2025ColdSpringHarbPerspectBiology.md"
+    stored.write_text("## REFERENCES\n\n- A. 2015. T. J 1: 1. doi:10.1016/j.bbamcr.2015.05.028\n")
+
+    def boom(_path):
+        raise AssertionError("re-extracted the PDF instead of reading the stored .md")
+
+    monkeypatch.setattr("litgraph.ingest.to_markdown", boom)
+    cr = _crossref_focal(focal_doi, [], venue="Cold Spring Harb Perspect Biol", year=2025)
+    # citekey must land on the stored stem for the reuse to kick in
+    monkeypatch.setattr("litgraph.ingest.make_citekey",
+                        lambda *a, **k: "Zegers2025ColdSpringHarbPerspectBiology")
+
+    r = ingest(str(pdf), root=root, doi=focal_doi, stubs_only=True,
+               openalex=_openalex_no_focal_doi_batch(), crossref=cr)
+    assert r.refs_from_fulltext is True and r.n_referenced == 1

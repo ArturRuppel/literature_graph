@@ -8,7 +8,7 @@ from pathlib import Path
 from . import pdf as pdfmod
 from . import store
 from .citekey import _norm_doi, make_citekey
-from .fulltext import to_markdown
+from .fulltext import extract_reference_dois, to_markdown
 from .model import Author, CuratedPaper, Stub, Work, map_type
 from .roles import resolve_roles
 from .sources.crossref import Crossref
@@ -37,6 +37,8 @@ class Report:
     authors: list[Author] = field(default_factory=list)
     n_referenced: int = 0  # ids in the focal work's reference list
     n_refs: int = 0  # references actually returned by OpenAlex
+    refs_from_fulltext: bool = False  # neither API carried refs; DOIs read off the printed list
+    stubs_only: bool = False  # backfill run: stubs merged, curated file / PDF / .md untouched
     stubs_added: list[str] = field(default_factory=list)
     stubs_deduped: list[str] = field(default_factory=list)
     stubs_pruned: list[str] = field(default_factory=list)  # stubs promoted to curated (§6.3 self-heal)
@@ -110,6 +112,20 @@ def _resolve_ref_dois(dois: list[str], oa: OpenAlex, cr: Crossref) -> list[Work]
     return out
 
 
+def _reference_text(pdf_path: str, citekey: str) -> str:
+    """Full text to scan for a printed reference list: the stored `<citekey>.md` if this
+    paper was already ingested, else a fresh extraction.
+
+    Preferring the stored copy keeps a backfill run cheap and, more importantly, stable:
+    re-extracting can hand a scanned page to pymupdf4llm's OCR path, which fails outright on
+    a machine without tesseract language data — for a file we already have on disk.
+    """
+    stored = Path(pdf_path).with_name(f"{citekey}.md")
+    if stored.is_file():
+        return stored.read_text()
+    return to_markdown(pdf_path)
+
+
 def _prefer_casing(local: str, canonical: str | None) -> str | None:
     """Keep `local`'s casing when it equals `canonical` case-insensitively."""
     if canonical and local and local.lower() == canonical.lower():
@@ -129,13 +145,14 @@ def ingest(
     doi: str | None = None,
     dry_run: bool = False,
     force: bool = False,
+    stubs_only: bool = False,
     openalex: OpenAlex | None = None,
     crossref: Crossref | None = None,
 ) -> Report:
     root = Path(root)
     oa = openalex or OpenAlex(mailto=mailto)
     cr = crossref or Crossref(mailto=mailto)
-    report = Report(pdf=str(pdf_path), dry_run=dry_run)
+    report = Report(pdf=str(pdf_path), dry_run=dry_run, stubs_only=stubs_only)
 
     # A/B — focal work.
     work = _resolve_focal(pdf_path, doi, oa, cr, report)
@@ -179,7 +196,9 @@ def ingest(
     )
 
     # C — references -> stubs. OpenAlex ids when the focal came from OpenAlex; otherwise the
-    # Crossref reference DOI list (resolved via OpenAlex batch + Crossref fallback).
+    # Crossref reference DOI list (resolved via OpenAlex batch + Crossref fallback). When
+    # neither API carries references — the publisher never deposited them, and OpenAlex
+    # mirrors Crossref here — fall back to the DOIs printed in the PDF's own reference list.
     if work.referenced_works:
         refs = oa.fetch_works(work.referenced_works)
         report.n_referenced = len(work.referenced_works)
@@ -187,7 +206,14 @@ def ingest(
         refs = _resolve_ref_dois(work.referenced_dois, oa, cr)
         report.n_referenced = len(work.referenced_dois)
     else:
-        refs = []
+        focal = _norm_doi(work.doi) if work.doi else None
+        # Journal footers repeat the focal DOI inside the reference section; drop it or the
+        # paper cites itself.
+        printed = [d for d in extract_reference_dois(_reference_text(pdf_path, citekey))
+                   if _norm_doi(d) != focal]
+        report.refs_from_fulltext = bool(printed)
+        report.n_referenced = len(printed)
+        refs = _resolve_ref_dois(printed, oa, cr) if printed else []
     report.n_refs = len(refs)
     stubs: list[Stub] = []
     for ref in refs:
@@ -203,24 +229,31 @@ def ingest(
                           authors=[a.display_name for a in ref.authors if a.display_name],
                           journal=ref.venue_display))
 
-    # D — writes / rename.
-    curated_path = store.write_curated(root, paper, force=force, dry_run=dry_run)
-    report.curated_path = str(curated_path)
-
-    renamed = store.rename_pdf(Path(pdf_path), citekey, dry_run=dry_run)
-    if renamed is None:
-        report.pdf_rename_skipped = True
-        report.warnings.append(f"{citekey}.pdf already exists beside the source — left the PDF in place")
-        md_source = Path(pdf_path)
+    # D — writes / rename. A stubs-only run backfills the reference frontier of a paper that
+    # is already ingested (and possibly curated): it merges stubs and touches nothing else,
+    # so a card built on top of the earlier ingest survives intact. Without it the only way
+    # back into Stage C's merge is a re-ingest, which `write_curated` refuses (rightly)
+    # unless --force, and --force would flatten the card.
+    if stubs_only:
+        report.curated_path = str(store.curated_dir(root) / f"{citekey}.yaml")
     else:
-        report.pdf_renamed_to = str(renamed)
-        md_source = renamed if not dry_run else Path(pdf_path)
+        curated_path = store.write_curated(root, paper, force=force, dry_run=dry_run)
+        report.curated_path = str(curated_path)
 
-    if dry_run:
-        report.fulltext_path = str(Path(pdf_path).with_name(f"{citekey}.md"))
-    else:
-        markdown = to_markdown(str(md_source))
-        report.fulltext_path = str(store.write_fulltext(md_source, citekey, markdown, dry_run=False))
+        renamed = store.rename_pdf(Path(pdf_path), citekey, dry_run=dry_run)
+        if renamed is None:
+            report.pdf_rename_skipped = True
+            report.warnings.append(f"{citekey}.pdf already exists beside the source — left the PDF in place")
+            md_source = Path(pdf_path)
+        else:
+            report.pdf_renamed_to = str(renamed)
+            md_source = renamed if not dry_run else Path(pdf_path)
+
+        if dry_run:
+            report.fulltext_path = str(Path(pdf_path).with_name(f"{citekey}.md"))
+        else:
+            markdown = to_markdown(str(md_source))
+            report.fulltext_path = str(store.write_fulltext(md_source, citekey, markdown, dry_run=False))
 
     added, deduped = store.merge_stubs(root, stubs, dry_run=dry_run)
     report.stubs_added = added

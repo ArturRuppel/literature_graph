@@ -119,12 +119,27 @@ class OpenAlex:
         return out
 
     def fetch_works_by_doi(self, dois: list[str], chunk: int = 50) -> list[Work]:
-        """Batch-fetch works by DOI (OR-filter). Used to resolve a Crossref reference list."""
+        """Batch-fetch works by DOI (OR-filter). Used to resolve a Crossref reference list.
+
+        A DOI list read off a printed reference page can contain a malformed entry, and
+        OpenAlex answers the whole OR-filter with a 400 — losing 49 good DOIs to one bad
+        one. On a failed batch, retry its members singly and keep whatever resolves.
+        """
         out: list[Work] = []
         for start in range(0, len(dois), chunk):
             batch = dois[start : start + chunk]
             flt = "doi:" + "|".join(quote(d, safe="") for d in batch)
-            data = self._get_json(f"{BASE}/works?filter={flt}&per-page={chunk}&select={_SELECT}")
+            try:
+                data = self._get_json(f"{BASE}/works?filter={flt}&per-page={chunk}&select={_SELECT}")
+            except Exception:
+                for d in batch:
+                    try:
+                        w = self.fetch_work(d)
+                    except Exception:
+                        continue          # a DOI OpenAlex cannot parse at all; Crossref may still
+                    if w is not None:
+                        out.append(w)
+                continue
             for raw in data.get("results") or []:
                 out.append(normalize_work(raw))
         return out
