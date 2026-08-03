@@ -67,6 +67,9 @@ def test_to_json_dict_shape():
     assert d["stubs"]["Patel2017Vldb"]["year"] == 2017
     # broad claim carries its meter
     assert "meter" in d["broad"]["throughput-scales-with-batching"]
+    # a broad node's optional at-a-glance title reaches the viewer ("" when unset)
+    assert d["broad"]["performance-benchmarking"]["title"] == "Performance benchmarking"
+    assert d["broad"]["microbenchmark"]["title"] == ""
     # order is papers (curated + stubs), curated first
     assert d["order"][0] == "Chen2021Sys"
 

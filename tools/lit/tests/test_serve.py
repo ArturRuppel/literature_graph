@@ -705,3 +705,48 @@ def test_stub_abstract_bad_key_and_no_match(srv):
     srv._oa = NoneOA()
     status, _, body = get(srv, "/stub-abstract?key=Zhao2014Nsdi")
     assert status == 200 and json.loads(body) == {"abstract": None}
+
+
+# --- the programme index (the HUD's "aims" pill) -----------------------------
+
+
+def test_aims_json_indexes_the_programme(srv):
+    status, headers, body = get(srv, "/aims.json")
+    assert status == 200 and headers["Content-Type"].startswith("application/json")
+    aims = json.loads(body)
+    assert [a["slug"] for a in aims] == ["@adaptive-batching"]
+    a = aims[0]
+    assert a["title"] == "Adaptive batch-size control"
+    # the two signals the pill shows without opening the card
+    assert a["assumptions"] == 1 and a["at_risk"] == 1 and a["slices"] == 11
+
+
+def test_preview_html_serves_an_aim_card(srv):
+    status, headers, body = get(srv, "/preview.html?key=@adaptive-batching")
+    assert status == 200 and headers["Content-Type"].startswith("text/html")
+    assert b'"order": ["@adaptive-batching"]' in body
+    assert b'"aim": true' in body
+
+
+def test_preview_json_serves_an_aim_card(srv):
+    status, _, body = get(srv, "/preview.json?key=@adaptive-batching")
+    assert status == 200
+    mini = json.loads(body)
+    assert mini["papers"]["@adaptive-batching"]["aim"] is True
+
+
+def test_preview_rejects_an_unknown_aim(srv):
+    assert get(srv, "/preview.html?key=@nope")[0] == 404
+
+
+def test_graph_json_stays_paper_only(srv):
+    """The landing board is untouched by the programme layer — aims live behind the pill."""
+    graph = json.loads(get(srv, "/graph.json")[2])
+    assert not [k for k in graph["papers"] if k.startswith("@")]
+    assert not [k for k in graph["order"] if k.startswith("@")]
+
+
+def test_the_hud_carries_the_aims_pill(srv):
+    body = get(srv, "/")[2]
+    assert b'id="aims"' in body and b'id="aimPanel"' in body
+    assert b'aims.json' in body

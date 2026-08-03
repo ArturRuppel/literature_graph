@@ -19,6 +19,11 @@ the rate limiter; never flood. A half-finished graph is a normal, valid state.**
 6. [docs/2026-06-25-visualization-design.md](docs/2026-06-25-visualization-design.md) —
    *future* direction for showing the graph: the **recursive container view** (+ reference
    mockups in `docs/mockups/`). Not yet built.
+7. [docs/2026-08-02-programme-graph-design.md](docs/2026-08-02-programme-graph-design.md) —
+   the **programme graph**: the same slice model extended from *what is known* to *what is
+   proposed*. Two extra kinds (**Test · Capability**), two extra edges (`discriminates` ·
+   `enabled_by`), one extra container (the **aim**, under `programme/aims/`), and one extra
+   ref form (the `@aim` sigil). Model + `lit programme` are built; no viewer.
 
 ## Mental model (the 30-second version)
 
@@ -36,6 +41,11 @@ the rate limiter; never flood. A half-finished graph is a normal, valid state.**
   edge targets the container `P` until curation slices it (the wildcard sharpens).
 - **Generalize, don't merge:** never equate two claims; co-parent them under a broader
   `claims/` node via `leads_to` (≥2 children). Paper-specific phrasing and quotes survive.
+- **Two axes, kept apart:** the **claim ladder** (`leads_to` between `claims/` nodes) answers
+  *what is known*; the **topic axis** (`topics/` — keyword containers over paper `tags`)
+  answers *what papers do I have on X*. A statement that can be **false** is a claim; a
+  heading you cannot disagree with is a topic. Topics are never edge targets, and nothing in
+  the graph derives from them (SCHEMA §9).
 
 ## Conventions this repo enforces
 
@@ -71,13 +81,23 @@ the rate limiter; never flood. A half-finished graph is a normal, valid state.**
   Validation fails the build on a dangling ref or a curated/stub citekey collision (SCHEMA §6).
   The viewer's HUD carries a **paper-finding search box** (title · author · journal · year · tag,
   curated + stubs) — client-side, so it works in the static artifact offline.
+  **Clicking a broad claim hoists it**: the node and every container feeding it jump to the top of
+  their columns and the board scrolls home, so the claim and its papers land in one screenful.
+  (Dimming everything else was enough when the library was small; past a few dozen papers the lit
+  cards were scattered down a column and the arrows pointed off-screen.) Clicking again releases
+  the isolation but leaves the order — nothing snaps back under you.
 - **`lit serve`** — the same viewer over loopback HTTP, for a curation session: the graph is
   rebuilt from the YAML on every refresh (edit → refresh; a broken edit returns the
-  validation error and the server survives), and the tooltip gains PDF hover-preview +
-  click-to-open for the `<citekey>.pdf` files in `pdf_dir` (config.toml, else `<root>/pdfs`).
-  **Two surfaces** (design: `docs/2026-07-09-cockpit-redesign-in-progress-zone.md`):
+  validation error and the server survives), and the tooltip gains a first-page preview of the
+  `<citekey>.pdf` files in `pdf_dir` (config.toml, else `<root>/pdfs`).
+  **Two surfaces** (design: `docs/2026-07-09-cockpit-redesign-in-progress-zone.md`, windowed by
+  `docs/2026-07-28-curation-windows.md`):
   - *Browse view* — the graph, plus one **collapsible PDF viewer** docked right, toggled by the
-    header's **📄 PDF** pill. Open, hovering a quote-slice aims it at that claim's citation — the
+    header's **📄 PDF** pill. **The pill is the only thing that opens it** — opening a card is
+    reading the graph, not a request for a PDF across half the screen. Clicking a quote-slice
+    *aims* the viewer whether or not it is open (a shut dock just remembers the aim), so the next
+    📄 lands on that claim's highlight; with nothing aimed yet the pill opens the focused paper at
+    page 1. Open, hovering a quote-slice aims it at that claim's citation — the
     **whole PDF** as a lazily-rendered scroll of pages, opened on the highlight, with a real
     scrollbar, ⌘/ctrl-wheel zoom, a live page indicator, and a pan / text-select toolbar (drag to
     pan, or select & copy the page's real text via a transparent word overlay). The location comes
@@ -85,14 +105,25 @@ the rate limiter; never flood. A half-finished graph is a normal, valid state.**
     carries a **⧉ detach** button that pops the PDF into its **own OS window** (`index.html?detached=1`,
     for a second monitor); the same hover keeps aiming it via a `lit-pdf` BroadcastChannel, and the
     **📄 PDF** pill re-docks it. Detaching reclaims the graph's full width.
-  - *In-progress zone* — **right-click a curated card → "Curate this paper"** *moves* it out of the
-    graph into the **"in progress · N"** worklist (`[curation] active` in config.toml). The pill
-    opens a picker; entering a paper opens its **three-pane cockpit**: the isolated subgraph as the
-    left card, the focus-wire PDF pane top-right, and that paper's **ttyd terminal** (embedded
-    Claude session) bottom-right. **"Return to graph"** finishes it back into the graph. `lit serve`
-    spawns the terminal's ttyd when installed (loopback, default port 7682 — **7681 is often a
-    system login ttyd**; `--term-port` overrides); absent ttyd, the zone still works sans terminal.
+  - *Curation session* — **right-click a curated card → "Curate this paper"** *moves* it out of the
+    graph onto the **"in progress · N"** worklist (`[curation] active` in config.toml). The pill
+    opens a picker; selecting a paper performs the whole transition in **one click**: the current
+    graph window becomes the **card** (`preview.html?key=…&drive=1`, its isolated subgraph,
+    hot-reloading on a YAML edit), the **paper** opens as the click's one browser popup
+    (`index.html?focus=1`), and the server opens a **terminal** running that paper's persistent
+    Claude session. The PDF is aimed by polling the focus wire so `lit focus` and the card's
+    quote-clicks both steer it. The window manager tiles them; there is no in-page split. The terminal is a
+    native emulator (`kitty`, `wezterm`, … — first found, or `$LIT_TERMINAL`) spawned by the
+    server via `POST /term`, so it's a *real* terminal with full keybindings and scrollback;
+    with no emulator installed you get the two browser windows and start the session yourself.
+    Finishing runs both ways: the picker row's **✓**, or the card window's own HUD button
+    **✓ finish curation**, which drops the paper off the worklist and turns that window back
+    into the graph (the PDF and terminal windows are left open).
   Serve-only; a static `lit build` keeps the pill/toggle hidden and stays the shareable artifact.
+  A third HUD pill, **"aims · N"**, indexes `programme/aims/` (via `/aims.json`) with each aim's
+  assumption and at-risk-test counts; a row opens that aim's card at `/preview.html?key=@<slug>`
+  in a new tab. `/graph.json` stays paper-only, so the landing board is untouched by the
+  programme layer — and a repo with no `programme/` tree never shows the pill.
 - **`lit curate <citekey>`** / **`lit curate --done <citekey>`** — the same move from the terminal:
   add (or remove) a curated paper to the in-progress worklist. Drives the same `[curation] active`
   that the right-click move and the "in progress" pill share.
@@ -103,9 +134,9 @@ the rate limiter; never flood. A half-finished graph is a normal, valid state.**
   `--suggest` proposes tags from the paper's **author-keyword line** (scraped + kebab-cased from the
   full text) — a **Pass-1** step (CURATION.md): it prints candidates and a ready `lit tag` command and
   **writes nothing**, so the curator gates which land in the filter axis.
-- **`lit focus <citekey> [--quote "…"]`** — aim a running `lit serve` in-progress zone's PDF pane
-  at a quote (my hand during curation): resolves the quote and re-aims the docked pane. The zone's
-  left-card quote-clicks drive the same wire, so agent and human stay in one truth.
+- **`lit focus <citekey> [--quote "…"]`** — aim a running `lit serve` session's **paper window** at
+  a quote (my hand during curation): resolves the quote and re-aims the PDF. The card window's
+  quote-clicks drive the same wire, so agent and human stay in one truth.
 - **`lit locate`** — resolve every curated quote's place in its PDF (full-coverage word-
   geometry match) and store it as `quote_loc` in the YAML: run once, review the diff, commit.
   `--force` re-resolves quotes that already have a location; `--dry-run` reports without writing.
@@ -114,7 +145,20 @@ the rate limiter; never flood. A half-finished graph is a normal, valid state.**
   chips / synthesis band) via the same viewer `lit build` ships, so it can't drift. Fed a
   scratch YAML (real `curated/` schema), it renders a **proposition before it's tokenized** —
   the curation loop's "show it as it'll look" step (CURATION.md). Also flags non-verbatim
-  quotes at proposition time. Emits a self-contained `dist/preview.html`.
+  quotes at proposition time. Emits a self-contained `dist/preview.html`. Also renders an
+  **aim** — `lit preview '@<slug>'`, or `--scratch` an aim-schema YAML under an `@` key, so
+  the same propose-before-tokenizing loop works on *proposed* work. An aim's card swaps the
+  entry groups from a paper's rhetoric (novel / borrowed / open) to a programme's
+  (hypotheses & rivals · assumptions · established · speculation · tests · capabilities), a
+  load-bearing claim carries its blast radius as a badge, and drilling a test opens what it
+  separates (`discriminates`), what it needs (`enabled_by`) and the methods under it.
+- **`lit programme`** — report the **programme graph**'s emergent state (design doc §8): the
+  **load-bearing assumptions ranked by blast radius** (claims with dependents, no test aimed
+  at them, and no grounding in the literature — the thing a hostile reviewer finds first),
+  plus speculation, tests at risk from an unevidenced capability, aspirational capabilities,
+  open questions and orphans. Reads `programme/aims/*.yaml`; silent on a repo without one.
+  `--strict` exits non-zero when anything is flagged, for CI. Terminal only — every payoff
+  lands without the viewer.
 
 ## Curating a paper
 

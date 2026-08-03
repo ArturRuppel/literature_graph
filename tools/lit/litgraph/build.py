@@ -7,7 +7,7 @@ import json
 import shutil
 from pathlib import Path
 
-from litgraph.graph import Graph, Paper, Slice, classify_ref
+from litgraph.graph import Aim, Graph, Paper, Slice, classify_ref
 
 
 def _up(s: Slice) -> list[str]:
@@ -104,30 +104,68 @@ def _builds(g: Graph) -> dict[str, list[dict]]:
     return idx
 
 
+def _local(refs: list[str]) -> list[str]:
+    """The same-container refs in a list — the only ones a card can draw as nested rows."""
+    return [r for r in refs if classify_ref(r) == "local"]
+
+
+def _slice_json(s: Slice) -> dict:
+    out = {"id": s.id, "kind": s.kind, "text": s.text, "color": s.color,
+           "is_floor": s.is_floor, "grounded": s.grounded,
+           "borrowed": s.borrowed, "answered": s.answered, "up": _up(s),
+           "gen": _gen(s), "quote": s.quote, "qd": s.quote_display,
+           "loc": s.quote_loc, "answers": list(s.answers)}
+    # Programme fields ride along only when they carry something, so a literature card's
+    # JSON is byte-identical to what it was before the programme layer existed.
+    if s.kind == "test":
+        out |= {"disc": _local(s.discriminates), "en": _local(s.enabled_by),
+                "risk": s.at_risk}
+    elif s.kind == "capability":
+        out |= {"asp": s.aspirational}
+    elif s.kind == "claim" and s.modality:
+        out |= {"mod": s.modality, "lb": s.load_bearing, "br": s.blast_radius}
+    return out
+
+
 def _paper_json(p: Paper, builds: list[dict]) -> dict:
     return {
         "cur": p.curated, "pass": p.pass_, "type": p.type, "year": p.year,
         "title": p.title, "authors": [[n, pos, corr] for n, pos, corr in p.authors],
         "tags": p.tags, "note": p.note, "abs": p.abstract, "head": p.head,
-        "slices": [{"id": s.id, "kind": s.kind, "text": s.text, "color": s.color,
-                    "is_floor": s.is_floor, "grounded": s.grounded,
-                    "borrowed": s.borrowed, "answered": s.answered, "up": _up(s),
-                    "gen": _gen(s), "quote": s.quote, "qd": s.quote_display,
-                    "loc": s.quote_loc, "answers": list(s.answers)}
-                   for s in p.slices],
+        "slices": [_slice_json(s) for s in p.slices],
         "grounds": _grounds(p), "lateral": _lateral(p), "cons": _cons(p),
         "ans": _answers(p), "builds": builds,
     }
 
 
-def to_json_dict(g: Graph, active: "tuple[str, ...]" = (), cockpit: "dict | None" = None) -> dict:
+def _aim_json(a: Aim, builds: list[dict]) -> dict:
+    """An aim, serialized into the card shape the viewer already knows. `aim: True` is the
+    one flag the template branches on — it swaps the entry groups from a paper's rhetoric
+    (novel / borrowed / open) to a programme's (hypotheses / assumptions / tests)."""
+    return {
+        "cur": True, "aim": True, "pass": None, "type": "aim", "year": None,
+        "title": a.title, "authors": [], "tags": a.tags, "note": a.note, "abs": None,
+        "head": [s.text for s in a.slices if s.kind == "claim" and not s.leads_to],
+        "slices": [_slice_json(s) for s in a.slices],
+        "grounds": _grounds(a), "lateral": _lateral(a), "cons": _cons(a),
+        "ans": _answers(a), "builds": builds,
+    }
+
+
+def to_json_dict(g: Graph, active: "tuple[str, ...]" = (), cockpit: "dict | None" = None,
+                 include_aims: bool = False) -> dict:
+    """Serialize the graph for the viewer. Aims are **off by default**: the landing view is
+    paper-centric (it sorts by pass / year / authors, none of which an aim has), so they
+    would need their own lane there. `lit preview` turns them on to render one aim's card."""
     builds = _builds(g)
     curated = {ck: _paper_json(p, builds.get(ck, [])) for ck, p in g.papers.items() if p.curated}
+    if include_aims:
+        curated |= {slug: _aim_json(a, builds.get(slug, [])) for slug, a in g.aims.items()}
     stubs = {ck: {"title": p.title, "year": p.year, "type": p.type, "doi": p.doi,
                   "journal": p.journal,
                   "authors": [[n, pos, corr] for n, pos, corr in p.authors]}
              for ck, p in g.papers.items() if not p.curated}
-    broad = {slug: {"kind": b.kind, "text": b.text,
+    broad = {slug: {"kind": b.kind, "title": b.title, "text": b.text,
                     "meter": ({"s": b.support, "c": b.contradict}
                               if b.kind == "broad claim" else None)}
              for slug, b in g.broad.items()}

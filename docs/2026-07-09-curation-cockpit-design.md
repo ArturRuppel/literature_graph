@@ -8,6 +8,11 @@ terminal, wrapper) all carry over; only their framing/triggers change. · **Date
 companion to [CURATION.md](../CURATION.md) and the
 [visualization design](2026-06-25-visualization-design.md)
 
+> **Superseded in part (2026-07-28):** §5's ttyd transport is retired — the terminal is a native
+> emulator window now, running this doc's wrapper unchanged — and the three panes are three OS
+> windows. See [curation windows](2026-07-28-curation-windows.md). The focus channel, the docked
+> pane, and the wrapper are exactly as designed here.
+
 Turn curation from a **three-window shuffle** into one cockpit. Today a proposition lives in
 three places — prose in the chat, a card in the WIP view, quotes in the PDF — and the human
 carries it by hand between them: propose → "render it as a card" → go check the quotes in the

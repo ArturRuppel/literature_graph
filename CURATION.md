@@ -37,14 +37,14 @@ edits/accepts. Nothing is "curated" until the human commits it.
   shortcut past the reading and judgement — the discussion is still the work.
   - **Where the render must land depends on the human's review surface.** `lit preview
     --scratch` writes a **standalone `dist/preview.html`** — a *separate* artifact, useful
-    outside the cockpit. In the **`lit serve` cockpit** (the in-progress zone's three-pane
-    view), that pane shows the **live card rebuilt from `curated/<citekey>.yaml` on reload**
-    and never displays `preview.html`, so this is the cockpit's **default** mode, not a
-    fallback: on "launch pass N," write that whole pass's proposed slices **directly into
-    `curated/<citekey>.yaml`** — that edit *is* the proposition — run `lit build` first to
-    confirm it validates, then tell the human to reload. They accept / edit / reject via the
-    git diff; revert whatever's rejected before the next pass. Reserve the standalone
-    `--scratch` preview for review surfaces outside the cockpit, where there's no live card to
+    when there's no live session. During a **`lit serve` curation session** the human has that
+    paper's **card window** open, showing the **live card rebuilt from `curated/<citekey>.yaml`**
+    (it hot-reloads itself when the YAML changes) and never `preview.html`, so this is the
+    session's **default** mode, not a fallback: on "launch pass N," write that whole pass's
+    proposed slices **directly into `curated/<citekey>.yaml`** — that edit *is* the proposition
+    — run `lit build` first to confirm it validates, then tell the human to look. They accept /
+    edit / reject via the git diff; revert whatever's rejected before the next pass. Reserve the
+    standalone `--scratch` preview for review outside a session, where there's no live card to
     write into.
 - **Propose, never flood** (CONCEPT §10). A handful of well-welded slices beats a wall of
   shallow ones. **Curation is a single staircase** — a paper climbs it one rung at a time, and

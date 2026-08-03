@@ -1,2 +1,5 @@
 # Top of the method ladder: a thin leads_to target with no parent.
-text: "Performance benchmarking"
+# Shows the optional `title` (SCHEMA §4): the at-a-glance name the viewer heads the node
+# with, so `text` is free to carry the full statement as its gloss.
+title: "Performance benchmarking"
+text: "Measurement of a system's throughput and latency under controlled load — the technique family a microbenchmark specializes."

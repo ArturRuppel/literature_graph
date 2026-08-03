@@ -96,10 +96,12 @@ def main(argv: list[str] | None = None) -> int:
     p_prev = sub.add_parser("preview", help="render one paper's local subgraph in isolation "
                                             "(curation: see a proposition as it'll look)")
     p_prev.add_argument("citekey", nargs="?",
-                        help="focal paper citekey (default: --scratch file stem)")
+                        help="focal paper citekey, or an aim as \"@<slug>\" "
+                             "(default: --scratch file stem)")
     p_prev.add_argument("--scratch", default=None,
-                        help="a curated-schema YAML to overlay as the focal paper — propose "
-                             "before tokenizing into curated/")
+                        help="a curated-schema YAML to overlay as the focal paper (or an "
+                             "aim-schema YAML with an \"@<slug>\" key) — propose before "
+                             "tokenizing into curated/ or programme/aims/")
     p_prev.add_argument("--root", default=".", help="data root (curated/, stubs.yaml, ...)")
     p_prev.add_argument("--out", default=None, help="output dir (default: <root>/dist)")
     p_prev.add_argument("--pdf-dir", default=None,
@@ -149,6 +151,13 @@ def main(argv: list[str] | None = None) -> int:
     p_tag.add_argument("--suggest", action="store_true", help="propose tags from the paper's author-keyword "
                                                               "line (Pass 1); prints candidates, writes nothing")
     p_tag.add_argument("--root", default=".", help="data root (curated/, stubs.yaml, config.toml)")
+
+    p_prog = sub.add_parser("programme", help="report the programme graph's emergent state: "
+                                              "load-bearing assumptions by blast radius, tests at "
+                                              "risk, aspirational capabilities, open questions, orphans")
+    p_prog.add_argument("--root", default=".", help="data root (programme/, curated/, ...)")
+    p_prog.add_argument("--strict", action="store_true",
+                        help="exit non-zero if anything is flagged (for CI)")
 
     p_cur = sub.add_parser("curate", help="move a paper into (or out of) the in-progress worklist "
                                           "(`[curation] active` in config.toml)")
@@ -337,6 +346,21 @@ def main(argv: list[str] | None = None) -> int:
             verb = "removed from" if args.remove else "added to"
             print(f"tag → {', '.join(args.tags)} {verb} {args.citekey}  |  now: {shown}")
         return 0
+
+    if args.command == "programme":
+        from .programme import format_report, report as programme_report
+        cfg = load_config(args.root)
+        try:
+            graph = build_graph(cfg.root)
+        except BuildError as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 1
+        if not graph.aims:
+            print(f"no programme/aims/ under {cfg.root} — nothing to report")
+            return 0
+        rep = programme_report(graph)
+        print(format_report(rep))
+        return 1 if (args.strict and not rep.clean) else 0
 
     if args.command == "curate":
         from .config import set_active

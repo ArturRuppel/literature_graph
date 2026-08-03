@@ -4,6 +4,11 @@
 [the cockpit design](2026-07-09-curation-cockpit-design.md) · **Date:** 2026-07-09 · companion to
 [CURATION.md](../CURATION.md)
 
+> **Superseded in part (2026-07-28):** §4's *three-pane* layout is gone — curation now opens three
+> real OS windows, and the ttyd terminal iframe is a native emulator. See
+> [curation windows](2026-07-28-curation-windows.md). Everything else here still holds: the move,
+> the `active` worklist, the focus wire, the browse view.
+
 The cockpit doc built curation as a **global window mode** (`lit serve --curate` reshapes the whole
 view). This delta rotates that: curation becomes a **per-paper place** you *move a paper into*. The
 main view stays the graph; a paper you decide to curate is pulled out of it into an **in-progress

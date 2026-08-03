@@ -32,6 +32,7 @@ commit, one readable diff.
 | **Broad claim** | `claims/<slug>.yaml` (thin) | a `leads_to` target shared across papers; minted only when **≥2** slices share it (CONCEPT §10.2) |
 | **Broad question** | `questions/<slug>.yaml` (thin) | shared `leads_to` target for questions |
 | **Broad Method** | `methods/<slug>.yaml` (thin) | shared technique; minted only when **≥2** papers share it |
+| **Topic** | `topics/<slug>.yaml` | a container of **keywords**, grouping the `tags` vocabulary so papers stay findable as it grows. **Not a slice, not in the graph** (§9) |
 | **Stub** (uncurated paper) | one entry in `stubs.yaml` | an **un-sliced container** — bib-only, machine-fetched, holding only the wildcard |
 | **Author** | *emergent* — derived from each paper's `authors:` | no hand-maintained author files |
 
@@ -58,6 +59,7 @@ commit, one readable diff.
   claims/      <slug>.yaml   # thin broad claims (≥2 children)
   questions/   <slug>.yaml   # thin broad questions
   methods/     <slug>.yaml   # thin broad Methods (≥2 papers)
+  topics/      <slug>.yaml   # keyword containers — a paper-discovery axis, NOT graph (§9)
   stubs.yaml                 # { citekey: bib-metadata } — un-sliced containers
   config.toml                # deployment-local (private): external PDF dir, etc.
 ```
@@ -154,6 +156,7 @@ count, never bookkept here).
 
 | Field | Req | Type | Notes |
 |---|---|---|---|
+| `title` | – | str | an **at-a-glance name** — a few words, read in one beat (`"Traction force microscopy"`). `text` stays the full statement; the viewer renders the title as the node's heading and demotes `text` to its gloss beneath. Absent → the node renders as before, `text` alone. A display affordance, not a graph element (nothing resolves or derives from it) |
 | `text` | ✔ | str | the broad statement / question / technique name |
 | `leads_to` | – | slug list | generalizes further up the ladder (a broad claim into a broader one; microbenchmark → performance benchmarking) |
 
@@ -253,3 +256,62 @@ altitudes (lean: anchored, shallow)." v1 takes the minimal, retractable stance: 
 questions get their own thin `questions/` files, and a claim's `answers` is the only bridge
 from a question to a claim. If §12 later resolves to "anchored," `questions/` collapses into
 claim altitudes with no change to the paper files.
+
+---
+
+## 9. Topics — the keyword axis (not the graph)
+
+Design: [docs/2026-08-03-topics-and-claim-altitudes.md](docs/2026-08-03-topics-and-claim-altitudes.md).
+
+A **topic groups keywords**, and keywords are the paper `tags` of §4. It exists so that a
+growing `tags` vocabulary stays navigable; it answers *"what papers do I have on X"*, never
+*"what is known"*. The claim ladder (`leads_to` between `claims/` nodes) is the axis for the
+latter, and the two never touch.
+
+**A topic is not a claim and must never become one.** It asserts nothing, so every emergent
+property of the model — grounded-vs-plausible, the corroborate/contradict meter, the walk to a
+floor — is undefined on it. The rule that keeps this safe:
+
+> A statement that can be **false** is a claim and goes in `claims/`.
+> A heading you cannot disagree with is a topic and goes in `topics/`.
+
+| Field | Req | Type | Notes |
+|---|---|---|---|
+| `title` | ✔ | str | at-a-glance name, e.g. `"Cancer mechanics"` |
+| `note` | – | str | free-text curator gloss on what the topic is for |
+| `keywords` | ✔ | list[str] | tag strings this topic contains. May be empty on a pure grouping node whose keywords all live below it. Matched against paper `tags` case-insensitively |
+| `broader` | – | slug list | the topic(s) this one sits under — a **separate DAG**, not `leads-to` |
+
+**`broader` is a fourth edge only in the sense that it is not one of the three.** It is
+confined to `topics/ → topics/`, never resolves a slice ref, never enters the support
+skeleton, and no emergent property reads it. The three-edge core of CONCEPT §4 is untouched.
+
+### Membership is derived, never authored
+
+A paper is in a topic iff any of its `tags` appears in that topic's `keywords` **or** in the
+keywords of any topic beneath it through `broader`. Nothing is written on the paper: `tags`
+stays exactly the free-form container field of §4, and a paper never names a topic. This is
+what keeps topics from becoming hand-authored emergent state — the thing the tags design
+(§1 of *Tags and search*) refused when it banned slice-level tags.
+
+Keywords are **non-exclusive**: the same keyword may belong to several topics (`glioblastoma`
+is both cancer and nervous-system), and a topic may have several `broader` parents. The topic
+axis is deliberately a DAG, not a tree.
+
+### Validation
+
+1. **`broader` resolves** to an existing `topics/` slug, and the `broader` graph is **acyclic**.
+2. **Topic slugs are globally unique** and **distinct from** any `claims/`·`questions/`·
+   `methods/` slug — a topic is never an edge target, and the disjointness keeps it that way.
+3. **Warn, don't fail**, on a *dead keyword* (in a topic, on no paper) and on an *unfiled tag*
+   (on a paper, in no topic). Both are curation signals, not errors: the unfiled-tag report is
+   what stops the topic layer silently rotting as the tag vocabulary grows.
+4. Topics are **absent from the slice graph entirely** — a topic slug in any `grounded_in` /
+   `leads_to` / `answers` / `corroborates` / `contradicts` is a dangling ref (rule §6.1) and
+   fails the build.
+
+### Inserting a layer later
+
+Because a topic's depth is emergent from `broader` (there is no `level` field, exactly as there
+is none for claim altitude), a new tier is: add the file, add one `broader` line to each topic
+that should sit under it. Nothing renumbers and no consumer learns a new concept.

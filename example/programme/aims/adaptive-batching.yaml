@@ -1,0 +1,70 @@
+# Synthetic worked aim (fully fictional), in the same neutral stream-processing domain as
+# the curated papers. Exercises every programme kind and edge (programme design §2–§3), and
+# every emergent property the `lit programme` report reads off them (§8):
+#
+#   c1  established  — grounds in the literature (Chen2021Sys)
+#   c2  proposed     — the central hypothesis; t1 would settle it
+#   c3  proposed     — the rival, discriminated from c2 by the same test
+#   c4  ASSUMPTION   — c2 rests on it, nothing tests it, nothing grounds it
+#   c6  proposed     — downstream of the hypothesis, so t1 settles it too; and an orphan
+#   k1  capability   — evidenced (a published method)
+#   k2  capability   — aspirational (no grounding) -> t1 is at risk
+#
+title: "Adaptive batch-size control"
+tags: ["batching", "control"]
+note: >
+  The aim is the unit of curation, not a section of any write-up: this bundle is one
+  hypothesis, its rival, the test that separates them, and what that test needs.
+
+methods:
+  - id: m1
+    text: "production trace replay harness"
+    grounded_in: [Chen2021Sys]           # a measurement floor: grounds only in its source
+
+capabilities:
+  - id: k1
+    text: "microbenchmark harness, already in house"
+    grounded_in: ["Chen2021Sys:m1"]      # evidenced: it exists, and here is the paper
+  - id: k2
+    text: "production traffic replay at line rate"
+    # no grounded_in -> aspirational. Claimed, not evidenced.
+
+questions:
+  - id: q1
+    text: "How quickly must a controller adapt to keep up with workload shifts?"
+  - id: q2
+    text: "Does batch size trade latency for throughput?"
+
+claims:
+  - id: c1
+    text: "Throughput rises with batch size while per-record latency grows roughly linearly."
+    grounded_in: ["Chen2021Sys:c1"]      # a citation into the literature -> established
+    answers: [q2]
+
+  - id: c4
+    text: "The arrival rate is stationary over the controller's adaptation window."
+    # Nothing grounds it and nothing tests it — but c2 rests on it. This is the assumption
+    # the report ranks by blast radius.
+
+  - id: c2
+    text: >
+      A controller that tracks the queueing plateau holds throughput within 5% of the
+      offline optimum without a latency blow-up.
+    grounded_in: [c4]
+
+  - id: c3
+    text: "Any fixed batch size inside the plateau does as well as adaptive control."
+    # The rival. Both alternatives are ungrounded; t1 is what separates them.
+
+  - id: c6
+    text: "The controller can ship enabled by default."
+    grounded_in: [c2]                    # rests on the hypothesis -> not itself established
+
+tests:
+  - id: t1
+    text: >
+      Replay production traces at fixed and adaptive batch size, measuring throughput and
+      p99 latency across three workload shift rates.
+    discriminates: [c2, c3]              # >=2 alternatives, or it would be plain grounding
+    grounded_in: [m1]
+    enabled_by: [k1, k2]                 # k2 is aspirational -> this test is at risk

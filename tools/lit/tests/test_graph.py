@@ -39,6 +39,15 @@ def test_load_repo_reads_curated_and_stubs():
     assert broad["throughput-scales-with-batching"].kind == "broad claim"
 
 
+def test_load_repo_reads_optional_broad_title():
+    _, broad = load_repo(EXAMPLE)
+    # `title` is the optional at-a-glance name (SCHEMA §4) …
+    assert broad["performance-benchmarking"].title == "Performance benchmarking"
+    assert broad["performance-benchmarking"].text.startswith("Measurement of a system's")
+    # … and a node without one defaults to "" (never None), so the viewer falls back to text
+    assert broad["microbenchmark"].title == ""
+
+
 def test_load_repo_reads_tags():
     papers, _ = load_repo(EXAMPLE)
     assert papers["Chen2021Sys"].tags == ["batching", "throughput", "queueing-model"]

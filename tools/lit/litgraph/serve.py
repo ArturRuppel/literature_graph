@@ -268,7 +268,7 @@ class _Handler(BaseHTTPRequestHandler):
             return
         self._send(HTTPStatus.OK, ctype, body_fn(), cache=cache, etag=etag)
 
-    def _payload_dict(self) -> dict:
+    def _payload_dict(self, include_aims: bool = False) -> dict:
         """graph.json as a dict, rebuilt from the repo's YAML on every request (may raise
         BuildError). Quotes are polished against the `.md` full text in pdf_dir (falls back to
         the raw anchor when a paper's `.md` is absent). The manual in-progress list
@@ -281,7 +281,10 @@ class _Handler(BaseHTTPRequestHandler):
         cockpit = ({"agent": "Switchboard agent",
                     "terminal": Path(self.server.term_cmd[0]).name if self.server.term_cmd else None}
                    if self.server.agent_cmd else None)
-        return to_json_dict(graph, active=load_config(self.server.root).active, cockpit=cockpit)
+        # Aims ride along only for the preview routes: `/graph.json` stays paper-only so the
+        # landing board is untouched by the programme layer.
+        return to_json_dict(graph, active=load_config(self.server.root).active, cockpit=cockpit,
+                            include_aims=include_aims)
 
     def _payload(self) -> str:
         """`_payload_dict` serialized — the graph.json body served at `/` and `/graph.json`."""
@@ -315,10 +318,10 @@ class _Handler(BaseHTTPRequestHandler):
                 # from the main viewer. `.html` (not `/preview/…`, taken by PNG thumbnails)
                 # keeps the base dir at `/` so the isolated page's own live PDF features resolve.
                 key = parse_qs(urlparse(self.path).query).get("key", [""])[0]
-                full = self._payload_dict()
+                full = self._payload_dict(include_aims=True)
                 if key not in full["papers"]:
                     return self._send(HTTPStatus.NOT_FOUND, "text/plain; charset=utf-8",
-                                      f"no curated paper to preview: {key}\n".encode())
+                                      f"nothing to preview: {key}\n".encode())
                 mini = json.dumps(isolate(full, key), ensure_ascii=False)
                 return self._send(HTTPStatus.OK, "text/html; charset=utf-8",
                                   render_html(mini).encode())
@@ -328,12 +331,24 @@ class _Handler(BaseHTTPRequestHandler):
                 # YAML edit (rebuild from live PAPERS, reading state preserved) instead of reloading
                 # the iframe, which would collapse the card the human is reading.
                 key = parse_qs(urlparse(self.path).query).get("key", [""])[0]
-                full = self._payload_dict()
+                full = self._payload_dict(include_aims=True)
                 if key not in full["papers"]:
                     return self._send(HTTPStatus.NOT_FOUND, "text/plain; charset=utf-8",
-                                      f"no curated paper to preview: {key}\n".encode())
+                                      f"nothing to preview: {key}\n".encode())
                 return self._send(HTTPStatus.OK, "application/json; charset=utf-8",
                                   json.dumps(isolate(full, key), ensure_ascii=False).encode())
+            if path == "/aims.json":
+                # the programme index behind the HUD's "aims" pill: one row per aim, each
+                # linking to its card at /preview.html?key=@<slug>. The counts are the two
+                # signals worth seeing without opening it (programme design §8).
+                graph = build_graph(self.server.root)
+                aims = [{"slug": slug, "title": a.title, "slices": len(a.slices),
+                         "assumptions": sum(1 for s in a.slices if s.load_bearing),
+                         "at_risk": sum(1 for s in a.slices
+                                        if s.kind == "test" and s.at_risk)}
+                        for slug, a in sorted(graph.aims.items())]
+                return self._send(HTTPStatus.OK, "application/json; charset=utf-8",
+                                  json.dumps(aims).encode())
             if path == "/pdfs.json":
                 keys = (sorted(f.stem for f in self.server.pdf_dir.glob("*.pdf"))
                         if self.server.pdf_dir.is_dir() else [])

@@ -18,6 +18,8 @@
     --floor:#b5822f;--model:#8a6db1;--grounded:#27735f;--borrowed:#286b9f;
     --question:#a15c1e;--broad:#7a4fb0;--cross:#9a3b3b;
     --plausible:#8a97a4;
+    /* programme layer: a claim's modality, and the two feasibility kinds */
+    --proposed:#8a6db1;--test:#2f6f8f;--capability:#5a7a52;--risk:#9a3b3b;
     --navy:#263646;   /* the signature ELN accent bar (the HUD) */
     --col:340px;   /* content-container width; the width slider in the HUD drives it */
     --grip:8px;    /* the graph/PDF seam's grab width — widened for fingers under (pointer:coarse).
@@ -113,6 +115,23 @@
   #wipPanel .wp-row .wp-done:hover{color:var(--grounded);border-color:var(--grounded)}
   #wipPanel .wp-note{padding:6px 8px 2px;font-size:10px;line-height:1.5;color:var(--faint)}
 
+  /* the programme index — the same panel shape as the worklist, but its rows are links to
+     an aim's card (/preview.html?key=@slug) rather than an in-place transition */
+  #aimPanel{position:fixed;z-index:45;top:44px;left:16px;width:320px;max-height:72vh;overflow:auto;
+    background:var(--panel);border:1px solid var(--line);border-radius:10px;
+    box-shadow:0 12px 34px rgba(38,54,70,.24);padding:6px}
+  #aimPanel[hidden]{display:none}
+  #aimPanel .wp-hd{font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--faint);
+    padding:6px 8px 5px}
+  #aimPanel .ap-row{display:flex;align-items:baseline;gap:8px;padding:7px 8px;border-radius:7px;
+    text-decoration:none;color:inherit}
+  #aimPanel .ap-row:hover{background:var(--bg)}
+  #aimPanel .ap-row .ckey{font-size:12px;color:var(--ink)}
+  #aimPanel .ap-row .flag{margin-left:auto;flex:none;font-size:9px;letter-spacing:.5px;
+    text-transform:uppercase;color:var(--faint)}
+  #aimPanel .ap-row .flag.warn{color:var(--risk);font-weight:600}
+  #aimPanel .wp-note{padding:6px 8px 2px;font-size:10px;line-height:1.5;color:var(--faint)}
+
   /* side padding centers the landing column on screen when nothing is expanded (half the
      viewport minus half a column), so grounds (←) and builds/synthesis (→) spawn symmetrically;
      it grows into scroll as columns fan out. min 40px keeps a gutter on narrow screens. */
@@ -153,11 +172,25 @@
   .ctitle{display:none;padding:0 11px 2px;font-size:10px;color:var(--dim);line-height:1.32}
   .cauth{display:none;padding:4px 11px 6px;font-size:9px;color:var(--faint)}
   .cauth .star{color:var(--floor)}
+  .cauth .anum{color:var(--faint);opacity:.7;font-style:italic}
   /* the abstract: on desktop it lives in the hover tip; on touch (no hover) it shows inline in
      the open card instead (revealed by the coarse-pointer media query below) */
   .cabs{display:none;padding:0 11px 8px;font-size:10px;color:var(--dim);line-height:1.4}
   .card.open .cyr{display:inline-block}
   .card.open .ctitle,.card.open .cauth{display:block}
+  /* the aim card's punchline. A paper's card is a bibliography record — its citekey identifies it
+     and the title can wait for the open state. An aim has no such handle: `@fluid-solid-switch`
+     collapsed told a reader nothing at all. So an aim's title and its one-line thesis (the first
+     sentence of `note`) read on the CLOSED card, and the rest of the pitch follows when it opens.
+     Placed after the .card.open rules so equal specificity resolves this way. */
+  .card.aim .ctitle{display:block;padding:3px 11px 0;font-size:11px;font-weight:600;color:var(--ink)}
+  .cpunch{padding:3px 11px 9px;font-size:10px;color:var(--dim);line-height:1.35}
+  /* the standing counts — `lit programme`'s report on one line, above the rows. It leads with what
+     is weakest on purpose: the assumptions nothing checks are what a jury finds first anyway. */
+  .cstat,.cnote{display:none;padding:0 11px 9px;font-size:9px;color:var(--faint);line-height:1.5}
+  .cnote{font-size:10px;color:var(--dim);line-height:1.4;padding-bottom:7px}
+  .card.open .cstat,.card.open .cnote{display:block}
+  .cstat .warn{color:var(--risk);font-weight:600}
   /* curator tags — a container filter axis; ride in the header (collapsed or open), click one to
      search it. As a single flex child they wrap onto their own header line when the row is full. */
   .ctags{display:flex;flex-wrap:wrap;gap:4px;align-items:center}
@@ -192,7 +225,21 @@
   .sid.fl{background:var(--floor)}.sid.cl{background:var(--grounded)}.sid.bo{background:var(--borrowed)}
   .sid.q{background:var(--question)}
   .sid.q.ans{opacity:.55}
+  /* programme slice badges: modality (pr/sp), the two feasibility kinds (te/ca), risk (ri) */
+  .sid.pr{background:var(--proposed)}.sid.sp{background:var(--plausible)}
+  .sid.te{background:var(--test)}.sid.ca{background:var(--capability)}
+  .sid.ri{background:var(--risk)}
+  /* the assumption badge — a claim carrying weight with no test under it */
+  .lb{flex:none;margin-left:5px;padding:0 4px;border-radius:6px;font-size:7px;
+      font-weight:700;color:#fff;background:var(--risk);margin-top:1px}
   .stx{color:var(--ink);line-height:1.28}
+  /* the `discriminates` relation, shown ON the rows instead of by nesting: the test names what it
+     separates, each claim names the test aimed at it. Both sit in the same group, so drilling the
+     test to reach its rivals would render them twice — the relation is a cross-reference here. */
+  .tst{flex:none;margin-left:5px;margin-top:1px;padding:0 4px;border-radius:6px;font-size:7px;
+      font-weight:700;letter-spacing:.3px;color:var(--test);background:#eef4f8;border:1px solid #cddbe4}
+  .sep{display:block;margin-top:3px;font-size:8px;color:var(--faint)}
+  .sep b{color:var(--test);font-weight:700}
   /* a slice whose weld is a PDF quote: its page pops on hover, pins on click (no inline text) */
   .slice.pdf-src{cursor:pointer}
   .slice.pdf-src .stx{border-bottom:1px dotted #b9a55f}
@@ -219,7 +266,10 @@
   .bn.q{border-color:var(--question);background:linear-gradient(160deg,#faf3e6,#f6ead8)}
   .bn .bkd{font-size:7px;letter-spacing:1.4px;text-transform:uppercase;color:#6b3fae;margin-bottom:3px}
   .bn.q .bkd{color:#9a6516}
+  .bn .btl{font-size:11px;font-weight:700;line-height:1.25;color:var(--ink);margin-bottom:3px}
   .bn .btx{font-size:10px;line-height:1.3;color:var(--ink)}
+  /* with a title the full statement is the gloss under it — demoted, not hidden */
+  .bn.titled .btx{font-size:9px;color:var(--dim)}
   .bn .meter{margin-top:6px;display:flex;gap:6px;font-size:8px}
   .bn .meter .s{color:var(--grounded)}.bn .meter .c{color:var(--cross)}
 
@@ -297,7 +347,7 @@
      anyway); input affordances key off (hover:none)+(pointer:coarse). The three unconditional
      clamps below are desktop-safe (they only bite when a panel would overflow the viewport). */
   #tip{max-width:calc(100vw - 16px)}
-  #wipPanel{max-width:calc(100vw - 16px)}
+  #wipPanel,#aimPanel{max-width:calc(100vw - 16px)}
   #board{overscroll-behavior-x:contain}          /* no back/forward-swipe hijack from the h-scroll */
   .pw-body{overscroll-behavior:contain}          /* nested page-scroll doesn't chain to the board */
 
@@ -306,7 +356,7 @@
     #board{gap:22px;padding:calc(var(--hud-h) + 22px) max(12px, calc(50vw - var(--col)/2)) 80px}
     #hud{gap:8px 10px;flex-wrap:wrap}
     #hud .widthctl{display:none}                 /* column ≈ full width — slider is moot (and ate swipes) */
-    #wipPanel{left:8px;right:8px;width:auto;max-height:60vh}
+    #wipPanel,#aimPanel{left:8px;right:8px;width:auto;max-height:60vh}
   }
   @media (hover:none) and (pointer:coarse){
     /* the movable/resizable quote window becomes a near-fullscreen sheet: no drag, no resize,
@@ -315,10 +365,13 @@
     .pw-grip{display:none}
     .pw-bar{cursor:default}
     .card,.slice,.slices .sgrp,.card.stack,.pw-tool,.pw-x,#hud .wip,
-    #wipPanel .wp-row{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+    #wipPanel .wp-row,#aimPanel .ap-row{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
     .slice{padding:7px 6px}                       /* fatter tap targets */
     .slices .sgrp{padding-top:9px;margin:9px 0 4px}
     #wipPanel .wp-row{padding:11px 10px}
+    /* the aim rows wrap on a narrow screen: title on one line, the flag beneath it */
+    #aimPanel .ap-row{padding:12px 10px;flex-wrap:wrap;gap:2px 8px}
+    #aimPanel .ap-row .flag{margin-left:0;flex-basis:100%}
     .card:active{border-color:#b8c3cc}            /* tap feedback (replaces the lost :hover cue) */
     .slice.drillable:active{background:#e9eef2}
     .card.open .cabs{display:block}               /* abstract inline (no hover tip on touch) */
@@ -381,7 +434,7 @@
   body.detached{overflow:hidden}
   body.detached #hud,body.detached #board,body.detached #searchResults,body.detached #dockEmpty,
   body.detached #dockGrip,body.detached #tip,body.detached #ctxmenu,
-  body.detached #wipPanel{display:none!important}
+  body.detached #wipPanel,body.detached #aimPanel{display:none!important}
   body.detached #detachPane{display:block;position:fixed;inset:0;z-index:5;background:#e0e5e9}
   body.detached #detachEmpty{position:absolute;inset:0;display:flex;align-items:center;
     justify-content:center;text-align:center;padding:24px;color:var(--faint);font-size:12px}
@@ -403,6 +456,7 @@
   <input id="search" type="search" autocomplete="off" spellcheck="false"
          placeholder="find a paper — title, author, journal, tag…">
   <span id="wip" class="wip" hidden></span>
+  <span id="aims" class="wip" hidden></span>
   <button id="pdfToggle" class="pdfbtn" hidden>📄 PDF</button>
   <button id="finishBtn" class="donebtn" hidden>✓ finish curation</button>
   <label class="widthctl">width
@@ -412,12 +466,13 @@
 </div>
 <div id="searchResults"></div>
 <div id="board"><svg id="edges"></svg></div>
-<div id="dockEmpty">open a card to load its PDF · click a claim to jump to its quote · toggle with 📄 PDF</div>
+<div id="dockEmpty">click a claim to jump to its quote · open a card, then 📄 PDF, for the whole paper</div>
 <div id="dockGrip"></div>
 <div id="detachPane"><div id="detachEmpty">waiting for the graph — hover a claim or open a card to load its PDF here</div></div>
 <div id="tip"></div>
 <div id="ctxmenu"></div>
 <div id="wipPanel" hidden></div>
+<div id="aimPanel" hidden></div>
 
 <script>
 const NS="http://www.w3.org/2000/svg";
@@ -454,6 +509,11 @@ const cols={};           // level -> {el, keys:Set, label}
 const open=new Set();    // "level:key" of focused cards — a set, so expansion is non-exclusive
 const drill=new Map();   // "level:key" -> Set of expanded row paths ("c3", "c3/c1", …)
 const grpCollapsed=new Set();  // "level:key::<group label>" — entry sub-groups folded shut
+const grpSeeded=new Set();     // aim cards whose default fold has been applied once. An aim opens
+                               // on its ARGUMENT alone; the seeding must not re-fold what the
+                               // reader has since unfolded, so it runs on first render only
+                               // (and again after a close, which clears the id — a reopened card
+                               // is a fresh read and should land back on the default view).
 let ctxOpen=new Set();   // cards context-opened to reveal a sharpened target (recomputed)
 let ctxDrill=new Map();  // row paths force-expanded to reveal a sharpened target (recomputed)
 const stacks=new Set();  // source-stack ids the human explicitly unfolded (persists rebuilds)
@@ -481,32 +541,85 @@ function passCircle(pass){
 }
 function authLine(a){return a.map(([n, pos, corr]) =>
   corr ? `<span class="star">${n}*</span>` : n).join(' · ');}
+// A cited source is on screen as evidence, not as a bibliography record: it opens automatically
+// beside the focal card, so a 25-name byline is 25 lines of noise between the reader and the
+// claim. Compact to the ends of the byline — which is how the paper gets cited anyway — keeping
+// the corresponding-author mark. Under six names it is already short enough to print in full.
+function shortAuthLine(a){
+  if (a.length < 6) return authLine(a);
+  const one = ([n, , corr]) => corr ? `<span class="star">${n}*</span>` : n;
+  const corr = a.filter(x => x[2]).map(one);
+  const ends = [one(a[0]), ...(corr.length ? corr : [one(a[a.length - 1])])];
+  return `${ends[0]} · … · ${ends.slice(1).join(' · ')} <span class="anum">(${a.length} authors)</span>`;
+}
 // citekey = <Family><Year><Venue>; the venue token is the journal (ISO-4 abbrev / brand). Used as
 // the journal until a real `journal` field is stored end-to-end (then p.journal wins).
 const venueFromKey = k => { const m = String(k).match(/\d{4}([A-Za-z][A-Za-z0-9]*)$/); return m ? m[1] : ""; };
 
+// An aim's `note` is written as thesis-then-consequence — "same mean, percolating pattern → solid;
+// dispersed → fluid. If it holds it makes a number and closes the chain…". Split it there: the
+// first sentence is the punchline (closed card), the remainder is the pitch (open card). No new
+// schema field — the two layers were already in the YAML, the card just never printed them.
+function splitNote(n){
+  const t = (n || "").trim();
+  const m = t.match(/^([\s\S]*?[.!?])\s+([\s\S]+)$/);
+  return m ? [m[1], m[2].replace(/\s+/g, " ")] : [t, ""];
+}
+// The standing counts: what the aim rests on that nothing checks, what would settle it, what it
+// cannot yet do. This is `lit programme`'s report compressed onto one line, and it deliberately
+// leads with the weakest thing — that is what a reviewer finds first regardless.
+function aimStat(p){
+  const S = p.slices, n = (k, one, many) => `${k} ${k === 1 ? one : many}`;
+  const lb = S.filter(s => s.lb), tests = S.filter(s => s.kind === "test");
+  const risk = tests.filter(s => s.risk);
+  const asp = S.filter(s => s.kind === "capability" && s.asp);
+  const openq = S.filter(s => s.kind === "question" && !s.answered);
+  const bits = [];
+  if (lb.length) bits.push(`<span class="warn">${n(lb.length, "assumption", "assumptions")} `
+    + `nothing checks</span> (${lb.map(s => s.br + "✕").join(" · ")})`);
+  if (tests.length) bits.push(n(tests.length, "test", "tests") + (risk.length
+    ? `, <span class="warn">${risk.length === tests.length ? "all" : risk.length} at risk</span>` : ""));
+  if (asp.length) bits.push(`<span class="warn">`
+    + n(asp.length, "capability that doesn't", "capabilities that don't") + ` exist yet</span>`);
+  if (openq.length) bits.push(n(openq.length, "open question", "open questions"));
+  return bits.join(" · ");
+}
+
 function paperCard(key, level){
   const p = PAPERS[key] || STUBS[key];
   const cur = !!(PAPERS[key] && PAPERS[key].cur);
+  const aim = !!(PAPERS[key] && PAPERS[key].aim);
   const id = `${level}:${key}`;
   const el = document.createElement("div");
-  el.className = `card ${cur ? 'curated' : 'stub'}`;
+  el.className = `card ${cur ? 'curated' : 'stub'}${aim ? ' aim' : ''}`;
   el.id = "card-" + id; el.dataset.key = key; el.dataset.id = id;
   el.dataset.year = p.year || 0;
   // Collapsed by default: circle + citekey only. The rest is revealed on focus (.open).
-  let body = `<div class="chd">${passCircle(cur ? p.pass : 0)}<span class="ckey">${key}</span>`;
+  // An aim carries neither: curation maturity is a reading protocol for a document that already
+  // exists (programme design §7), and an aim has no year — which the header used to print as
+  // a literal "null".
+  let body = `<div class="chd">${aim ? "" : passCircle(cur ? p.pass : 0)}<span class="ckey">${key}</span>`;
   if (cur) {
     body += `<span class="ctype ${p.type}">${p.type}</span>`;
     // tags ride in the header (collapsed too) between the class pill and the right-pushed year
     if (p.tags && p.tags.length) body += `<div class="ctags">`
       + p.tags.map(t => `<span class="ctag" data-tag="${esc(t)}">${esc(t)}</span>`).join("") + `</div>`;
-    body += `<span class="cyr">${p.year}</span>`;
+    if (!aim) body += `<span class="cyr">${p.year}</span>`;
   }
   body += `</div>`;
   if (cur) {
     body += `<div class="ctitle">${p.title}</div>`;
-    if (p.authors) body += `<div class="cauth">${authLine(p.authors)}</div>`;
-    if (p.abs) body += `<div class="cabs">${p.abs}</div>`;   // shown inline only on touch (CSS); desktop reads it in the hover tip
+    if (aim) {
+      const [punch, pitch] = splitNote(p.note);
+      if (punch) body += `<div class="cpunch">${punch}</div>`;
+      const stat = aimStat(p);
+      if (stat) body += `<div class="cstat">${stat}</div>`;
+      if (pitch) body += `<div class="cnote">${pitch}</div>`;
+    } else {
+      if (p.authors) body += `<div class="cauth">`
+        + (p.cited ? shortAuthLine(p.authors) : authLine(p.authors)) + `</div>`;
+      if (p.abs) body += `<div class="cabs">${p.abs}</div>`;   // shown inline only on touch (CSS); desktop reads it in the hover tip
+    }
     body += `<div class="slices"></div>`;   // filled by renderSlices from the drill state
   }
   el.innerHTML = body;
@@ -567,7 +680,12 @@ function togglePin(t){
   redraw();
 }
 const SID_CLASS = {floor: "fl", model: "fl", grounded: "cl", borrowed: "bo",
-                   plausible: "cl", question: "q"};
+                   plausible: "cl", question: "q",
+                   // programme layer: a claim's modality, then the feasibility kinds.
+                   // "established" reuses the borrowed blue — it *is* grounded elsewhere.
+                   established: "bo", proposed: "pr", speculation: "sp",
+                   test: "te", "test-at-risk": "ri",
+                   capability: "ca", "capability-aspirational": "ri"};
 
 // Click routing on a curated card: closed → click anywhere focuses it; open → the header
 // collapses it (or promotes a context-opened card to focus), and slice rows drill.
@@ -587,7 +705,8 @@ function cardClick(e, el, level, key){
     // browse view, which meant a phone could never see a highlighted quote at all: there is no
     // hover to aim with, so the dock sat on page 1 of the paper no matter what you tapped. Click
     // now aims it everywhere — on desktop that's a no-op confirming what the hover already did
-    // (aimDock early-returns when it's already parked on this claim).
+    // (aimDock early-returns when it's already parked on this claim). Aiming never OPENS the
+    // PDF: with the dock shut the aim is just remembered, and the next explicit 📄 lands on it.
     if (row.classList.contains("pdf-src")) {
       if (DRIVE) focusFromClick(key, row.dataset.sid);   // card window: steer the separate PDF window
       else aimDock(key, row.dataset.sid);                // browse / mobile-curate: aim the dock
@@ -598,15 +717,15 @@ function cardClick(e, el, level, key){
   if (el.classList.contains("open")) {
     if (e.target.closest(".chd")) {
       if (open.has(id)) {
-        open.delete(id); drill.delete(id);
+        open.delete(id); drill.delete(id); grpSeeded.delete(id);
         for (const g of [...grpCollapsed]) if (g.startsWith(id + "::")) grpCollapsed.delete(g);
       }
-      else { open.add(id); loadDock(key); }   // context-opened card → promote to focused + load its PDF
+      else open.add(id);                      // context-opened card → promote to focused
       rebuild();
     }
     return;
   }
-  open.add(id); loadDock(key); rebuild();      // collapsed card clicked open → load its PDF into the dock
+  open.add(id); rebuild();                     // collapsed card clicked open — reading the graph, not the PDF
 }
 
 function toggleDrill(id, path){
@@ -639,6 +758,9 @@ function renderSlices(id){
   p.slices.forEach(s => (s.gen || []).forEach(g => (genBy[g] = genBy[g] || []).push(s.id)));
   const dependents = new Set();
   p.slices.forEach(s => (s.up || []).forEach(u => dependents.add(u)));
+  // an aim additionally shows tests as entries in their own right — a test is not
+  // sub-structure of a claim, it is what the aim proposes to *do*.
+  const tests = p.aim ? p.slices.filter(s => s.kind === "test") : [];
   // a laddering claim (local leads_to) sits under its broader parent, not at the top
   const entries = p.slices.filter(s =>
     (s.kind === "claim" && !dependents.has(s.id) && !(s.gen || []).length)
@@ -653,7 +775,54 @@ function renderSlices(id){
   // own section at the bottom, the OPEN questions — the ones the paper raises and leaves
   // unanswered (emergent: no incoming `answers`), the birds-eye "what this paper leaves open"
   const questions = entries.filter(s => s.kind === "question");
-  const groups = [
+  // An aim's card answers a different question from a paper's, and it must not open on all of it.
+  // A paper reports what it found; an aim makes an argument, and an argument is read top-down —
+  // the hypothesis, its rivals, and the experiments that separate them, with everything else
+  // folded until asked for. Three rules differ from the paper branch:
+  //
+  //   * **every claim is placed, exactly once.** The paper rule ("a claim something depends on is
+  //     sub-structure — nest it") inverts here: an aim's hypothesis is grounded in its assumptions
+  //     and its payoff is grounded in the hypothesis, so the load-bearing claims are precisely the
+  //     ones that rule hid. It hid c5 (the hypothesis) behind c14, and made the assumptions group
+  //     unreachable outright — `lb` requires a dependent, and having a dependent removed you.
+  //   * **the argument leads.** Ordered by blast radius, so the hypothesis stands above the rivals
+  //     it is being tested against rather than below whichever null sorts first.
+  //   * **the rest is folded** (seeded below), so the card opens on ~one screenful.
+  const argued = new Set();            // claims a test separates — the argument's live front
+  tests.forEach(t => (t.disc || []).forEach(c => argued.add(c)));
+  const testFor = {};                  // claim -> the test(s) aimed at it, shown as a row chip
+  tests.forEach(t => (t.disc || []).forEach(c => (testFor[c] = testFor[c] || []).push(t.id)));
+  const allClaims = p.aim ? p.slices.filter(s => s.kind === "claim") : [];
+  const placed = new Set();            // first group wins, so nothing renders twice
+  const take = f => {                  // …and nothing silently vanishes: see the "everything else"
+    const out = allClaims.filter(s => !placed.has(s.id) && f(s));
+    out.forEach(s => placed.add(s.id));
+    return out;
+  };
+  const argument = [...take(s => argued.has(s.id)).sort((a, b) => (b.br || 0) - (a.br || 0)), ...tests];
+  const assumptions = take(s => s.lb);
+  const literature = take(s => s.mod === "established");
+  const rest = take(() => true);       // controls the test verifies, and what follows if it works
+  const caps = p.aim ? p.slices.filter(s => s.kind === "capability") : [];
+  const other = p.aim ? p.slices.filter(s =>
+    !["claim", "question", "test", "capability"].includes(s.kind)) : [];
+  // A trimmed neighbour (`lit preview` of an aim, preview.py `_cited_neighbour`) carries only the
+  // slices the focal container cites, and they go in one group whatever their kind — the paper
+  // branch's entry rule never surfaces a Method, and three of the five sources here are cited for
+  // their methods. The group IS the answer to "what does the aim take from this paper".
+  // [label, rows, folded-by-default]
+  const groups = p.cited ? [
+    ["cited here", p.cited.map(i => byId[i]).filter(Boolean), false],
+  ] : p.aim ? [
+    ["the argument", argument, false],
+    ["assumptions — nothing checks these", assumptions, true],
+    ["rests on the literature", literature, true],
+    ["controls & consequences", rest, true],
+    ["open questions", questions.filter(s => !s.answered), true],
+    ["answered questions", questions.filter(s => s.answered), true],
+    ["capabilities", caps, true],
+    ["everything else", other, true],
+  ] : [
     ["novel claims & questions",
       [...questions.filter(s => s.answered),
        ...claims.filter(s => s.color !== "borrowed")]],
@@ -673,10 +842,28 @@ function renderSlices(id){
     });
     return ans.filter(a => !sub.has(a)).map(k => ({s: byId[k], lad: false}));
   };
+  // A test drills to the methods it uses. What it *separates* and what it *needs* used to nest
+  // here too, which is what made one aim's 23 slices render as 47 rows — the rivals sit in the
+  // same group as the test and the capabilities have their own, so nesting them re-rendered
+  // claims up to five times over. Both relations ride on the row instead, as cross-references.
   const kidsOf = s => s.kind === "question"
     ? qKids(s.id)
+    : s.kind === "test"
+    ? (s.up || []).map(u => ({s: byId[u], lad: false})).filter(k => k.s)
     : [...(s.up || []).map(u => ({s: byId[u], lad: false})),
        ...(genBy[s.id] || []).map(u => ({s: byId[u], lad: true}))].filter(k => k.s);
+  // the cross-reference lines under a test's text: what it settles, and the kit it needs (an
+  // unevidenced capability shown in the risk colour — it is the reason the test reads at-risk).
+  const xref = s => {
+    if (s.kind !== "test") return "";
+    const bits = [];
+    if ((s.disc || []).length)
+      bits.push(`separates ${s.disc.map(c => `<b>${c}</b>`).join(" · ")}`);
+    if ((s.en || []).length)
+      bits.push(`needs ${s.en.map(k => byId[k] && byId[k].asp
+        ? `<b style="color:var(--risk)" title="claimed but not evidenced">${k}</b>` : `<b>${k}</b>`).join(" · ")}`);
+    return bits.length ? `<span class="sep">${bits.join(" &nbsp;·&nbsp; ")}</span>` : "";
+  };
   let html = "";
   const row = (s, path, depth, lad) => {
     const kids = kidsOf(s);
@@ -690,11 +877,24 @@ function renderSlices(id){
           + `<span class="car">${can ? (isOpen ? "▾" : "▸") : "·"}</span>`
           + (lad ? `<span class="gmk">⤴</span>` : ``)
           + `<span class="sid ${SID_CLASS[s.color] || 'cl'}${ans}">${s.id}</span>`
-          + `<span class="stx">${s.text}</span></div>`;
+          + `<span class="stx">${s.text}${xref(s)}</span>`
+          // the one thing a jury finds first: what the aim rests on with nothing under it
+          + (s.lb ? `<span class="lb" title="load-bearing: ${s.br} dependent${s.br === 1 ? '' : 's'}, no test aimed at it">${s.br}✕</span>` : ``)
+          // …and its mirror: the test aimed at this claim, so a rival names its own referee
+          + ((testFor[s.id] || []).length
+             ? `<span class="tst" title="settled by ${testFor[s.id].join(", ")}">${testFor[s.id].join(" ")}</span>` : ``)
+          + `</div>`;
     if (isOpen) {
       for (const k of kids) row(k.s, `${path}/${k.s.id}`, depth + 1, k.lad);
     }
   };
+  // An aim opens on its argument alone. Seeded once per card (see grpSeeded) so unfolding a group
+  // sticks; a close clears the seed, so reopening lands back on the default view.
+  if (p.aim && !grpSeeded.has(id)) {
+    grpSeeded.add(id);
+    for (const [label, ss, fold] of groups)
+      if (fold && ss.length) grpCollapsed.add(`${id}::${label}`);
+  }
   for (const [label, ss] of groups) {
     if (!ss.length) continue;
     const col = grpCollapsed.has(`${id}::${label}`);
@@ -707,17 +907,67 @@ function renderSlices(id){
   }
   box.innerHTML = html;
 }
+// ── hoisting ─────────────────────────────────────────────────────────────────────────────
+// Clicking a broad claim pulls it AND every container that feeds it to the top of their columns.
+// While the library was small the isolation highlight was enough: dim everything, and the two or
+// three lit cards were on screen anyway. It isn't any more — a broad node's papers sit anywhere
+// down a column of thousands, so isolating it lit up arrows that pointed off the bottom of the
+// screen. Hoisting gathers the claim and its containers into one screenful, which is what
+// "show me this broad claim" meant all along.
+function colInsertPoint(col){                        // the first slot below the column's header
+  const hd=col.querySelector(":scope > .colhd");
+  return hd?hd.nextSibling:col.firstChild;
+}
+// Move each element to the top of its own column, preserving the order given — elements sharing a
+// column stack in list order, and one already on top stays put.
+function hoistAll(els){
+  const prev=new Map();                              // column -> the last element hoisted into it
+  for(const el of els){
+    const col=el&&el.parentNode;
+    if(!col||!col.classList||!col.classList.contains("col")) continue;
+    const p=prev.get(col);
+    // chain off the previous hoist rather than tracking a "next sibling" cursor: that cursor goes
+    // null on the column's last child, and insertBefore(el,null) APPENDS — the exact opposite
+    if(p) p.after(el); else col.insertBefore(el,colInsertPoint(col));
+    prev.set(col,el);
+  }
+}
+function hoistBroad(slug){
+  const els=[document.getElementById(`card-${SYNTH}:${slug}`)];
+  const seen=new Set();
+  for(const lk of (BROAD_LINKS[slug]||[])){          // once per paper, however many slices feed the node
+    if(seen.has(lk.key)) continue;
+    seen.add(lk.key);
+    // every instance, not just the landing one: an expanded paper also has a card in the
+    // grounds/builds column it spawned into, and that is where its real edge anchors
+    for(const lvl of Object.keys(cols).map(Number))
+      if(lvl!==SYNTH&&cols[lvl].keys.has(lk.key))
+        els.push(document.getElementById(`card-${lvl}:${lk.key}`));
+  }
+  hoistAll(els);
+  // instant, not smooth: every scroll event redraws the edge overlay, so animating up from deep in
+  // a 100k-px column would repaint every arrow the whole way
+  if(board.scrollTop) board.scrollTop=0;
+}
 function broadCard(slug,level){
   const b=BROAD[slug], id=`${level}:${slug}`;
   const el=document.createElement("div");
-  el.className="bn"+(b.kind.includes("question")?" q":"");
+  el.className="bn"+(b.kind.includes("question")?" q":"")+(b.title?" titled":"");
   el.id="card-"+id; el.dataset.id=id;
   let m = b.meter?`<div class="meter"><span class="s">▲ ${b.meter.s} support</span><span class="c">▼ ${b.meter.c} contradict</span></div>`:'';
-  el.innerHTML=`<div class="bkd">${b.kind}</div><div class="btx">${b.text}</div>${m}`;
+  // optional `title` (SCHEMA §4): the at-a-glance name, with the full statement as its gloss
+  let t = b.title?`<div class="btl">${b.title}</div>`:'';
+  el.innerHTML=`<div class="bkd">${b.kind}</div>${t}<div class="btx">${b.text}</div>${m}`;
   // hovering a broad node isolates its edges and lights up the papers linked into it
   el.addEventListener("mousemove",()=>setHover({cardId:el.id,sid:null}));
   el.addEventListener("mouseleave",()=>setHover(null));
-  el.addEventListener("click",()=>togglePin({cardId:el.id,sid:null}));  // pin/unpin this node
+  // pin/unpin this node — and on the pin, hoist it and its containers into one screenful. The
+  // hoist runs BEFORE togglePin so its redraw re-anchors the edges onto the cards' new positions.
+  el.addEventListener("click",()=>{
+    const t={cardId:el.id,sid:null};
+    if(!pin.some(p=>samePin(p,t))) hoistBroad(slug);
+    togglePin(t);
+  });
   return el;
 }
 
@@ -1416,10 +1666,22 @@ function reattachDock(){                                // bring the PDF back in
   dockDoc = keep; openDock();
   if (keep) mountDockDoc();
 }
+// The PDF is opened EXPLICITLY — by the 📄 pill, never as a side effect of reading the graph.
+// Opening a card used to force the dock open and load that paper, which meant every click while
+// browsing threw a PDF across half the screen; with a library this size that is almost always in
+// the way. So the pill is the only door, and it lands on whatever the last claim-click aimed at
+// (recorded even while the dock was shut), falling back to the focused paper's page 1.
+function focusedKey(){                                 // most recently focused card (Set = insertion order)
+  let k = null;
+  for (const id of open) { const kk = idKey(id); if (PAPERS[kk]) k = kk; }
+  return k;
+}
 function openDock(){
   if (dockOpen) return;
   dockOpen = true; document.body.classList.add("dock-open");
   if (pdfToggle) pdfToggle.classList.add("on");
+  if (dockDoc) mountDockDoc();                         // the remembered aim, highlight and all
+  else { const k = focusedKey(); if (k) loadDock(k); } // nothing aimed yet → the open paper, page 1
 }
 function closeDock(){
   dockOpen = false; document.body.classList.remove("dock-open");
@@ -1445,11 +1707,11 @@ function mountDockDoc(){
 }
 function scheduleDockRefit(){ clearTimeout(dockRefitTimer);
   dockRefitTimer = setTimeout(() => { if (dockOpen && dockDoc) mountDockDoc(); }, 140); }
-// Opening a card loads its whole PDF into the dock (page 1, no highlight) — the coarse "show me
-// this paper" entry; hovering a quote-slice still fine-aims the open dock at that exact quote.
+// Load a paper's whole PDF (page 1, no highlight) — the coarse "show me this paper" entry, used
+// by openDock when no claim has aimed it yet. It does not open the dock itself: opening is the
+// pill's job, and nothing here should put a PDF on screen that the human didn't ask for.
 function loadDock(key){
   if (DRIVE || !LIVE || !(PDFS && PDFS.has(key))) return;   // DRIVE card has no dock; nothing servable → skip
-  if (!pdfDetached) openDock();                             // detached: the child is the pane, not the dock
   const qid = `${key}:__paper__`;
   if (qid === dockShown) { if (pdfDetached && pdfWin && !pdfWin.closed) pdfWin.focus(); return; }
   clearTimeout(dockTimer); dockReq = qid;
@@ -1473,7 +1735,9 @@ async function aimDock(key, sid){
   if (qid === dockShown) return;                    // already parked on this claim
   dockReq = qid;
   const loc = await resolveLoc(key, sid) || {page: 0, rects: []};
-  if (dockReq !== qid || !pdfActive()) return;      // hover moved on / PDF closed while resolving
+  if (dockReq !== qid) return;                      // a newer aim (or closeDock) superseded this one
+  // Recorded even with the PDF shut — renderCurrent is then a no-op, but the aim survives, so an
+  // explicit 📄 afterwards opens ON the claim you clicked instead of on page 1.
   dockDoc = {key, page: loc.page || 0, rects: loc.rects.slice()};
   renderCurrent();
   dockShown = qid;
@@ -2051,6 +2315,47 @@ addEventListener("resize",redraw);
 // this graph window then navigates into the card, while the server launches the native terminal.
 // The two POSTs settle before navigation so a failed terminal request is visible and cannot be
 // cancelled by leaving the graph. One click, three real surfaces, only one browser popup.
+// The programme index: a HUD pill listing the aims, each row a link to that aim's card at
+// /preview.html?key=@<slug> — the same isolated view `lit preview` writes, so the served card
+// and the written one cannot drift. Server-only (/aims.json is a `lit serve` route), so a
+// static `lit build` never sprouts it, and a repo with no programme/ tree never shows the pill.
+if (LIVE && !DRIVE && !PDFWIN && !MOBILE_CURATE) (function(){
+  const pill = document.getElementById("aims");
+  const panel = document.getElementById("aimPanel");
+  if (!pill || !panel) return;
+  const cardUrl = slug => {                 // built off THIS document's URL, like the worklist's
+    const u = new URL("preview.html", location.href); u.hash = "";
+    u.searchParams.set("key", slug);
+    return u.href;
+  };
+  const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
+  fetch("aims.json").then(r => r.ok ? r.json() : []).then(list => {
+    if (!list.length) return;               // no programme tree → the pill stays hidden
+    pill.innerHTML = `aims · <span class="n">${list.length}</span>`;
+    pill.hidden = false;
+    panel.innerHTML = `<div class="wp-hd">programme</div>` + list.map(a => {
+      // the two signals worth seeing without opening the card; else just its size
+      const bits = [];
+      if (a.assumptions) bits.push(plural(a.assumptions, "assumption"));
+      if (a.at_risk) bits.push(plural(a.at_risk, "test") + " at risk");
+      const flag = bits.length ? bits.join(" · ") : plural(a.slices, "slice");
+      return `<a class="ap-row" href="${esc(cardUrl(a.slug))}" target="_blank" rel="noopener">`
+           + `<span class="ckey">${esc(a.title || a.slug)}</span>`
+           + `<span class="flag${bits.length ? " warn" : ""}">${esc(flag)}</span></a>`;
+    }).join("") + `<div class="wp-note">each aim's card — its hypotheses, what they rest on, `
+                + `and the tests that would settle them. Opens in a new tab.</div>`;
+    pill.addEventListener("click", e => {
+      e.stopPropagation();
+      const wipPanel = document.getElementById("wipPanel");
+      if (wipPanel) wipPanel.hidden = true;   // one panel open at a time
+      panel.hidden = !panel.hidden;
+    });
+    document.addEventListener("click", e => {
+      if (!panel.hidden && !panel.contains(e.target) && e.target !== pill) panel.hidden = true;
+    });
+  }).catch(() => {});                        // a server without the route: stay hidden
+})();
+
 // LIVE-gated: a static `lit build` carries no active list, so the pill stays hidden.
 if (LIVE && !DRIVE && !PDFWIN && !MOBILE_CURATE) (function(){
   const pill = document.getElementById("wip");
