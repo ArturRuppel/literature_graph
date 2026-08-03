@@ -180,8 +180,8 @@ revealing one generation, the same drill idiom the rest of the board already use
 the landing view; 26 broad claims → 4.
 
 **The landing column went the same way.** Papers now arrive only when something asks for them:
-a broad node's evidence lens, or a jump from the search box or the library. The board landed
-on 53 curated papers for the same bad reason the band landed on 42 nodes.
+a claim you show, or a jump from the search box or the library. The board landed on 53 curated
+papers for the same bad reason the band landed on 42 nodes.
 
 ### Arriving is easy; leaving has to be too
 
@@ -206,19 +206,63 @@ The fix keeps the accumulate model and makes it legible. Three sets, one rule:
 | Set | Filled by | Lifetime |
 |---|---|---|
 | `landedStuck` | a jump by name — search box, library row | sticky |
-| `broadPapersOpen` | a claim's evidence lens | lives and dies with the lens |
+| `shownBroad` | showing a claim (clicking its card) | lives and dies with the claim |
 | `landedDropped` | the per-card `×` | **overrides both**, until something asks again |
 
 > **A drop outranks every source, and lifts only when something explicitly asks for that paper
-> again** — a jump by name, or the lens switched off and on.
+> again** — a jump by name, or the claim shown again.
 
 That is the whole model, and it is what makes `×` mean what it says. Around it: each card states
 what is holding it (`asked for by name · evidence for "…"`), recomputed every sync because a
-second lens can add a *reason* without adding a card; the lens reports `showing 3 of 4` rather
-than a bare total, so a dismissal leaves the chip honest; the two chips are now separate rows in
-separate visual languages (`▸ 3 narrower`, pill, purple, along the band · `◂ 2 papers`, square,
-paper-blue, filled when on); and the column header carries `clear`, the guaranteed way back to
-empty that a three-door column has no business lacking.
+second claim can add a *reason* without adding a card; the papers chip reports `showing 3 of 4`
+rather than a bare total, so a dismissal leaves it honest; the two chips keep separate visual
+languages (`▾ 3 narrower`, pill, purple, along the band · `◂ 2 papers`, square, paper-blue) so it
+is obvious which axis each is talking about; and the column header carries `clear`, the guaranteed
+way back to empty that a three-door column has no business lacking.
+
+### One gesture per claim
+
+Splitting the two chips into separate visual languages was the right diagnosis of the wrong
+problem. It made the rung chip and the papers chip *distinguishable* — but distinguishable is only
+worth having if they are different **decisions**, and they were not. Counting the whole card, there
+were three gestures on it: `◂ 2 papers` landed the evidence, `▸ 3 narrower` walked one rung down the
+ladder, and clicking the **card** pinned its edges bright and hoisted the block. All three mean
+"show me this claim". They differed only in which fraction of the result you got.
+
+And they were never independent. Since the landing column collapsed, a claim's evidence has no
+cards until something lands it — so pinning a claim before showing its evidence isolates a set of
+arrows that do not exist. The card click was only ever the chips' other half, and which one you
+happened to reach for decided what you saw.
+
+So the card is the whole gesture, at **every altitude**. Click a claim and whatever sits one step
+below it comes onto the board: papers if the claim stands at the foot of the ladder, the narrower
+claims that ladder into it if it stands higher, both if it has both. Its arrows go bright and stay
+bright, and the whole block gathers into one screenful. Click again and it all comes undone. Both
+chips lost their clicks and became **readouts** — `▾ 3 narrower`, `◂ showing 3 of 4` — reporting the
+state rather than offering ways into pieces of it.
+
+> **One card, one gesture.** Two controls for one intention is not a choice, it's a coin flip.
+
+The generalization is the part worth keeping. A high-altitude claim's narrower claims *are* its
+evidence, in exactly the sense that a tier-0 claim's papers are: the thing one step down that the
+claim rests on. Which kind you get is a fact about where the claim sits in the graph, and asking the
+reader to express that with a different chip pushed a detail of the schema out into their hands.
+So `broadOpen` — the rung-reveal set — was deleted and folded into `shownBroad`, and `visibleBroad()`
+now walks that one set. A claim's pin is likewise **derived** from `shownBroad` on every rebuild
+rather than toggled separately: two independent flags for one fact can disagree, and these did. The
+same collapse ate the hoist bookkeeping, since the click order to replay is just `shownBroad`'s own
+insertion order.
+
+Folding a claim takes its whole **subtree** with it (`pruneShown`, iterated to a fixpoint): a
+narrower claim you reached *through* a parent has no card once the parent folds, and a shown claim
+with no card is one still landing papers with nothing on screen to say why. A claim with two parents
+survives until the last of them folds, which is what multi-parenting is for.
+
+Two consequences to know. Clicking empty board space thaws the slice-row pins but *not* the claims,
+since dropping a claim's brightness while its evidence stayed on the board would rebuild exactly the
+half-state this removed. And `clear` lives on the landing column header, so a high-altitude claim
+shown with only claims beneath it has no `clear` to reach for — click it again. That was true of the
+old rung chip too, but it is more reachable now that one gesture leads there.
 
 ### The library view — the other half of the split
 
@@ -235,17 +279,49 @@ belonged: headings group, leaf containers narrow.
 One asymmetry to know: topics reach curated papers only, because `tags` are curated-only and a
 topic reaches papers through tags. A stub can never match a topic facet.
 
+### Order is arrival order, not a re-sort
+
+The last thing the collapse exposed: with the board landing near-empty, *everything* on screen got
+there by a click, and the order it appeared in became the only structure there was. Two places
+threw that away on every click.
+
+The spawned columns (`grounds ←`, `builds on →`, the synthesis band) sorted globally by year, so
+opening a second paper slid its grounds *into* the first paper's block. And `hoistBroad`, which
+gathers a clicked claim and its papers into one screenful, hoisted to the very top
+unconditionally — so clicking a second claim shoved the first one's block down and out of view.
+Both make an *additive* gesture read as a rearrangement: you asked for one more thing and the
+things you already had moved.
+
+The fix is one idea applied twice. Every spawned card carries the **group** that pulled it in — the
+index of the card you opened, in the order you opened it — and a column sorts by group first, its
+own rule (year desc, ladder order) only within the group. The sweep in `rebuild()` therefore walks
+`open` in insertion order rather than column order, which is where the index comes from. Hoisting
+likewise became a stack: `hoistShown()` replays every shown claim's block in click order, so block
+*N* lands below block *N−1*.
+
+> **A click adds; it never rearranges.** Whatever was on screen before stays where you left it,
+> and the new material lands underneath.
+
+Two ties fall out of that rule and are worth stating. A card wanted by two groups belongs to the
+**first** that asked — pulling it down on the second click would tear a hole in a block you are
+still reading. And re-opening something you had closed counts as a **fresh arrival**, landing at
+the bottom, because `open` and `shownBroad` are both ordered by last touch.
+
 ## 7. Deliberately not decided
 
 - **Whether claims should carry topics.** They should not, for now. A topic on a broad claim
   is arguable (nothing in the graph could derive it), but it buys nothing the paper-level
   axis does not already deliver, and it reopens a rule that is currently load-bearing.
-- **Whether the evidence lens should be exclusive.** It accumulates: two open lenses put both
-  claims' papers in one column. The alternative is that a lens *replaces* the column with one
-  claim's evidence, with a separately-pinned set surviving alongside — which would dissolve the
-  removal problem entirely rather than making it legible. Accumulate was kept because comparing
-  two claims' evidence and looking for the overlap is a thing a synthesis board should let you
-  do. Revisit if that turns out never to happen in practice.
+- **Whether showing a claim should be exclusive.** It accumulates: two shown claims put both sets
+  of papers in one column, in blocks, in the order you asked. The alternative is that showing a
+  claim *replaces* the column with that claim's evidence, with a separately-pinned set surviving
+  alongside — which would dissolve the removal problem entirely rather than making it legible.
+  Accumulate was kept because comparing two claims' evidence and looking for the overlap is a
+  thing a synthesis board should let you do. Revisit if that turns out never to happen in
+  practice — and note that it is now a cheaper change than it was, since one gesture and one
+  derived pin means exclusivity would be a rule about `shownBroad` alone. It would also have to
+  say what exclusivity means *up the ladder*: showing a claim inside the block you are already
+  reading should surely not put the parent away.
 - **Whether the band should separate kinds.** 8 of the 14 landing nodes are broad *methods*,
   so the first thing the eye meets is instrumentation rather than the claim ladder the collapse
   was built to expose. Splitting claims from methods into their own bands would fix that and

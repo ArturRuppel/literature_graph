@@ -390,7 +390,7 @@
 
   /* broad / synthesis nodes */
   .bn{position:relative;border:1.6px solid var(--broad);border-radius:14px;padding:9px 12px;
-    background:linear-gradient(160deg,#f4f0fa,#ece3f6);cursor:default}
+    background:linear-gradient(160deg,#f4f0fa,#ece3f6);cursor:pointer}
   .bn.q{border-color:var(--question);background:linear-gradient(160deg,#faf3e6,#f6ead8)}
   .bn .bkd{font-size:7px;letter-spacing:1.4px;text-transform:uppercase;color:#6b3fae;margin-bottom:3px}
   .bn.q .bkd{color:#9a6516}
@@ -400,27 +400,23 @@
   .bn.titled .btx{font-size:9px;color:var(--dim)}
   .bn .meter{margin-top:6px;display:flex;gap:6px;font-size:8px}
   .bn .meter .s{color:var(--grounded)}.bn .meter .c{color:var(--cross)}
-  /* rung-opener: the band lands on its roots and drills down one generation per click, the
-     same "one click = one generation" idiom the rest of the board already runs on. Sits inside
-     the broad node but takes its own click — pinning is still the whole-card gesture. */
+  /* The two evidence readouts. NEITHER is a control: showing a claim is the CARD's click, and
+     these report what that click did — the rung chip how many narrower claims it put on the band
+     (▸ folded, ▾ shown), the lens how many papers it put in the column and how many of those are
+     still there after any × dismissals. Both were buttons once, and having three ways to say
+     "show me this claim" was the confusion; making them labels rather than restyling them is the
+     fix. pointer-events:none on each, so a click aimed at a chip lands on the card. */
   .bn .bdrills{margin-top:7px;display:flex;flex-wrap:wrap;gap:5px}
   .bn .bdrill{display:inline-flex;align-items:center;gap:4px;font-size:8px;
     letter-spacing:.7px;text-transform:uppercase;color:#6b3fae;background:#f2ecfa;
-    border:1px solid #ddd0ee;border-radius:999px;padding:2px 8px;cursor:pointer}
-  .bn .bdrill:hover{background:#e7dbf6;border-color:#c8b4e4}
-  /* The evidence lens — deliberately NOT a drill, and deliberately on its own row. The rung
-     chip above moves along the band (more claims, same axis); this one reaches OUT of the band
-     into the papers column on the far left. Two different axes, so: different row, different
-     arrow (◂ not ▸), different shape (square not pill), paper-column blue not --broad purple,
-     and it fills in when it's on. They used to sit side by side looking like siblings, which
-     is exactly the confusion this splits apart. */
+    border:1px solid #ddd0ee;border-radius:999px;padding:2px 8px;pointer-events:none}
   .bn .blens{margin-top:6px}
   .bn .lens{display:inline-flex;align-items:center;gap:4px;font-size:8px;letter-spacing:.7px;
     text-transform:uppercase;color:#295c86;background:#eef3f8;border:1px solid #d7e2ec;
-    border-radius:4px;padding:2px 8px;cursor:pointer}
-  .bn .lens:hover{background:#e0ebf4;border-color:#b9cfe0}
+    border-radius:4px;padding:2px 8px;pointer-events:none}
+  /* shown: filled, so "this claim is on the board" reads at a glance down a column of chips */
   .bn .lens.on{background:#295c86;border-color:#295c86;color:#fff}
-  .bn .lens.on:hover{background:#1f4a6d;border-color:#1f4a6d}
+  .bn .bdrill.on{background:#6b3fae;border-color:#6b3fae;color:#fff}
 
   /* tooltip */
   #tip{position:fixed;z-index:50;width:300px;border:1px solid var(--line);border-radius:10px;
@@ -515,18 +511,18 @@
     .pw-bar{cursor:default}
     .card,.slice,.slices .sgrp,.card.stack,.pw-tool,.pw-x,#hud .wip,
     #wipPanel .wp-row,#aimPanel .ap-row,#libFacets .tp-chip,
-    .card .cdrop,.bn .lens,.bn .bdrill{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+    .card .cdrop,.bn{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
     .slice{padding:7px 6px}                       /* fatter tap targets */
     .slices .sgrp{padding-top:9px;margin:9px 0 4px}
     #wipPanel .wp-row{padding:11px 10px}
     /* the aim rows wrap on a narrow screen: title on one line, the flag beneath it */
     #aimPanel .ap-row{padding:12px 10px;flex-wrap:wrap;gap:2px 8px}
     #aimPanel .ap-row .flag{margin-left:0;flex-basis:100%}
-    /* the × and the lens are the two new gestures — both need a finger-sized target, and the ×
-       especially, since it sits on the same card a tap is meant to open */
+    /* the × needs a finger-sized target especially, since it sits on the same card a tap is
+       meant to open. Neither chip is tappable — the whole claim card is the target. */
     .card .cprov{padding:5px 8px 6px 11px}
     .card .cdrop{padding:2px 10px;font-size:15px}
-    .bn .lens{padding:5px 11px}
+    .bn .lens,.bn .bdrill{padding:4px 10px}
     .card:active{border-color:#b8c3cc}            /* tap feedback (replaces the lost :hover cue) */
     .slice.drillable:active{background:#e9eef2}
     .card.open .cabs{display:block}               /* abstract inline (no hover tip on touch) */
@@ -713,17 +709,33 @@ let broadKids={};        // slug -> the broad nodes that ladder INTO it (one run
 // Rendering all 42 at once was the original complaint: adding altitude made the ladder legible
 // without making the list shorter, because a ladder does not remove its leaves. 42 -> 14 on
 // the landing view, and the claim side goes 26 -> 4. Persists across rebuild() like `stacks`.
-const broadOpen=new Set();
+//
+// "Revealed" here means `shownBroad` — the SAME set that lands a claim's papers. A claim's evidence
+// is whatever sits one step below it, and which KIND of thing that is (papers at the bottom of the
+// ladder, narrower claims anywhere above it) is a fact about the graph, not a choice the reader
+// should have to make with a second chip. See showBroad.
 const broadRoots=()=>Object.keys(BROAD).filter(s=>!((BROAD[s].leads_to||[]).some(r=>BROAD[r])));
-// A node is on screen if it is a root, or if everything between it and a root is open. Walk
+// A node is on screen if it is a root, or if everything between it and a root is shown. Walk
 // down from the roots rather than up from each node: that way a node with two parents shows
-// as soon as EITHER is open, which is what multi-parenting is for.
+// as soon as EITHER is shown, which is what multi-parenting is for.
 function visibleBroad(){
   const seen=new Set();
   const walk=s=>{ if(seen.has(s)) return; seen.add(s);
-                  if(broadOpen.has(s)) for(const k of (broadKids[s]||[])) walk(k); };
+                  if(shownBroad.has(s)) for(const k of (broadKids[s]||[])) walk(k); };
   broadRoots().forEach(walk);
   return seen;
+}
+// Hiding a claim takes its subtree down with it: a narrower claim you reached THROUGH that claim
+// has no card once the parent folds, and a shown claim with no card is one still landing papers
+// with nothing on screen to say why. Iterate, because dropping one node can orphan the next; it
+// terminates because roots are always visible, so the set can only shrink.
+function pruneShown(){
+  for(;;){
+    const vis=visibleBroad();
+    const gone=[...shownBroad].filter(s=>!vis.has(s));
+    if(!gone.length) return;
+    for(const s of gone) shownBroad.delete(s);
+  }
 }
 function computeBroadTiers(){
   const kids={};                                    // slug -> broad nodes that ladder INTO it
@@ -878,6 +890,8 @@ function paperCard(key, level){
 }
 
 const samePin=(a,b)=>!!a&&!!b&&a.cardId===b.cardId&&a.sid===b.sid;
+// the level baked into a card id ("card-<level>:<key>") — SYNTH and up is a synthesis-band claim
+const cardIdLevel=cardId=>+cardId.slice(5,cardId.indexOf(":"));
 // A target a second click just RELEASED. Without this the release is invisible: the pointer is
 // still resting on the row it released, so the transient `hover` immediately re-lights the very
 // edges the click turned off. On desktop that lasts until the pointer wanders away; on touch,
@@ -1164,8 +1178,13 @@ function hoistAll(els){
     prev.set(col,el);
   }
 }
-function hoistBroad(slug){
+function hoistEls(slug){
   const els=[document.getElementById(`card-${broadLevel(slug)}:${slug}`)];
+  // the rung below, if this claim has one: the narrower claims are this claim's evidence exactly as
+  // papers are a tier-0 claim's, so they travel in the same block. One generation only — a shown
+  // grandchild brings its own block up under its own entry in `shownBroad`.
+  for(const kid of (broadKids[slug]||[]))
+    els.push(document.getElementById(`card-${broadLevel(kid)}:${kid}`));
   const seen=new Set();
   for(const lk of (BROAD_LINKS[slug]||[])){          // once per paper, however many slices feed the node
     if(seen.has(lk.key)) continue;
@@ -1176,10 +1195,28 @@ function hoistBroad(slug){
       if(lvl<SYNTH&&cols[lvl].keys.has(lk.key))
         els.push(document.getElementById(`card-${lvl}:${lk.key}`));
   }
+  // in the order they already stand, not the order BROAD_LINKS happens to list them: a hoist moves
+  // a block, it does not get to re-sort inside it. Keeps the landing column's pass ranking intact,
+  // and makes replaying the stack idempotent for the blocks already in place.
+  return els.filter(e=>e&&e.isConnected)
+            .sort((x,y)=>(x.compareDocumentPosition(y)&Node.DOCUMENT_POSITION_FOLLOWING)?-1:1);
+}
+// Hoisting ACCUMULATES: the first claim you show gathers itself and its papers at the top, the
+// second lands directly BELOW that block instead of shoving it down. One hoist at a time was fine
+// while a hoist was assumed to be the last thing you'd do, but two claims on screen at once is what
+// a synthesis band is for, and a board that reorders itself under a comparison you are halfway
+// through is unusable. A paper feeding two shown claims stays with the first that claimed it —
+// pulling it down on the second click would tear a hole in the block you just built.
+//
+// The order comes straight from `shownBroad`, which is an insertion-ordered Set and therefore
+// already the click order: no second list to keep in step, because two orderings of the same fact
+// are two things that can drift apart.
+function hoistShown(){
+  const els=[],seen=new Set();
+  for(const slug of shownBroad)
+    for(const el of hoistEls(slug))
+      if(!seen.has(el)){ seen.add(el); els.push(el); }
   hoistAll(els);
-  // instant, not smooth: every scroll event redraws the edge overlay, so animating up from deep in
-  // a 100k-px column would repaint every arrow the whole way
-  if(board.scrollTop) board.scrollTop=0;
 }
 function broadCard(slug,level){
   const b=BROAD[slug], id=`${level}:${slug}`;
@@ -1189,48 +1226,31 @@ function broadCard(slug,level){
   let m = b.meter?`<div class="meter"><span class="s">▲ ${b.meter.s} support</span><span class="c">▼ ${b.meter.c} contradict</span></div>`:'';
   // optional `title` (SCHEMA §4): the at-a-glance name, with the full statement as its gloss
   let t = b.title?`<div class="btl">${b.title}</div>`:'';
-  // the rung-opener: present only when something ladders into this node, so a leaf carries no
-  // affordance it cannot honour. Its own click must not reach the pin handler below.
+  // TWO READOUTS, no controls — see showBroad. Both report what the card's own click did, split by
+  // what lies one step below this claim: narrower claims (up the ladder) and papers (at the foot of
+  // it). A claim can have either, both, or neither; a leaf carries no affordance it cannot honour.
+  const on=shownBroad.has(slug);
   const kids=(broadKids[slug]||[]).length;
-  const dn=kids?`<div class="bdrill" data-act="rung">${broadOpen.has(slug)?"▾":"▸"} ${kids} narrower</div>`:"";
-  // …and the OTHER axis entirely: the evidence lens, which reaches out of the band and into the
-  // papers column. It gets its own row (see the .lens CSS for why), and when it is on it reports
-  // what is actually showing rather than a bare total — a paper dismissed with × leaves the
-  // count honest instead of leaving the chip claiming papers that are not on screen.
+  const dn=kids?`<div class="bdrill${on?" on":""}"`
+          +` title="the narrower claims that ladder into this one — click the card to bring them onto the board">`
+          +`${on?"▾":"▸"} ${kids} narrower</div>`:"";
+  // the paper readout. When the claim is shown it reports what is actually on screen rather than a
+  // bare total, so a paper dismissed with × leaves the count honest instead of leaving the card
+  // claiming papers that are gone.
   const keys=LANDING_COLLAPSED?[...new Set((BROAD_LINKS[slug]||[]).map(l=>l.key))]:[];
-  const on=broadPapersOpen.has(slug);
   const shown=on?keys.filter(k=>!landedDropped.has(k)).length:0;
   const lbl=!on?`${keys.length} paper${keys.length===1?"":"s"}`
               :(shown===keys.length?`showing ${shown}`:`showing ${shown} of ${keys.length}`);
-  const dp=keys.length?`<div class="blens"><span class="lens${on?" on":""}" data-act="papers"`
-          +` title="the papers that assert this — they land in the papers column on the left">`
+  const dp=keys.length?`<div class="blens"><span class="lens${on?" on":""}"`
+          +` title="the papers that assert this — click the card to bring them into the papers column">`
           +`◂ ${lbl}</span></div>`:"";
   el.innerHTML=`<div class="bkd">${b.kind}</div>${t}<div class="btx">${b.text}</div>${m}`
               +(dn?`<div class="bdrills">${dn}</div>`:"")+dp;
-  el.querySelectorAll("[data-act]").forEach(d=>d.addEventListener("click",e=>{
-    e.stopPropagation();                             // pinning stays the whole-card gesture
-    if(d.dataset.act==="rung"){
-      if(broadOpen.has(slug)) broadOpen.delete(slug); else broadOpen.add(slug);
-    } else if(broadPapersOpen.has(slug)){
-      broadPapersOpen.delete(slug);
-    } else {
-      broadPapersOpen.add(slug);
-      // turning a lens back on is a reset of that lens: whatever you dismissed under it returns.
-      // Otherwise a × earlier in the session would silently shrink a lens you switched on later.
-      for(const k of keys) landedDropped.delete(k);
-    }
-    rebuild();
-  }));
+  // No per-chip handlers left: the card is the only thing on it that takes a click.
   // hovering a broad node isolates its edges and lights up the papers linked into it
   el.addEventListener("mousemove",()=>setHover({cardId:el.id,sid:null}));
   el.addEventListener("mouseleave",()=>setHover(null));
-  // pin/unpin this node — and on the pin, hoist it and its containers into one screenful. The
-  // hoist runs BEFORE togglePin so its redraw re-anchors the edges onto the cards' new positions.
-  el.addEventListener("click",()=>{
-    const t={cardId:el.id,sid:null};
-    if(!pin.some(p=>samePin(p,t))) hoistBroad(slug);
-    togglePin(t);
-  });
+  el.addEventListener("click",()=>showBroad(slug));
   return el;
 }
 
@@ -1246,23 +1266,44 @@ function ensureCol(level,label){
   else board.insertBefore(el, cols[levels[idx+1]].el);
   return cols[level];
 }
-function addPaper(level,key,label){
+// ── where a spawned card goes vertically ─────────────────────────────────────────────────
+// Every card in a spawned column carries the GROUP that pulled it in: the index of the card you
+// opened, in the order you opened it (see rebuild's sweep). A column sorts by group first and by
+// its own rule second. That ordering is the whole point — a column sorted only by year lets the
+// second thing you click interleave into the first thing's block, so the board silently rearranges
+// itself around a click that was meant to ADD something. Group-first means each click's material
+// lands below the last one's, and what is already on screen stays where you left it.
+//
+// Cards nobody opened for — the synthesis band's standing backfill — carry BACKFILL and sit under
+// everything, so the band still reads as the complete ladder once the opened claims are past.
+const BACKFILL=1e9;
+const cardGrp=el=>{ const g=+el.dataset.grp; return Number.isFinite(g)?g:BACKFILL; };
+// `within` breaks the tie inside one group: year desc for papers, arrival order for broad nodes.
+function placeInCol(c,el,grp,within){
+  el.dataset.grp=grp;
+  let before=null;
+  for(const ch of c.el.querySelectorAll(":scope > .card, :scope > .bn")){
+    const g=cardGrp(ch);
+    if(g>grp||(g===grp&&within(ch))){ before=ch; break; }
+  }
+  c.el.insertBefore(el,before);
+}
+function addPaper(level,key,label,grp){
   const c=ensureCol(level,label);
-  if(c.keys.has(key)) return;          // de-dup by citekey (accumulate)
-  c.keys.add(key);
+  if(c.keys.has(key)) return;          // de-dup by citekey (accumulate) — and the FIRST group to
+  c.keys.add(key);                     // ask for a card keeps it; a later one only adds an edge
   const card=paperCard(key,level);
   if(level===0){ c.el.appendChild(card); return; }   // landing keeps its pass ranking
-  // spawned columns sort by year desc — chronology falls out of the grounding walk
-  const yr=+card.dataset.year||0;
-  let before=null;
-  for(const ch of c.el.querySelectorAll(":scope > .card"))
-    if((+ch.dataset.year||0)<yr){ before=ch; break; }
-  c.el.insertBefore(card,before);
+  const yr=+card.dataset.year||0;      // within a group, chronology falls out of the grounding walk
+  placeInCol(c,card,grp==null?BACKFILL:grp,ch=>(+ch.dataset.year||0)<yr);
 }
-function addBroad(level,slug,label){
+function addBroad(level,slug,label,grp){
   const c=ensureCol(level,label);
   if(c.keys.has(slug)) return;
-  c.keys.add(slug); c.el.appendChild(broadCard(slug,level));
+  c.keys.add(slug);
+  // no second key inside a group: claims arrive in the order the open paper cites them, and the
+  // backfill in the ladder's own walk order, both of which are already the order to show them in
+  placeInCol(c,broadCard(slug,level),grp==null?BACKFILL:grp,()=>false);
 }
 // The synthesis band always shows every broad claim / question, expanded state or not —
 // they're the standing right-hand column. expandCard still adds the ones linked from an
@@ -1270,7 +1311,7 @@ function addBroad(level,slug,label){
 // on the landing view and survives every rebuild. Unlinked-yet nodes stay hover-active
 // (broadExtraEdges lights their papers) like any other broad node.
 function ensureBroadBand(){
-  // Only the revealed rungs — see broadOpen. expandCard still materializes any broad node an
+  // Only the revealed rungs — see visibleBroad. expandCard still materializes any broad node an
   // OPEN paper points at, whether or not the ladder reveals it: a real edge from a card the
   // human opened outranks the collapse, same as reveal() outranking a folded card.
   for(const slug of visibleBroad())
@@ -1294,7 +1335,7 @@ function ensureBroadBand(){
 // (reveal()/rebuild() never unfold it, so it stays collapsed under any programmatic
 // expansion). Rows carry data-sid=<citekey>, so a wall edge sharpens from the stack card to
 // its source row the moment the stack is unfolded. Returns the stack element id.
-function addStack(level,owner,wall,label){
+function addStack(level,owner,wall,label,grp){
   const c=ensureCol(level,label);
   const key=owner+"::srcs", id=`${level}:${key}`, eid="card-"+id;
   if(c.keys.has(key)) return eid;
@@ -1321,11 +1362,8 @@ function addStack(level,owner,wall,label){
     row.addEventListener("mousemove",e=>showTip(e,row.dataset.sid,row));
     row.addEventListener("mouseleave",dropTip);
   }
-  const yr=+el.dataset.year||0;                        // year-sorted, same rule as cards
-  let before=null;
-  for(const ch of c.el.querySelectorAll(":scope > .card"))
-    if((+ch.dataset.year||0)<yr){ before=ch; break; }
-  c.el.insertBefore(el,before);
+  const yr=+el.dataset.year||0;                        // grouped then year-sorted, same rule as cards
+  placeInCol(c,el,grp==null?BACKFILL:grp,ch=>(+ch.dataset.year||0)<yr);
   return eid;
 }
 
@@ -1358,21 +1396,28 @@ function rebuild(){
   });
   edges=[]; edgeSeen.clear(); hover=null; unpinned=null;   // rows re-render; next mousemove re-isolates (docked viewer rests)
   broadTier=computeBroadTiers();     // fresh before anything below places a broad card by it
+  pruneShown();                      // …and before syncLanding, so a claim folded away with its
+                                     // parent stops asking for papers in the same pass
   syncLanding();                     // before the expansion sweep below reads cols[0].keys
   document.querySelectorAll(".card.open,.card.focus").forEach(c=>c.classList.remove("open","focus"));
   ctxOpen=new Set(); ctxDrill=new Map();
-  const done=new Set();
+  // The sweep walks `open` in the order you OPENED things, not in column order, because that index
+  // is the group every spawned card inherits (placeInCol): open a second paper and its grounds
+  // stack below the first paper's instead of interleaving by year. `open` is a Set, so it is
+  // already insertion-ordered, and a card closed and reopened rightly counts as a fresh arrival.
+  // Still a fixpoint loop rather than a straight walk — a card at level 2 has no column to live in
+  // until the level-1 card that spawns it has expanded — but the group comes from the index, so a
+  // late unlock still lands in the block belonging to its own click.
+  const seq=[...open], done=new Set();
   let changed=true;
   while(changed){
     changed=false;
-    for(const lvl of Object.keys(cols).map(Number)){
-      if(lvl>=SYNTH) continue;
-      for(const key of [...cols[lvl].keys]){
-        const id=`${lvl}:${key}`;
-        if(done.has(id)||!open.has(id)||!PAPERS[key]) continue;
-        done.add(id); expandCard(lvl,key,PAPERS[key]); changed=true;
-      }
-    }
+    seq.forEach((id,grp)=>{
+      if(done.has(id)) return;
+      const i=id.indexOf(":"), lvl=+id.slice(0,i), key=id.slice(i+1);
+      if(lvl>=SYNTH||!PAPERS[key]||!cols[lvl]||!cols[lvl].keys.has(key)) return;
+      done.add(id); expandCard(lvl,key,PAPERS[key],grp); changed=true;
+    });
   }
   ensureBroadBand();                                 // keep the full synthesis band standing
   // apply visual state + drill regions for focused and context-opened cards
@@ -1383,6 +1428,15 @@ function rebuild(){
     if(open.has(id)) el.classList.add("focus");      // ctx-only cards: revealed, not focused
     renderSlices(id);
   }
+  // A claim's brightness is DERIVED from whether it is shown, never pinned independently: that is
+  // the merge (see showBroad). Deriving rather than toggling is what makes it impossible for the
+  // arrows and the papers column to disagree about which claims you are looking at.
+  pin=pin.filter(p=>cardIdLevel(p.cardId)<SYNTH);
+  for(const slug of shownBroad){
+    const cardId=`card-${broadLevel(slug)}:${slug}`;
+    if(document.getElementById(cardId)) pin.push({cardId,sid:null});
+  }
+  hoistShown();                                       // blocks in the order they were shown
   if(anchorEl){                                       // hold the anchor column visually still
     board.scrollLeft+=anchorEl.getBoundingClientRect().left-beforeLeft;
   }
@@ -1401,7 +1455,9 @@ function findCardLevel(key,near){
   return best===null?0:best;
 }
 
-function expandCard(level,key,p){
+// `grp` is which click this expansion belongs to; everything it spawns is stamped with it, so the
+// cards land in one contiguous block per opened card rather than mixed in by year. See placeInCol.
+function expandCard(level,key,p,grp){
   const cid=`card-${level}:${key}`;
   // LEFT — grounds spawn the previous generation. Curated sources get their own card; a
   // sharpened ref (tid) reveals the specific source slice there and anchors the edge on
@@ -1410,12 +1466,12 @@ function expandCard(level,key,p){
   const wall=[];
   (p.grounds||[]).forEach(g=>{
     if(!PAPERS[g.key]){ wall.push(g); return; }
-    addPaper(level-1,g.key,"grounds ←");
+    addPaper(level-1,g.key,"grounds ←",grp);
     if(g.tid) reveal(`${level-1}:${g.key}`,g.tid);
     addEdge({cardId:`card-${level-1}:${g.key}`,sid:g.tid||null},{cardId:cid,sid:g.via},"leads");
   });
   if(wall.length){
-    const sid=addStack(level-1,key,wall,"grounds ←");
+    const sid=addStack(level-1,key,wall,"grounds ←",grp);
     wall.forEach(g=>addEdge({cardId:sid,sid:g.key},{cardId:cid,sid:g.via},"leads"));
   }
   // LATERAL — never spawns a column: connect to the target wherever it already sits,
@@ -1423,7 +1479,7 @@ function expandCard(level,key,p){
   (p.lateral||[]).forEach(l=>{
     const from={cardId:cid,sid:l.via};
     if(l.slug){                                      // stance toward a broad claim → synthesis band
-      addBroad(broadLevel(l.slug),l.slug,synthLabel(broadTier[l.slug]||0));
+      addBroad(broadLevel(l.slug),l.slug,synthLabel(broadTier[l.slug]||0),grp);
       addEdge(from,{cardId:`card-${broadLevel(l.slug)}:${l.slug}`,sid:null},l.sign);
       return;
     }
@@ -1437,7 +1493,7 @@ function expandCard(level,key,p){
   (p.ans||[]).forEach(a=>{
     const from={cardId:cid,sid:a.via};
     if(a.slug){
-      addBroad(broadLevel(a.slug),a.slug,synthLabel(broadTier[a.slug]||0));
+      addBroad(broadLevel(a.slug),a.slug,synthLabel(broadTier[a.slug]||0),grp);
       addEdge(from,{cardId:`card-${broadLevel(a.slug)}:${a.slug}`,sid:null},"answers");
       return;
     }
@@ -1449,12 +1505,12 @@ function expandCard(level,key,p){
   // generation rightward; the edge runs ground→derived and sharpens as either side's
   // rows are drilled (b.tid = this paper's grounded slice, b.via = the building slice).
   (p.builds||[]).forEach(b=>{
-    addPaper(level+1,b.key,"builds on →");
+    addPaper(level+1,b.key,"builds on →",grp);
     addEdge({cardId:cid,sid:b.tid||null},{cardId:`card-${level+1}:${b.key}`,sid:b.via},"leads");
   });
   // RIGHTMOST — synthesis band; the edge sharpens to the generalizing claim once it's drilled
   (p.cons||[]).forEach(c=>{
-    addBroad(broadLevel(c.slug),c.slug,synthLabel(broadTier[c.slug]||0));
+    addBroad(broadLevel(c.slug),c.slug,synthLabel(broadTier[c.slug]||0),grp);
     addEdge({cardId:cid,sid:c.via},{cardId:`card-${broadLevel(c.slug)}:${c.slug}`,sid:null},"leads");
   });
 }
@@ -2431,7 +2487,7 @@ function landingKeys(){
 // ── the collapsed landing column ─────────────────────────────────────────────────────────
 // Same argument as the synthesis band: a list of 53 you must scroll is not a view, it's a
 // backlog. So the board lands on claims alone and papers arrive only when something asks for
-// them — a claim's "N papers" chip, or a jump from the library / search box. Browsing is the
+// them — a claim you show, or a jump from the library / search box. Browsing is the
 // library view's job now; the board's job is the reasoning.
 //
 // NOT in the single-purpose windows: a DRIVE card window and the mobile curation view are both
@@ -2440,15 +2496,17 @@ const LANDING_COLLAPSED = !DRIVE && !MOBILE_CURATE;
 // Three sets, and the asymmetry between them is the whole model:
 //   landedStuck   — you asked for this paper BY NAME (search box, library row). Sticky, because
 //                   naming a paper is a standing request that shouldn't evaporate when some
-//                   unrelated claim's lens closes.
-//   broadPapersOpen — claims whose evidence lens is on. Their papers come and go with the lens.
+//                   unrelated claim is put away.
+//   shownBroad    — the claims you have SHOWN, by clicking them (showBroad). Their papers come and
+//                   go with the claim — as do the narrower claims that ladder into it, which is the
+//                   same set doing double duty, because both are "what sits one step below this".
 //   landedDropped — dismissed with ×. Overrides BOTH of the above, which is what makes the ×
 //                   mean what it says: a paper wanted by two sources used to ignore the chip you
 //                   clicked, because the other source still wanted it. Now nothing outranks the ×.
 // A drop lifts only when something explicitly asks for the paper again — a jump by name, or the
-// lens being switched off and on. That is the one rule to remember for the whole column.
+// claim being shown again. That is the one rule to remember for the whole column.
 const landedStuck=new Set();
-const broadPapersOpen=new Set();
+const shownBroad=new Set();
 const landedDropped=new Set();
 // key -> {claims:[slug], stuck:bool}: what's wanted, and by whom. One index serves all three
 // consumers — the reconcile below, the per-card provenance strip, and the lens chip's own count —
@@ -2462,7 +2520,7 @@ function landedWant(){
     want.set(k,e);
   };
   for(const k of landedStuck) note(k,null);
-  for(const slug of broadPapersOpen)
+  for(const slug of shownBroad)
     for(const k of new Set((BROAD_LINKS[slug]||[]).map(l=>l.key))) note(k,slug);
   return want;
 }
@@ -2478,9 +2536,41 @@ function dropLanded(key){
   rebuild();
 }
 // The escape hatch the column never had: every source off, every drop forgotten, back to empty.
+// Claim pins go with it, because rebuild derives them from shownBroad — one state, one clear.
 function clearLanding(){
-  landedStuck.clear(); broadPapersOpen.clear(); landedDropped.clear();
+  landedStuck.clear(); shownBroad.clear(); landedDropped.clear();
   rebuild();
+}
+// ── showing a claim: ONE gesture ─────────────────────────────────────────────────────────
+// This used to be three. A ◂ chip landed the claim's papers in the column; a ▸ chip walked one rung
+// down the ladder; a click on the card pinned its edges bright and hoisted the block. They read as
+// alternatives and were not: since the landing column collapsed, a pin has nothing to light up
+// until its evidence has landed, so the card click was only ever the chips' other half — and which
+// of the three you reached for changed what you got.
+//
+// Now the card is the whole gesture, at every altitude. Click a claim: whatever sits one step below
+// it comes onto the board — papers if it stands at the foot of the ladder, the narrower claims that
+// ladder into it if it stands higher, both if it has both — its arrows go bright and stay bright,
+// and the whole block gathers into one screenful. Click again: it all comes undone. Which kind of
+// evidence a claim has is a fact about the graph; making the reader express it as a different
+// gesture pushed a detail of the schema into the hands. The chips are readouts of that state, not
+// ways to enter part of it.
+function showBroad(slug){
+  const hide=shownBroad.has(slug);
+  if(hide) shownBroad.delete(slug);
+  else{
+    shownBroad.add(slug);
+    // showing a claim again RESETS it: whatever you dismissed under it comes back. Otherwise a ×
+    // earlier in the session would silently shrink a claim you deliberately asked for later.
+    for(const k of new Set((BROAD_LINKS[slug]||[]).map(l=>l.key))) landedDropped.delete(k);
+  }
+  rebuild();                                   // lands the papers, re-derives the pins, re-hoists
+  // on hide the pointer is still resting on the card we just put away; without this the transient
+  // hover re-lights the very edges the click turned off (see `unpinned`). On show, jump to the
+  // hoisted block — instantly, because every scroll event redraws the edge overlay and animating
+  // up from deep in a tall column would repaint every arrow the whole way.
+  if(hide) unpinned={cardId:`card-${broadLevel(slug)}:${slug}`,sid:null};
+  else if(board.scrollTop) board.scrollTop=0;
 }
 // Reconcile cols[0] against landedWant(): add what's missing in ORDER's ranking (so the column
 // keeps the curator's pass order however the cards got here), drop what nothing wants any more.
@@ -3030,7 +3120,16 @@ if (LIVE && !DRIVE && !PDFWIN && !MOBILE_CURATE) (function(){
 // a click on empty board space (not a card or broad node) thaws any pinned isolation.
 // isConnected guard: a drill/collapse rebuild detaches the clicked row mid-dispatch, so a
 // pinning click bubbles here with a detached target — don't misread that as empty space.
-board.addEventListener("click",e=>{ if(pin.length && e.target.isConnected && !e.target.closest(".card,.bn")){ pin=[]; redraw(); } });
+// Click empty board space to thaw the SLICE-ROW pins. Claim pins are deliberately not thawed here:
+// they are not really pins, they are the "this claim is shown" state (showBroad), and dropping the
+// brightness while its papers stayed in the column would put back exactly the half-state the merge
+// removed. A claim goes away by clicking it again, or with `clear` in the papers-column header.
+board.addEventListener("click",e=>{
+  if(!pin.length||!e.target.isConnected||e.target.closest(".card,.bn")) return;
+  const keep=pin.filter(p=>cardIdLevel(p.cardId)>=SYNTH);
+  if(keep.length===pin.length) return;
+  pin=keep; redraw();
+});
 // read-only introspection for headless tests; not used by the UI
 window.litDebug={get edges(){return edges},get cols(){return cols},open,drill,stacks,
   get ctxOpen(){return ctxOpen},get ctxDrill(){return ctxDrill},get hover(){return hover},
