@@ -966,6 +966,56 @@ const SID_CLASS = {floor: "fl", model: "fl", grounded: "cl", borrowed: "bo",
                    test: "te", "test-at-risk": "ri",
                    capability: "ca", "capability-aspirational": "ri"};
 
+// ── folding in place ─────────────────────────────────────────────────────────────────────
+// Folding is a local edit to one node, so the view must not move under it. It did: renderSlices
+// replaces the card body wholesale, which destroys the sideways-scrolled `.snodes` and reborns
+// it at scrollLeft 0 — every click on a node in column 3 threw the card back to its floors. And
+// a whole-card fold halves every column's width, so even a preserved scrollLeft would land
+// somewhere else entirely.
+//
+// So don't preserve a scroll offset; preserve a *node*. The one the human just clicked is where
+// their eye is, and it is the same node before and after. Pin its screen position, re-render,
+// then put the scrollers back until it is where it was — the card's own `.snodes` first, and
+// the board for whatever the card could not absorb (a clamped scroller, or the column above it
+// changing height).
+const nodeSel = sid => `.snodes .slice[data-sid="${CSS.escape(sid)}"]`;
+const grpSel  = g   => `.sgrp[data-grp="${CSS.escape(g)}"]`;
+function cornerNode(box){                       // no click to anchor on → the top-left-most node
+  const nodes = box.querySelector(".snodes");
+  if (!nodes) return null;
+  const r0 = nodes.getBoundingClientRect();
+  let best = null, bd = Infinity;
+  for (const el of nodes.querySelectorAll(".slice[data-sid]")) {
+    const r = el.getBoundingClientRect();
+    if (r.right < r0.left || r.left > r0.right) continue;      // scrolled out of the body
+    const d = (r.left - r0.left) ** 2 + (r.top - r0.top) ** 2;
+    if (d < bd) { bd = d; best = el; }
+  }
+  return best;
+}
+// `sel` names the anchor inside the card body — it has to be a selector, not the element, because
+// the re-render throws that element away and we need to find its replacement.
+function renderSlicesInPlace(id, sel){
+  const card = document.getElementById("card-" + id);
+  const box = card && card.querySelector(".slices");
+  if (!box) { renderSlices(id); return; }
+  if (!sel) { const c = cornerNode(box); sel = c && nodeSel(c.dataset.sid); }
+  const anchor = sel && box.querySelector(sel);
+  const r0 = anchor && anchor.getBoundingClientRect();
+  renderSlices(id);
+  const el = r0 && box.querySelector(sel);
+  if (!el) return;
+  const nodes = box.querySelector(".snodes");
+  let r = el.getBoundingClientRect();
+  if (nodes && nodes.contains(el)) {
+    nodes.scrollLeft += r.left - r0.left;
+    nodes.scrollTop  += r.top  - r0.top;         // no-op while .snodes only scrolls sideways
+    r = el.getBoundingClientRect();
+  }
+  board.scrollLeft += r.left - r0.left;          // the remainder is the board's to make up
+  board.scrollTop  += r.top  - r0.top;
+}
+
 // Click routing on a curated card: closed → click anywhere focuses it; open → the header
 // collapses it (or promotes a context-opened card to focus), and slice rows fold (a paper's
 // graph) or drill (an aim's outline).
@@ -978,14 +1028,15 @@ function cardClick(e, el, level, key){
     const s = sFold.get(id) || new Set();
     if (rows.length && rows.every(n => s.has(n))) s.clear(); else rows.forEach(n => s.add(n));
     sFold.set(id, s);
-    renderSlices(id); redraw();
+    renderSlicesInPlace(id); redraw();
     return;
   }
   const grp = e.target.closest(".sgrp");
   if (grp && el.classList.contains("open")) {          // fold/unfold an entry sub-group
     const gkey = `${id}::${grp.dataset.grp}`;
     if (grpCollapsed.has(gkey)) grpCollapsed.delete(gkey); else grpCollapsed.add(gkey);
-    renderSlices(id); redraw();                        // rows appear/vanish → edges re-anchor
+    renderSlicesInPlace(id, grpSel(grp.dataset.grp));
+    redraw();                                          // rows appear/vanish → edges re-anchor
     return;
   }
   const row = e.target.closest(".slice");
@@ -1008,7 +1059,8 @@ function cardClick(e, el, level, key){
       const s = sFold.get(id) || new Set();
       if (s.has(row.dataset.sid)) s.delete(row.dataset.sid); else s.add(row.dataset.sid);
       sFold.set(id, s);
-      renderSlices(id); redraw();                      // row height changed → arcs re-anchor
+      renderSlicesInPlace(id, nodeSel(row.dataset.sid));
+      redraw();                                        // row height changed → arcs re-anchor
     }
     return;
   }
@@ -1019,11 +1071,11 @@ function cardClick(e, el, level, key){
         for (const g of [...grpCollapsed]) if (g.startsWith(id + "::")) grpCollapsed.delete(g);
       }
       else open.add(id);                      // context-opened card → promote to focused
-      rebuild();
+      rebuild(id);                            // the card you clicked stays where you clicked it
     }
     return;
   }
-  open.add(id); rebuild();                     // collapsed card clicked open — reading the graph, not the PDF
+  open.add(id); rebuild(id);                   // collapsed card clicked open — reading the graph, not the PDF
 }
 
 function toggleDrill(id, path){
@@ -1032,7 +1084,7 @@ function toggleDrill(id, path){
   if (s.has(path))                       // fold the whole branch under this row
     for (const p of [...s]) { if (p === path || p.startsWith(path + "/")) s.delete(p); }
   else s.add(path);
-  rebuild();
+  rebuild(id);
 }
 
 // ── the paper's local subgraph ───────────────────────────────────────────────────────────
@@ -1556,12 +1608,18 @@ function addEdge(from,to,kind,intra){      // de-dup: rebuilds must not stack du
 // the papers that build on it into L+1; if a spawned card is opened too, the sweep drills
 // it in turn — cross-paper expansion is iterative, one generation per click. Expansion
 // runs both directions, so the sweep iterates to a fixpoint instead of walking one way.
-function rebuild(){
+// `hold` is the card the human just acted on ("level:key"), if any. The landing column pins the
+// horizontal axis for everyone; the held card pins the vertical one for the click that caused
+// the rebuild, because hoisting reorders whole blocks and a card halfway down a long column
+// would otherwise vanish upward the moment you opened it.
+function rebuild(hold){
   // The landing column is a fixed anchor: content expands out from it (grounds ←, builds →)
   // without it sliding sideways. Capture its screen-x before the DOM churns, restore it after
   // by compensating scrollLeft for whatever columns were inserted/removed to its left.
   const anchorEl=cols[0]&&cols[0].el;
   const beforeLeft=anchorEl?anchorEl.getBoundingClientRect().left:0;
+  const holdEl=hold&&document.getElementById("card-"+hold);
+  const beforeTop=holdEl?holdEl.getBoundingClientRect().top:null;
   Object.keys(cols).map(Number).forEach(lvl=>{
     if(lvl!==0){ cols[lvl].el.remove(); delete cols[lvl]; return; }
     for(const k of [...cols[0].keys]){          // stacks are rebuild-scoped; the landing
@@ -1615,6 +1673,10 @@ function rebuild(){
   hoistShown();                                       // blocks in the order they were shown
   if(anchorEl){                                       // hold the anchor column visually still
     board.scrollLeft+=anchorEl.getBoundingClientRect().left-beforeLeft;
+  }
+  if(beforeTop!=null){                                // …and the clicked card at its own height
+    const el=document.getElementById("card-"+hold);
+    if(el) board.scrollTop+=el.getBoundingClientRect().top-beforeTop;
   }
   redraw();
 }
@@ -1729,6 +1791,13 @@ function broadIsoSlug(iso){
   const id=el.dataset.id||"";
   return id.slice(id.indexOf(":")+1)||null;
 }
+// Does this endpoint sit on a broad node? Read off the card id (`card-<level>:<key>`) rather
+// than the DOM — the synthesis band owns every level at/after SYNTH, and this is asked once per
+// edge inside redraw's read phase, where a lookup would be a lookup too many.
+function isBroadEnd(end){
+  const i=end.cardId.indexOf(":");
+  return i>0&&+end.cardId.slice(5,i)>=SYNTH;
+}
 // Isolated broad node: synthesize an edge to every linked paper NOT already wired to this node
 // by a real (expanded-paper) edge, anchored on its card wherever it sits — so collapsed
 // landing-column papers light up and connect too, not just the expanded ones.
@@ -1797,6 +1866,15 @@ function redraw(){
                broad:cssv('--broad')};
   const plan=[];
   for(const e of work){
+    const on=inc(e);
+    // The synthesis band is the one place where dim scaffolding stops being scaffolding. Every
+    // paper that reaches a broad claim throws an arrow clear across the board, and the band
+    // collects all of them — a permanent fan over every column that said only "many things
+    // generalize", which you knew. So an edge touching a broad node is drawn ONLY while that node
+    // (or the slice at the other end) is isolated: hover or click it and its fan appears alone,
+    // which is the question you actually had. Broad-to-broad rungs go with them — same rule, one
+    // rule, and the band's own ladder is one click away.
+    if(!on&&(isBroadEnd(e.from)||isBroadEnd(e.to))) continue;
     const ra=anchorRect(e.from), rb=anchorRect(e.to);
     if(!ra||!rb) continue;                          // no visible endpoint yet
     // Both ends name a specific slice but neither is on screen (e.g. a source→method grounding
@@ -1809,7 +1887,7 @@ function redraw(){
     // no per-card clip — so an arc to a node scrolled out of its card would be drawn straight
     // across the card's neighbours. The card's own box is the clip region.
     if(e.intra&&!inCard(e.from.cardId,ra,rb)) continue;
-    plan.push({e,ra,rb,on:inc(e)});
+    plan.push({e,ra,rb,on});
   }
 
   // ── phase 2: write ─────────────────────────────────────────────────────────────────────
