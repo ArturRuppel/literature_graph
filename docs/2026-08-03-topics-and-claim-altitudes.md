@@ -180,8 +180,45 @@ revealing one generation, the same drill idiom the rest of the board already use
 the landing view; 26 broad claims → 4.
 
 **The landing column went the same way.** Papers now arrive only when something asks for them:
-a broad node's `N papers` chip, or a jump from the search box or the library. The board landed
+a broad node's evidence lens, or a jump from the search box or the library. The board landed
 on 53 curated papers for the same bad reason the band landed on 42 nodes.
+
+### Arriving is easy; leaving has to be too
+
+The first cut of the collapse got the doors in and forgot the door out, and it was unusable for
+three compounding reasons worth recording, because they are the generic failure of any
+accumulate-by-clicking surface:
+
+1. **The two chips looked like siblings and weren't.** The rung-opener moves *along* the band;
+   the papers chip reaches *out* of it. Same row, same shape, same `▸`, two different axes.
+2. **One door had no exit.** A paper reached by name was added to a set nothing ever removed
+   from. Every search hit you had ever clicked was still there an hour later.
+3. **Removal was unguessable even where it existed.** The column's contents were a *union* of
+   sources, so un-toggling the chip that fetched a paper did nothing if a second source still
+   wanted it. The affordance looked broken; it was just invisible bookkeeping.
+
+Underneath all three: the column had no identity. It was not "this claim's evidence" nor "my
+pile" — it was whatever had asked, with mixed provenance and mixed lifetime, and *that* is why
+nobody could predict what would remove a card.
+
+The fix keeps the accumulate model and makes it legible. Three sets, one rule:
+
+| Set | Filled by | Lifetime |
+|---|---|---|
+| `landedStuck` | a jump by name — search box, library row | sticky |
+| `broadPapersOpen` | a claim's evidence lens | lives and dies with the lens |
+| `landedDropped` | the per-card `×` | **overrides both**, until something asks again |
+
+> **A drop outranks every source, and lifts only when something explicitly asks for that paper
+> again** — a jump by name, or the lens switched off and on.
+
+That is the whole model, and it is what makes `×` mean what it says. Around it: each card states
+what is holding it (`asked for by name · evidence for "…"`), recomputed every sync because a
+second lens can add a *reason* without adding a card; the lens reports `showing 3 of 4` rather
+than a bare total, so a dismissal leaves the chip honest; the two chips are now separate rows in
+separate visual languages (`▸ 3 narrower`, pill, purple, along the band · `◂ 2 papers`, square,
+paper-blue, filled when on); and the column header carries `clear`, the guaranteed way back to
+empty that a three-door column has no business lacking.
 
 ### The library view — the other half of the split
 
@@ -203,6 +240,12 @@ topic reaches papers through tags. A stub can never match a topic facet.
 - **Whether claims should carry topics.** They should not, for now. A topic on a broad claim
   is arguable (nothing in the graph could derive it), but it buys nothing the paper-level
   axis does not already deliver, and it reopens a rule that is currently load-bearing.
+- **Whether the evidence lens should be exclusive.** It accumulates: two open lenses put both
+  claims' papers in one column. The alternative is that a lens *replaces* the column with one
+  claim's evidence, with a separately-pinned set surviving alongside — which would dissolve the
+  removal problem entirely rather than making it legible. Accumulate was kept because comparing
+  two claims' evidence and looking for the overlap is a thing a synthesis board should let you
+  do. Revisit if that turns out never to happen in practice.
 - **Whether the band should separate kinds.** 8 of the 14 landing nodes are broad *methods*,
   so the first thing the eye meets is instrumentation rather than the claim ladder the collapse
   was built to expose. Splitting claims from methods into their own bands would fix that and

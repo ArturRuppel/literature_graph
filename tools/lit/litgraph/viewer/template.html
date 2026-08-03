@@ -288,6 +288,22 @@
   body.landing-vacant #board{padding-left:40px}
   .col .colhd{font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--faint);
     padding-left:4px;margin-bottom:-4px}
+  /* the guaranteed exit. Per-card × handles one paper; this empties every source at once, and
+     without it a column built from three different doors had no way back to empty at all. */
+  .col .colhd .hd-clear{margin-left:7px;padding:1px 7px;border:1px solid var(--line);
+    border-radius:999px;cursor:pointer;letter-spacing:.6px}
+  .col .colhd .hd-clear:hover{background:#f7e8e8;border-color:#e0bcbc;color:#a33}
+
+  /* Provenance + exit, landing column only. A card's presence used to be unexplained — three
+     doors led in, one of them (a jump by name) had no door out, and a paper wanted by two
+     sources ignored the chip you clicked to remove it. So each card now says what is holding
+     it here, and × means gone regardless of which source that was. */
+  .card .cprov{display:flex;align-items:center;gap:6px;padding:3px 8px 4px 11px;
+    border-top:1px dashed var(--line);font-size:8px;letter-spacing:.4px;color:var(--faint)}
+  .card .cvia{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .card .cdrop{flex:0 0 auto;padding:0 5px;border-radius:3px;font-size:12px;line-height:1.1;
+    color:var(--faint);cursor:pointer}
+  .card .cdrop:hover{background:#f7e8e8;color:#a33}
 
   /* paper card */
   .card{position:relative;border:1.5px solid var(--line);border-radius:12px;background:var(--panel);
@@ -424,10 +440,19 @@
     letter-spacing:.7px;text-transform:uppercase;color:#6b3fae;background:#f2ecfa;
     border:1px solid #ddd0ee;border-radius:999px;padding:2px 8px;cursor:pointer}
   .bn .bdrill:hover{background:#e7dbf6;border-color:#c8b4e4}
-  /* papers pull leftward out of the band, so it borrows the paper-column blue, not the --broad
-     purple the rung-opener uses — the two chips do opposite things and shouldn't read alike */
-  .bn .bdrill.pap{color:#295c86;background:#eef3f8;border-color:#d7e2ec}
-  .bn .bdrill.pap:hover{background:#e0ebf4;border-color:#b9cfe0}
+  /* The evidence lens — deliberately NOT a drill, and deliberately on its own row. The rung
+     chip above moves along the band (more claims, same axis); this one reaches OUT of the band
+     into the papers column on the far left. Two different axes, so: different row, different
+     arrow (◂ not ▸), different shape (square not pill), paper-column blue not --broad purple,
+     and it fills in when it's on. They used to sit side by side looking like siblings, which
+     is exactly the confusion this splits apart. */
+  .bn .blens{margin-top:6px}
+  .bn .lens{display:inline-flex;align-items:center;gap:4px;font-size:8px;letter-spacing:.7px;
+    text-transform:uppercase;color:#295c86;background:#eef3f8;border:1px solid #d7e2ec;
+    border-radius:4px;padding:2px 8px;cursor:pointer}
+  .bn .lens:hover{background:#e0ebf4;border-color:#b9cfe0}
+  .bn .lens.on{background:#295c86;border-color:#295c86;color:#fff}
+  .bn .lens.on:hover{background:#1f4a6d;border-color:#1f4a6d}
 
   /* tooltip */
   #tip{position:fixed;z-index:50;width:300px;border:1px solid var(--line);border-radius:10px;
@@ -521,13 +546,19 @@
     .pw-grip{display:none}
     .pw-bar{cursor:default}
     .card,.slice,.slices .sgrp,.card.stack,.pw-tool,.pw-x,#hud .wip,#hud .topicsbtn,
-    #wipPanel .wp-row,#aimPanel .ap-row,#topicsPanel .tp-chip{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+    #wipPanel .wp-row,#aimPanel .ap-row,#topicsPanel .tp-chip,
+    .card .cdrop,.bn .lens,.bn .bdrill{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
     .slice{padding:7px 6px}                       /* fatter tap targets */
     .slices .sgrp{padding-top:9px;margin:9px 0 4px}
     #wipPanel .wp-row{padding:11px 10px}
     /* the aim rows wrap on a narrow screen: title on one line, the flag beneath it */
     #aimPanel .ap-row{padding:12px 10px;flex-wrap:wrap;gap:2px 8px}
     #aimPanel .ap-row .flag{margin-left:0;flex-basis:100%}
+    /* the × and the lens are the two new gestures — both need a finger-sized target, and the ×
+       especially, since it sits on the same card a tap is meant to open */
+    .card .cprov{padding:5px 8px 6px 11px}
+    .card .cdrop{padding:2px 10px;font-size:15px}
+    .bn .lens{padding:5px 11px}
     .card:active{border-color:#b8c3cc}            /* tap feedback (replaces the lost :hover cue) */
     .slice.drillable:active{background:#e9eef2}
     .card.open .cabs{display:block}               /* abstract inline (no hover tip on touch) */
@@ -849,7 +880,15 @@ function paperCard(key, level){
     }
     body += `<div class="slices"></div>`;   // filled by renderSlices from the drill state
   }
+  // The provenance strip, landing column only. Left empty here and filled by syncLanding, because
+  // *why* a card is here changes after it is built: opening a second claim that also rests on this
+  // paper adds a reason without adding a card.
+  if (level === 0 && LANDING_COLLAPSED)
+    body += `<div class="cprov"><span class="cvia"></span>`
+          + `<span class="cdrop" title="remove this paper from the column">×</span></div>`;
   el.innerHTML = body;
+  const drop = el.querySelector(".cdrop");
+  if (drop) drop.addEventListener("click", e => { e.stopPropagation(); dropLanded(key); });
   // a tag chip runs a search for that tag (the whole filter-by-tag story — no separate panel);
   // stopPropagation keeps the click off cardClick's fold/drill routing
   if (cur) el.querySelectorAll(".ctag").forEach(chip =>
@@ -1187,17 +1226,33 @@ function broadCard(slug,level){
   // the rung-opener: present only when something ladders into this node, so a leaf carries no
   // affordance it cannot honour. Its own click must not reach the pin handler below.
   const kids=(broadKids[slug]||[]).length;
-  const dn=kids?`<div class="bdrill" data-act="rung">${broadOpen.has(slug)?"▾":"▸"} ${kids} below</div>`:"";
-  // …and the other direction: pull in the papers that assert this node. With the landing column
-  // collapsed this is how a paper reaches the board at all, short of naming it in the search box.
-  const np=LANDING_COLLAPSED?new Set((BROAD_LINKS[slug]||[]).map(l=>l.key)).size:0;
-  const dp=np?`<div class="bdrill pap" data-act="papers">${broadPapersOpen.has(slug)?"▾":"▸"} ${np} paper${np===1?"":"s"}</div>`:"";
+  const dn=kids?`<div class="bdrill" data-act="rung">${broadOpen.has(slug)?"▾":"▸"} ${kids} narrower</div>`:"";
+  // …and the OTHER axis entirely: the evidence lens, which reaches out of the band and into the
+  // papers column. It gets its own row (see the .lens CSS for why), and when it is on it reports
+  // what is actually showing rather than a bare total — a paper dismissed with × leaves the
+  // count honest instead of leaving the chip claiming papers that are not on screen.
+  const keys=LANDING_COLLAPSED?[...new Set((BROAD_LINKS[slug]||[]).map(l=>l.key))]:[];
+  const on=broadPapersOpen.has(slug);
+  const shown=on?keys.filter(k=>!landedDropped.has(k)).length:0;
+  const lbl=!on?`${keys.length} paper${keys.length===1?"":"s"}`
+              :(shown===keys.length?`showing ${shown}`:`showing ${shown} of ${keys.length}`);
+  const dp=keys.length?`<div class="blens"><span class="lens${on?" on":""}" data-act="papers"`
+          +` title="the papers that assert this — they land in the papers column on the left">`
+          +`◂ ${lbl}</span></div>`:"";
   el.innerHTML=`<div class="bkd">${b.kind}</div>${t}<div class="btx">${b.text}</div>${m}`
-              +(dn||dp?`<div class="bdrills">${dn}${dp}</div>`:"");
-  el.querySelectorAll(".bdrill").forEach(d=>d.addEventListener("click",e=>{
+              +(dn?`<div class="bdrills">${dn}</div>`:"")+dp;
+  el.querySelectorAll("[data-act]").forEach(d=>d.addEventListener("click",e=>{
     e.stopPropagation();                             // pinning stays the whole-card gesture
-    const set=d.dataset.act==="rung"?broadOpen:broadPapersOpen;
-    if(set.has(slug)) set.delete(slug); else set.add(slug);
+    if(d.dataset.act==="rung"){
+      if(broadOpen.has(slug)) broadOpen.delete(slug); else broadOpen.add(slug);
+    } else if(broadPapersOpen.has(slug)){
+      broadPapersOpen.delete(slug);
+    } else {
+      broadPapersOpen.add(slug);
+      // turning a lens back on is a reset of that lens: whatever you dismissed under it returns.
+      // Otherwise a × earlier in the session would silently shrink a lens you switched on later.
+      for(const k of keys) landedDropped.delete(k);
+    }
     rebuild();
   }));
   // hovering a broad node isolates its edges and lights up the papers linked into it
@@ -2416,20 +2471,57 @@ function landingKeys(){
 // NOT in the single-purpose windows: a DRIVE card window and the mobile curation view are both
 // built around a landing column that is already there, and neither has a library to browse.
 const LANDING_COLLAPSED = !DRIVE && !MOBILE_CURATE;
-const landedStuck=new Set();       // arrived by name (gotoPaper) — outlives any claim's chip
-const broadPapersOpen=new Set();   // slugs whose supporting papers were pulled in
-function landedKeys(){
-  const want=new Set(landedStuck);
+// Three sets, and the asymmetry between them is the whole model:
+//   landedStuck   — you asked for this paper BY NAME (search box, library row). Sticky, because
+//                   naming a paper is a standing request that shouldn't evaporate when some
+//                   unrelated claim's lens closes.
+//   broadPapersOpen — claims whose evidence lens is on. Their papers come and go with the lens.
+//   landedDropped — dismissed with ×. Overrides BOTH of the above, which is what makes the ×
+//                   mean what it says: a paper wanted by two sources used to ignore the chip you
+//                   clicked, because the other source still wanted it. Now nothing outranks the ×.
+// A drop lifts only when something explicitly asks for the paper again — a jump by name, or the
+// lens being switched off and on. That is the one rule to remember for the whole column.
+const landedStuck=new Set();
+const broadPapersOpen=new Set();
+const landedDropped=new Set();
+// key -> {claims:[slug], stuck:bool}: what's wanted, and by whom. One index serves all three
+// consumers — the reconcile below, the per-card provenance strip, and the lens chip's own count —
+// so they can never disagree about why a card is on screen.
+function landedWant(){
+  const want=new Map();
+  const note=(k,slug)=>{
+    if(landedDropped.has(k)) return;
+    const e=want.get(k)||{claims:[],stuck:false};
+    if(slug) e.claims.push(slug); else e.stuck=true;
+    want.set(k,e);
+  };
+  for(const k of landedStuck) note(k,null);
   for(const slug of broadPapersOpen)
-    for(const lk of (BROAD_LINKS[slug]||[])) want.add(lk.key);
+    for(const k of new Set((BROAD_LINKS[slug]||[]).map(l=>l.key))) note(k,slug);
   return want;
 }
-// Reconcile cols[0] against landedKeys(): add what's missing in ORDER's ranking (so the column
+const broadLabel=slug=>{
+  const b=BROAD[slug]||{}, s=b.title||b.text||slug;
+  return s.length>36?s.slice(0,35)+"…":s;
+};
+// × on a card. Not "delete from whichever set put it here" — that was the unguessable version,
+// because two sets could want the same paper. A drop is its own fact, and it wins.
+function dropLanded(key){
+  landedStuck.delete(key);
+  landedDropped.add(key);
+  rebuild();
+}
+// The escape hatch the column never had: every source off, every drop forgotten, back to empty.
+function clearLanding(){
+  landedStuck.clear(); broadPapersOpen.clear(); landedDropped.clear();
+  rebuild();
+}
+// Reconcile cols[0] against landedWant(): add what's missing in ORDER's ranking (so the column
 // keeps the curator's pass order however the cards got here), drop what nothing wants any more.
 function syncLanding(){
   if(!LANDING_COLLAPSED) return;
   const c=cols[0]; if(!c) return;
-  const want=landedKeys();
+  const want=landedWant();
   for(const k of [...c.keys]){
     if(want.has(k)||k.endsWith("::srcs")) continue;
     c.keys.delete(k);
@@ -2439,20 +2531,38 @@ function syncLanding(){
     if(!want.has(k)||ACTIVE.has(k)||c.keys.has(k)) continue;
     addPaper(0,k);
   }
-  for(const k of want){                              // a stub jumped to by name isn't in landingKeys()
+  for(const k of want.keys()){                       // a stub jumped to by name isn't in landingKeys()
     if(ACTIVE.has(k)||c.keys.has(k)||!(PAPERS[k]||STUBS[k])) continue;
     addPaper(0,k);
   }
+  // Say why each card is here. Rewritten every sync, not written once at creation: opening a
+  // second claim that rests on the same paper adds a reason without adding a card.
+  for(const k of c.keys){
+    const card=document.getElementById(`card-0:${k}`);   // id-with-a-colon: getElementById, not a selector
+    const via=card&&card.querySelector(".cvia");
+    if(!via) continue;
+    const e=want.get(k)||{claims:[],stuck:false};
+    const bits=[];
+    if(e.stuck) bits.push("asked for by name");
+    for(const slug of e.claims) bits.push("evidence for “"+broadLabel(slug)+"”");
+    via.textContent=bits.join(" · ");
+    via.title=bits.join("\n");
+  }
   const hd=c.el.querySelector(".colhd");
-  if(hd) hd.textContent=c.keys.size?`papers · ${c.keys.size} shown`
-                                   :"papers · open a claim, or browse the library";
+  if(hd) hd.innerHTML=c.keys.size
+    ? `papers · ${c.keys.size} shown<span class="hd-clear">clear</span>`
+    : "papers · open a claim, or browse the library";
   c.el.classList.toggle("vacant",!c.keys.size);
   document.body.classList.toggle("landing-vacant",!c.keys.size);
 }
 function boot(){
   broadTier=computeBroadTiers();     // tiers ready before the very first ensureBroadBand()
-  ensureCol(0,LANDING_COLLAPSED?"papers · open a claim, or browse the library"
-                               :"curated papers · search finds the rest");
+  const c0=ensureCol(0,LANDING_COLLAPSED?"papers · open a claim, or browse the library"
+                                        :"curated papers · search finds the rest");
+  // delegated, because syncLanding rewrites the header every time the count changes
+  if(LANDING_COLLAPSED) c0.el.addEventListener("click",e=>{
+    if(e.target.closest(".hd-clear")){ e.stopPropagation(); clearLanding(); }
+  });
   if(LANDING_COLLAPSED) syncLanding();               // starts empty — papers arrive by drill/search
   else landingKeys().forEach(k=>{ if(!ACTIVE.has(k)) addPaper(0,k); });  // in-progress papers live in their own windows
   ensureBroadBand();                                 // synthesis band present from the landing view
@@ -2593,17 +2703,22 @@ function renderResults(q){
 }
 function gotoPaper(key){
   closeSearch();
-  // Naming a paper is a standing request for it: landedStuck outlives whatever claim chips are
-  // open, so a rebuild's syncLanding() never sweeps away the card you just jumped to.
+  // Naming a paper is a standing request for it: landedStuck outlives whatever lens is open, so a
+  // rebuild's syncLanding() never sweeps away the card you just jumped to. It also lifts an earlier
+  // × — asking for a paper by name IS the "something asks for it again" a drop waits for.
   if(!STUBS[key] && !PAPERS[key]) return;
   landedStuck.add(key);
-  let el = document.getElementById(`card-0:${key}`);
-  if(!el){                                   // an uncurated stub: the landing list carries only
-    addPaper(0, key);                        // curated papers, so mint its card now and keep it
-    el = document.getElementById(`card-0:${key}`);       // (appended below the ranking — it's a
-    if(!el) return;                                      // search result, not part of the order)
-    redraw();                                            // the column grew; edges re-anchor
+  // Lifting a drop changes a lens's "showing N of M", which lives on a broad card — so that case
+  // needs the full rebuild, not just the column reconcile, or the band keeps the stale count.
+  if(landedDropped.delete(key)) rebuild();
+  else syncLanding();                        // mints the card if it's new, and refreshes every
+  let el = document.getElementById(`card-0:${key}`);     // card's provenance + the column header
+  if(!el){                                   // not collapsed (DRIVE / mobile curate): that landing
+    addPaper(0, key);                        // list carries curated papers only, so mint the stub's
+    el = document.getElementById(`card-0:${key}`);       // card here (appended below the ranking —
+    if(!el) return;                                      // it's a search result, not part of ORDER)
   }
+  redraw();                                              // the column may have grown; edges re-anchor
   el.scrollIntoView({behavior: "smooth", block: "center"});
   el.classList.remove("found"); void el.offsetWidth;     // restart the flash if it's still running
   el.classList.add("found");
