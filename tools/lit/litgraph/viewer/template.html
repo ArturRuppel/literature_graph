@@ -329,10 +329,39 @@
   .card.open{cursor:default}
   .card.open .chd{cursor:pointer}
 
-  /* slices (vertical, within-paper) — entry rows are the top of the local support DAG;
-     drilling a row unfolds its branch (quote + direct supports), outline-style */
+  /* slices (vertical, within-paper). A paper's slices render as the GRAPH they are (see
+     renderGraph); an aim's still render as the outline of groups its rhetoric wants. */
   .slices{display:none;border-top:1px solid var(--line);padding:6px 9px 9px 12px;background:#f9fbfc}
   .card.open .slices{display:block}
+  /* ── the local subgraph, drawn as a graph ───────────────────────────────────────────────
+     One node per slice and never more. The outline this replaces re-rendered a shared support
+     under every branch that reached it — Fuhs2022NatPhys's 26 slices drew 76 rows — and an
+     edge that skipped a generation had nowhere to be drawn at all.
+     The columns ARE the hierarchy: a slice's column is its longest chain of local support, so
+     the axis runs ground → derived, left → right, exactly as `leads-to` runs on the board. The
+     body scrolls sideways rather than squeezing the columns, because a claim you cannot read is
+     not a claim you can curate; fold the card when you want the shape instead of the text. */
+  .snodes{display:flex;align-items:flex-start;gap:26px;overflow-x:auto;padding-bottom:4px}
+  .scol{flex:0 0 auto;width:212px;display:flex;flex-direction:column;gap:4px}
+  .snodes.allfold .scol{width:106px}      /* badges only — the whole ladder lands on screen */
+  .schd{display:flex;align-items:center;gap:5px;font-size:7.5px;letter-spacing:1.4px;
+    text-transform:uppercase;color:var(--faint);padding:0 0 2px 3px;border-bottom:1px solid var(--line)}
+  .schd .sct{margin-left:auto;letter-spacing:0}
+  .snodes .slice{cursor:pointer;margin:0}
+  .snodes .slice:hover{background:#e9eef2}
+  .slices .sbar{display:flex;align-items:center;gap:6px;margin-bottom:6px;
+    font-size:8px;letter-spacing:1.2px;text-transform:uppercase;color:var(--faint)}
+  .slices .saxis{opacity:.75}
+  .slices .sfold{margin-left:auto;cursor:pointer;letter-spacing:.5px;padding:1px 6px;
+    border:1px solid var(--line);border-radius:9px;white-space:nowrap}
+  .slices .sfold:hover{color:var(--dim);border-color:#b8c3cc;background:#fff}
+  /* folded to its badge: the text goes, the node stays — collapse the card and the whole
+     topology lands in one screenful, which is when the arcs stop being decoration */
+  .slice.fold{padding:1px 5px}
+  .slice.fold .stx{display:none}
+  .slice.fold .fkd{display:inline}
+  .fkd{display:none;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+    color:var(--faint);font-size:8px;line-height:1.4}
   /* the paper's entry rows partition into standing sections — its own novel claims &
      questions, then the borrowed (restated) claims, then the open questions it leaves
      unanswered (at the bottom) — each a labeled sub-container */
@@ -678,7 +707,11 @@ let edges=[];            // {from:{cardId,sid},to:{cardId,sid},kind} — an endp
                          // aggregate paper→paper edges sharpen to slice edges as the human drills
 const cols={};           // level -> {el, keys:Set, label}
 const open=new Set();    // "level:key" of focused cards — a set, so expansion is non-exclusive
-const drill=new Map();   // "level:key" -> Set of expanded row paths ("c3", "c3/c1", …)
+const drill=new Map();   // "level:key" -> Set of expanded row paths ("c3", "c3/c1", …); AIM cards
+                         // only — a paper's slices are a graph now, and a graph has no paths
+const sFold=new Map();   // "level:key" -> Set of slice ids folded down to their badge. A paper's
+                         // graph shows every slice at once, so folding is how the reader trades
+                         // the text away for the topology, one node or all of them at a time.
 const grpCollapsed=new Set();  // "level:key::<group label>" — entry sub-groups folded shut
 const grpSeeded=new Set();     // aim cards whose default fold has been applied once. An aim opens
                                // on its ARGUMENT alone; the seeding must not re-fold what the
@@ -934,9 +967,20 @@ const SID_CLASS = {floor: "fl", model: "fl", grounded: "cl", borrowed: "bo",
                    capability: "ca", "capability-aspirational": "ri"};
 
 // Click routing on a curated card: closed → click anywhere focuses it; open → the header
-// collapses it (or promotes a context-opened card to focus), and slice rows drill.
+// collapses it (or promotes a context-opened card to focus), and slice rows fold (a paper's
+// graph) or drill (an aim's outline).
 function cardClick(e, el, level, key){
   const id = `${level}:${key}`;
+  if (e.target.closest(".sfold") && el.classList.contains("open")) {
+    // the whole card at once: fold every slice to its badge, or give the text back. Folded is
+    // how the graph is READ — 26 rows of prose is a scroll, 26 badges is a diagram.
+    const {rows} = localDag(PAPERS[key]);
+    const s = sFold.get(id) || new Set();
+    if (rows.length && rows.every(n => s.has(n))) s.clear(); else rows.forEach(n => s.add(n));
+    sFold.set(id, s);
+    renderSlices(id); redraw();
+    return;
+  }
   const grp = e.target.closest(".sgrp");
   if (grp && el.classList.contains("open")) {          // fold/unfold an entry sub-group
     const gkey = `${id}::${grp.dataset.grp}`;
@@ -957,13 +1001,21 @@ function cardClick(e, el, level, key){
       if (DRIVE) focusFromClick(key, row.dataset.sid);   // card window: steer the separate PDF window
       else aimDock(key, row.dataset.sid);                // browse / mobile-curate: aim the dock
     }
+    // an aim's row drills its branch; a paper's row has no branch to drill — every slice is
+    // already on screen — so the click trades that row's text for its badge instead.
     if (row.classList.contains("drillable")) toggleDrill(id, row.dataset.path);  // drill + rebuild
+    else if (row.dataset.sid && !PAPERS[key].aim && !PAPERS[key].cited) {
+      const s = sFold.get(id) || new Set();
+      if (s.has(row.dataset.sid)) s.delete(row.dataset.sid); else s.add(row.dataset.sid);
+      sFold.set(id, s);
+      renderSlices(id); redraw();                      // row height changed → arcs re-anchor
+    }
     return;
   }
   if (el.classList.contains("open")) {
     if (e.target.closest(".chd")) {
       if (open.has(id)) {
-        open.delete(id); drill.delete(id); grpSeeded.delete(id);
+        open.delete(id); drill.delete(id); grpSeeded.delete(id); sFold.delete(id);
         for (const g of [...grpCollapsed]) if (g.startsWith(id + "::")) grpCollapsed.delete(g);
       }
       else open.add(id);                      // context-opened card → promote to focused
@@ -983,18 +1035,154 @@ function toggleDrill(id, path){
   rebuild();
 }
 
-// Drill-down rendering: entry rows are the top of the paper's local support hierarchy
-// (claims nothing else builds on or subsumes, plus its questions). Expanding a row reveals
-// its weld (the exact quote) and its direct supports — for a question, the claims that
-// answer it; for a broader claim, also the claims that ladder into it (local leads_to,
-// the generalization ladder — marked ⤴). Each is drillable in turn, branch by branch,
-// down to the floors. A support shared by two branches appears under each (outline
-// semantics); rows are addressed by path, so the same slice can render at several
-// positions and anchorRect picks any visible instance.
+// ── the paper's local subgraph ───────────────────────────────────────────────────────────
+// A paper's slices form a small DAG — measured across the 53 curated papers it is never
+// deeper than 5 nor wider than 12 — and this reduces it to a drawing order for that DAG.
+//
+// Direction: `a` stands ABOVE `b` when a rests on b (grounded_in), when a is the broader
+// claim b ladders into (local leads_to), or when a is the question b answers. So the top of
+// the list is what the paper concluded and the bottom is the floors it stands on, which is
+// the order the outline used to nest in — minus the nesting.
+//
+//   * `rows`  — every slice exactly once, each below all of its parents (Kahn, depth-first
+//     so a chain stays contiguous, ties broken by authored order).
+//   * `depth` — longest path from a root, the indent. Reproduces the outline's shape for the
+//     tree-like part without paying its duplication for the parts that aren't a tree.
+//   * `links` — the real edges, drawn as arcs. This is the half an outline threw away: a
+//     support with two parents, and a claim that grounds in something three generations down.
+function localDag(p){
+  const byId = {}; p.slices.forEach(s => byId[s.id] = s);
+  const rank = {}; p.slices.forEach((s, i) => rank[s.id] = i);
+  const kids = {}, par = {}, links = [];
+  const link = (a, b, kind) => {
+    if (a === b || !byId[a] || !byId[b]) return;
+    if (links.some(l => l.a === a && l.b === b)) return;      // one arc per pair, whatever the refs
+    links.push({a, b, kind});
+    (kids[a] = kids[a] || []).push(b);
+    (par[b] = par[b] || []).push(a);
+  };
+  p.slices.forEach(s => {
+    (s.up || []).forEach(u => link(s.id, u, "leads"));        // s rests on u
+    (s.gen || []).forEach(g => link(g, s.id, "gen"));         // g is the broader claim s ladders into
+    (s.answers || []).forEach(q => link(q, s.id, "answers")); // the question stands over its answer
+  });
+  const rows = [], seen = new Set();
+  const pend = {}; p.slices.forEach(s => pend[s.id] = (par[s.id] || []).length);
+  // Among slices that are all equally free to be placed, order by the paper's own rhetoric —
+  // the same order the entry groups used to impose as containers: the line of inquiry it
+  // answered, then its novel claims, then the ones it merely restates, then the methods, and
+  // last the questions it leaves OPEN. The groups were headings over that order; a topological
+  // sort can carry it as a tie-break instead, which is how the reading survives the flattening.
+  const bucket = s => s.kind === "question" ? (s.answered ? 0 : 4)
+                    : s.kind === "method" ? 3
+                    : s.color === "borrowed" ? 2 : 1;
+  const ord = {}; p.slices.forEach(s => ord[s.id] = bucket(s) * 1e4 + rank[s.id]);
+  const byRank = a => a.slice().sort((x, y) => ord[y] - ord[x]);     // stack pops the first wanted
+  const ready = byRank(p.slices.filter(s => !pend[s.id]).map(s => s.id));
+  while (ready.length) {
+    const n = ready.pop();
+    if (seen.has(n)) continue;
+    seen.add(n); rows.push(n);
+    const freed = (kids[n] || []).filter(c => --pend[c] === 0);
+    ready.push(...byRank(freed));                             // depth-first: a chain stays together
+  }
+  // a cycle would strand its members; the schema forbids one, but a stranded slice must still
+  // render — dropping a proposed claim silently is the one failure mode this card can't have
+  p.slices.forEach(s => { if (!seen.has(s.id)) { seen.add(s.id); rows.push(s.id); } });
+
+  // ── the columns ────────────────────────────────────────────────────────────────────────
+  // A slice's column is its longest chain of local support: a slice resting on nothing local
+  // is a floor and sits at 0, and everything stands one column right of the furthest thing it
+  // leans on. So the axis reads ground → derived, left → right, the same direction `leads-to`
+  // runs everywhere else in this viewer — the card is the board one scale down.
+  //
+  // A claim with no LOCAL grounding lands in column 0 beside the methods, which looks wrong for
+  // about a second and is then exactly right: its grounding is a citation, and the paper it
+  // cites is the card immediately to the left of this one.
+  const lv = {};
+  const level = (n, st) => {
+    if (lv[n] != null) return lv[n];
+    if (st.has(n)) return 0;                                  // defensive: a cycle stops here
+    st.add(n);
+    lv[n] = Math.max(0, ...(kids[n] || []).map(k => level(k, st) + 1));
+    st.delete(n); return lv[n];
+  };
+  rows.forEach(n => level(n, new Set()));
+  const width = Math.max(0, ...Object.values(lv)) + 1;
+  const cols = Array.from({length: width}, () => []);
+  rows.forEach(n => cols[lv[n]].push(n));                     // rows order = the rhetoric tie-break
+  // Order each column by the barycentre of what it rests on, so an edge runs as near to
+  // horizontal as the graph allows and two supports of one claim sit next to each other rather
+  // than at opposite ends of a column. Column 0 has nothing to its left, so it keeps the
+  // rhetoric order; every column after it is placed against the one already settled.
+  for (let c = 1; c < width; c++) {
+    const at = {}; cols[c - 1].forEach((n, i) => at[n] = i);
+    const bary = {};
+    cols[c].forEach((n, i) => {
+      const ks = (kids[n] || []).filter(k => at[k] != null).map(k => at[k]);
+      bary[n] = ks.length ? ks.reduce((a, b) => a + b, 0) / ks.length : i;
+    });
+    cols[c].sort((x, y) => bary[x] - bary[y] || rows.indexOf(x) - rows.indexOf(y));
+  }
+  return {rows, cols, lv, links, byId, par, kids};
+}
+
+// Render that DAG as columns of nodes: one node per slice, its column its support depth, with
+// the edges handed to redraw(). The card body scrolls sideways when the ladder is longer than
+// the window — and folding (a node by click, the card by the bar's toggle) is the way out of
+// that: badges are a quarter the width, so a folded card puts the whole ladder on screen at
+// once. Read the text one column at a time, fold to see the shape.
+function renderGraph(id, key, p, box){
+  const {rows, cols, links} = localDag(p);
+  const cid = "card-" + id;
+  const folded = sFold.get(id) || new Set();
+  const all = rows.length && rows.every(n => folded.has(n));
+  let html = `<div class="sbar"><span>${rows.length} slice${rows.length === 1 ? "" : "s"}`
+           + ` · ${links.length} edge${links.length === 1 ? "" : "s"}</span>`
+           + `<span class="saxis">ground →&nbsp;derived</span>`
+           + `<span class="sfold">${all ? "show text" : "fold to graph"}</span></div>`
+           + `<div class="snodes${all ? " allfold" : ""}">`;
+  cols.forEach((col, c) => {
+    html += `<div class="scol"><div class="schd">${c === 0 ? "floors" : "· ".repeat(c)}`
+          + `<span class="sct">${col.length}</span></div>`;
+    for (const sid of col) {
+      const s = p.slices.find(x => x.id === sid);
+      const ans = s.kind === "question" && s.answered ? " ans" : "";
+      const pdf = (LIVE && s.quote) ? " pdf-src" : "";   // quote-bearing → hover aims the docked viewer
+      html += `<div class="slice${pdf}${folded.has(sid) ? " fold" : ""}" data-sid="${s.id}"`
+            + ` title="click to fold this slice to its badge">`
+            + `<span class="sid ${SID_CLASS[s.color] || 'cl'}${ans}">${s.id}</span>`
+            + `<span class="stx">${s.text}</span>`
+            + `<span class="fkd">${s.kind}</span>`
+            + `</div>`;
+    }
+    html += `</div>`;
+  });
+  box.innerHTML = html + `</div>`;
+  // The columns scroll under a stationary overlay, so the arcs have to be re-laid on every
+  // scroll tick or they detach from the nodes they belong to.
+  box.querySelector(".snodes").addEventListener("scroll", redraw);
+  // The within-paper edges go to the same overlay the cross-paper ones use, so they inherit the
+  // whole isolation story for free: faint at rest, bright when the hover or a pin touches either
+  // end. That dimming is what keeps 34 arcs legible in the space between five columns.
+  //
+  // Emitted ground → derived (`l.b` rests under `l.a`), so the arrowhead lands on the derived
+  // slice and every arrow in this card points the same way as every arrow on the board.
+  for (const l of links)
+    addEdge({cardId: cid, sid: l.b}, {cardId: cid, sid: l.a}, l.kind, true);
+}
+
+// Drill-down rendering (AIM cards): entry rows are the top of the container's local support
+// hierarchy. Expanding a row reveals its direct supports — for a question, the claims that
+// answer it; for a broader claim, also the claims that ladder into it (⤴). An aim is read as
+// an argument, not as a support DAG, so it keeps its rhetorical groups and its outline; the
+// duplication an outline costs is bounded there because the groups already place every claim
+// exactly once and the nesting only reaches methods.
 function renderSlices(id){
   const key = id.slice(id.indexOf(":") + 1), p = PAPERS[key];
   const box = document.getElementById("card-" + id).querySelector(".slices");
   if (!box) return;
+  if (!p.aim && !p.cited) return renderGraph(id, key, p, box);
   const byId = {}; p.slices.forEach(s => byId[s.id] = s);
   const answeredBy = {};
   p.slices.forEach(s => (s.answers || []).forEach(r => {
@@ -1011,15 +1199,6 @@ function renderSlices(id){
   const entries = p.slices.filter(s =>
     (s.kind === "claim" && !dependents.has(s.id) && !(s.gen || []).length)
     || s.kind === "question");
-  // a claim that answers a local question already renders nested under that question, so it
-  // must not also stand alone as a top-level entry — that double-render was the old redundancy
-  const answersLocalQ = new Set(Object.values(answeredBy).flat());
-  const claims = entries.filter(s => s.kind === "claim" && !answersLocalQ.has(s.id));
-  // the entry rows split into standing groups. First the paper's own line of inquiry — the
-  // questions it answered (each with its answering claims nested) followed by the novel claims
-  // that don't answer one; then the claims it merely restates from elsewhere; and last, in its
-  // own section at the bottom, the OPEN questions — the ones the paper raises and leaves
-  // unanswered (emergent: no incoming `answers`), the birds-eye "what this paper leaves open"
   const questions = entries.filter(s => s.kind === "question");
   // An aim's card answers a different question from a paper's, and it must not open on all of it.
   // A paper reports what it found; an aim makes an argument, and an argument is read top-down —
@@ -1068,13 +1247,7 @@ function renderSlices(id){
     ["answered questions", questions.filter(s => s.answered), true],
     ["capabilities", caps, true],
     ["everything else", other, true],
-  ] : [
-    ["novel claims & questions",
-      [...questions.filter(s => s.answered),
-       ...claims.filter(s => s.color !== "borrowed")]],
-    ["borrowed claims", claims.filter(s => s.color === "borrowed")],
-    ["open questions", questions.filter(s => !s.answered)],
-  ];
+  ] : [];
   const paths = new Set([...(drill.get(id) || []), ...(ctxDrill.get(id) || [])]);
   // a question's direct answers are only the *un-subsumed* ones: an answer that grounds (up) or
   // ladders (gen) into another answer of the SAME question nests under that sibling when it's
@@ -1369,10 +1542,13 @@ function addStack(level,owner,wall,label,grp){
 
 const edgeSeen=new Set();
 // each endpoint is {cardId, sid}: it anchors at sid's row when visible, else at the card.
-function addEdge(from,to,kind){            // de-dup: rebuilds must not stack duplicate paths
+// `intra` marks an edge whose two ends are rows in the SAME card — the paper's own subgraph.
+// It only changes the geometry (redraw bows it into the card's left gutter instead of reaching
+// for a facing edge that isn't there); everything else about an edge is the same either way.
+function addEdge(from,to,kind,intra){      // de-dup: rebuilds must not stack duplicate paths
   const k=`${from.cardId}:${from.sid}|${to.cardId}:${to.sid}|${kind}`;
   if(edgeSeen.has(k)) return;
-  edgeSeen.add(k); edges.push({from,to,kind});
+  edgeSeen.add(k); edges.push({from,to,kind,intra:!!intra});
 }
 
 // Recompute every spawned column + edge from the open set (non-exclusive: opening one
@@ -1523,6 +1699,9 @@ function reveal(id,sid){
   ctxOpen.add(id);
   const p=PAPERS[id.slice(id.indexOf(":")+1)];
   if(!p) return;
+  // A paper's card renders every slice, so opening it IS the reveal — there is no path to
+  // force. Only an aim's outline still hides a slice behind a fold.
+  if(!p.aim&&!p.cited) return;
   const dep={};
   p.slices.forEach(s=>{
     (s.up||[]).forEach(u=>{ (dep[u]=dep[u]||[]).push(s.id); });
@@ -1626,6 +1805,10 @@ function redraw(){
     // container→container line — piling up with its siblings into one opaque, never-dimming
     // arrow at the card border. Skip it until a drill reveals a row for it to sharpen onto.
     if(e.from.sid && e.to.sid && !rowVisible(e.from) && !rowVisible(e.to)) continue;
+    // A card's own columns scroll sideways inside it, and this SVG spans the whole board with
+    // no per-card clip — so an arc to a node scrolled out of its card would be drawn straight
+    // across the card's neighbours. The card's own box is the clip region.
+    if(e.intra&&!inCard(e.from.cardId,ra,rb)) continue;
     plan.push({e,ra,rb,on:inc(e)});
   }
 
@@ -1664,7 +1847,15 @@ function redraw(){
     const gen=e.kind==="gen";           // broad->broad generalization (SCHEMA §4) — its own
                                         // color/marker, solid like a support edge, never lateral
     let d;
-    if(Math.abs((ra.left+ra.right)-(rb.left+rb.right))<80){
+    if(e.intra){
+      // Within one card the two nodes are in adjacent-or-further columns, so this is the facing-
+      // edge case — but always, never by the width test below: folding the card shrinks the
+      // columns to badge width and that test would then mistake a real ladder rung for a
+      // same-column hop and bow it out the right of the card.
+      const x1=ra.right-bb.left+sLeft, x2=rb.left-bb.left+sLeft;
+      const mx=(x1+x2)/2;
+      d=`M${x1},${ya} C${mx},${ya} ${mx},${yb} ${x2},${yb}`;
+    } else if(Math.abs((ra.left+ra.right)-(rb.left+rb.right))<80){
       // same column (e.g. a lateral edge between two landing cards): bow out the right side
       const x1=ra.right-bb.left+sLeft, x2=rb.right-bb.left+sLeft;
       const bow=Math.max(x1,x2)+26;
@@ -1693,6 +1884,13 @@ function redraw(){
   svg.appendChild(frag);                            // one insertion, not one per edge
 }
 function cssv(n){return getComputedStyle(document.documentElement).getPropertyValue(n).trim();}
+// Both ends of an intra-card arc still inside their card's box (see the plan loop's clip).
+function inCard(cardId,ra,rb){
+  const c=document.getElementById(cardId);
+  if(!c) return false;
+  const r=c.getBoundingClientRect();
+  return ra.right>r.left&&ra.left<r.right&&rb.right>r.left&&rb.left<r.right;
+}
 // Resolve an endpoint: the first visible row carrying the endpoint's sid — a slice row
 // (drilled rows may render the same slice at several paths) or a stack's source row —
 // else the card itself. Falling back to the card is what keeps un-drilled edges aggregate.
