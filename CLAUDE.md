@@ -86,6 +86,16 @@ the rate limiter; never flood. A half-finished graph is a normal, valid state.**
   (Dimming everything else was enough when the library was small; past a few dozen papers the lit
   cards were scattered down a column and the arrows pointed off-screen.) Clicking again releases
   the isolation but leaves the order — nothing snaps back under you.
+  The HUD's **`walk`** button (or `w`) swaps the board for **the walk** — one focus, one relation,
+  an indented tree, **no drawn edges at all** (design: `docs/2026-08-03-the-walk-design.md`). One or
+  the other, never both; `Escape` or `← board` returns. The board superimposes five differently
+  shaped relations on one canvas and stops being readable on exactly the papers curated hardest
+  (58 cards / 89 edges on `Hohmann2022Cellsa`); the walk shows one at a time under a depth and
+  sibling budget, so the mess is structurally impossible. Its **first tab is `contains`** — a
+  **roster**, not a walk: every claim, question and method in the paper, **uncapped and unfolded**,
+  each with its weld quote, filterable by kind. Every other tab is a *relation*, so a slice that
+  participates in none is unreachable there; the roster is the only **complete** view, and it flags
+  those slices **`unwired`** (64 of 532 today). This is the view to sift a paper in.
 - **`lit serve`** — the same viewer over loopback HTTP, for a curation session: the graph is
   rebuilt from the YAML on every refresh (edit → refresh; a broken edit returns the
   validation error and the server survives), and the tooltip gains a first-page preview of the
@@ -116,6 +126,12 @@ the rate limiter; never flood. A half-finished graph is a normal, valid state.**
     native emulator (`kitty`, `wezterm`, … — first found, or `$LIT_TERMINAL`) spawned by the
     server via `POST /term`, so it's a *real* terminal with full keybindings and scrollback;
     with no emulator installed you get the two browser windows and start the session yourself.
+    The card window carries the walk too, as a **`contents`** HUD button (or `w`): its paper's
+    full roster, standing on that paper with the library rail dropped (one paper is the whole
+    subgraph). Clicking a quote there POSTs the weld to the focus wire like any card row, so it
+    aims the paper window; and the card's hot-reload re-indexes it, so a slice the agent has just
+    written appears in the roster without a refresh. This is where you check that a pass wrote
+    what it claimed to.
     Finishing runs both ways: the picker row's **✓**, or the card window's own HUD button
     **✓ finish curation**, which drops the paper off the worklist and turns that window back
     into the graph (the PDF and terminal windows are left open).
