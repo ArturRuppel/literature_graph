@@ -1,6 +1,6 @@
 # Topics and claim altitudes — two axes, one library
 
-**Status:** design · data layer built, viewer not · **Date:** 2026-08-03
+**Status:** design · data layer and viewer both built · **Date:** 2026-08-03
 **Companions:** [CONCEPT.md](../CONCEPT.md) · [SCHEMA.md](../SCHEMA.md) ·
 [2026-07-19-tags-and-search-design.md](2026-07-19-tags-and-search-design.md)
 
@@ -35,15 +35,19 @@ relations and collapsing them costs the model its only structural guarantee.
 
 > A statement that can be **false** is a claim. A heading you cannot disagree with is a topic.
 
-Applied to this library, the claim ladder had not yet hit its ceiling — four of the five
-new heads in §2 are contestable propositions with a real null hypothesis behind them. The
-ceiling is where statements like *"cells respond to force"* start appearing. That is the
-altitude at which to stop laddering and switch axes, not before.
+Applied to this library, the claim ladder had two rungs left in it — all seven new nodes in
+§2 are contestable propositions with a real null hypothesis behind them. It stops there. The
+ceiling is where statements like *"cells respond to force"* start appearing, and the two
+apexes sit one rung below it: anything that would parent *both* of them is exactly that
+sentence. That is the altitude at which to switch axes, not before and not after.
 
 ## 2. What was added to the claim ladder
 
-Five new broad claims, no schema change (a broad claim's `leads_to` into a broader one was
-already in SCHEMA §4). 19 broad claims → 24, with **7 roots instead of 19**:
+Seven new broad claims across two rungs, no schema change (a broad claim's `leads_to` into a
+broader one was already in SCHEMA §4). 19 broad claims → 26, with **4 roots instead of 19**
+and a ladder three deep.
+
+First rung — five heads over the existing claims:
 
 | New head | Children | The null it was written against |
 |---|---|---|
@@ -60,6 +64,29 @@ Two claims are deliberately **multi-parented** — `division-injects-active-stre
 `topological-defects-are-force-sources` each ladder into two heads. Nothing is duplicated;
 the DAG carries it. `go-or-grow-dichotomy` is left an orphan root, which is a valid resting
 state, not a gap to be filled with a head that would not earn its ≥2 children.
+
+### The apex — two, and deliberately not one
+
+Second rung. The five heads sorted themselves by *scale*, so they cap in two places:
+
+| Apex | Children | The null it was written against |
+|---|---|---|
+| `tissue-behaviour-is-collective-mechanics` | `supracellular-stress-field-sets-behaviour`, `active-stress-generates-tissue-form`, `tissue-material-state-is-emergent` | tissue behaviour is the superposition of cell-autonomous programmes, mechanics a downstream readout rather than a cause |
+| `mechanics-and-signalling-share-one-architecture` | `cytoskeletal-architecture-sets-cell-mechanics`, `mechanotransduction-is-a-force-loaded-relay` | mechanics and mechanotransduction ride on separable machinery — an inert load-bearing scaffold on one side, dedicated sensors feeding a chemical cascade on the other |
+
+**They are not joined, and joining them is the mistake to resist.** A rung above both would
+have to say something like *"cells respond to force"* — the §1 test rejects it, because
+nobody can disagree with it. Two apexes with no common parent is what an honest ceiling
+looks like; a single root is an aesthetic preference, not a claim.
+
+The other two roots stay roots. `mechanical-response-is-context-dependent` is methodological
+rather than scalar — it cuts across both apexes and belongs under neither — and
+`go-or-grow-dichotomy` remains the deliberate orphan.
+
+**The apex meters read `0 / 0`, and that is the healthy state.** No paper takes a direct
+stance on either; they are reached only through the ladder. If an apex meter ever starts
+filling, papers are asserting it *directly* — which means it was never as high as it looked,
+and the ceiling is lower than we drew it.
 
 ### The known cost
 
@@ -135,10 +162,48 @@ the layer rotting as the tag vocabulary grows. Three signals, none of them build
 
 Run it after a tagging session. The library is currently clean on all three.
 
-## 6. Deliberately not decided
+## 6. Rendering — and the lesson it taught
 
-- **Rendering.** No viewer work was done. The data layer stands alone and the eventual
-  presentation — sidebar, chips on the card, a landing grid — is unconstrained by it.
+Two things had to be built, and the *first* one was not enough on its own.
+
+**The band tiers by altitude.** `BroadNode.leads_to` was documented in SCHEMA §4 but never
+loaded, so the entire broad-to-broad ladder — the new claim rungs *and* the six broad methods
+that had been laddering since long before this document — had silently never rendered. With
+that fixed the band became columns keyed by `SYNTH + tier`, generality still increasing
+rightward, and the two apexes landed at altitude 3 and 2 rather than sharing a rightmost column.
+
+**Altitude alone did not fix the flat list, and this is the part worth remembering.** Tier 0
+still held 31 of 42 broad nodes; the leftmost synthesis column was still a 31-item scroll. *A
+ladder makes altitude legible, but it does not remove leaves.* The list only got shorter when
+the band was **collapsed to its roots** — the 14 nodes nothing ladders out of — with one click
+revealing one generation, the same drill idiom the rest of the board already used. 42 → 14 on
+the landing view; 26 broad claims → 4.
+
+**The landing column went the same way.** Papers now arrive only when something asks for them:
+a broad node's `N papers` chip, or a jump from the search box or the library. The board landed
+on 53 curated papers for the same bad reason the band landed on 42 nodes.
+
+### The library view — the other half of the split
+
+Collapsing the papers only works if browsing has somewhere else to live, so it got its own
+surface in the same document (a second *file* would duplicate the ~2.3 MB inlined payload and
+break the single-file `file://` property). It is a reference-manager list — row per paper, facet
+rail, virtualized over the whole ~3.8k-entry bibliography — over the *same* index the find-a-paper
+box already built. **The topic axis is its facet rail**, which is where §4 said this axis
+belonged: headings group, leaf containers narrow.
+
+> **Browse is where you find; the board is where you reason.** A row click hands off to
+> `gotoPaper()`, and that handoff is the seam between the two.
+
+One asymmetry to know: topics reach curated papers only, because `tags` are curated-only and a
+topic reaches papers through tags. A stub can never match a topic facet.
+
+## 7. Deliberately not decided
+
 - **Whether claims should carry topics.** They should not, for now. A topic on a broad claim
   is arguable (nothing in the graph could derive it), but it buys nothing the paper-level
   axis does not already deliver, and it reopens a rule that is currently load-bearing.
+- **Whether the band should separate kinds.** 8 of the 14 landing nodes are broad *methods*,
+  so the first thing the eye meets is instrumentation rather than the claim ladder the collapse
+  was built to expose. Splitting claims from methods into their own bands would fix that and
+  would also change what the board's horizontal axis means. Not done unilaterally.

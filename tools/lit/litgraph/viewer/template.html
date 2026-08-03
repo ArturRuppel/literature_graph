@@ -65,6 +65,9 @@
     background:var(--faint);border-radius:3px;padding:1px 4px;margin-left:5px;vertical-align:1px}
   #searchResults .sr-none{padding:9px;font-size:10px;color:var(--faint)}
   #searchResults .sr-more{padding:6px 9px 4px;font-size:9px;color:var(--faint);letter-spacing:.4px}
+  /* topic-mode banner: names what's being shown so a topic search never reads as a text match */
+  #searchResults .sr-topic{padding:6px 9px 5px;font-size:9px;letter-spacing:.5px;
+    text-transform:uppercase;color:#295c86;border-bottom:1px solid var(--line);margin-bottom:3px}
 
   /* a paper the search jumped to: a brief highlight so the eye lands on it */
   @keyframes foundflash{
@@ -89,6 +92,139 @@
   #hud .pdfbtn:hover{background:rgba(90,159,208,.26);border-color:rgba(150,195,225,.7)}
   #hud .pdfbtn.on{background:rgba(90,159,208,.34);border-color:rgba(170,205,230,.85);color:#fff}
   #hud .pdfbtn[hidden]{display:none}
+
+  /* topic browser (SCHEMA §9) — a saved-search panel, not curation state, so it gets the same
+     passive blue as the PDF toggle rather than the amber "in progress" wip pills. Works in a
+     static `lit build` too (topics ride in GRAPH.topics unconditionally), so unlike wip/aims
+     it is never LIVE-gated. */
+  #hud .topicsbtn{display:inline-flex;align-items:center;gap:6px;cursor:pointer;font:inherit;
+    font-size:10px;letter-spacing:1px;text-transform:uppercase;color:#bcd2e4;
+    border:1px solid rgba(120,170,210,.42);border-radius:999px;padding:3px 10px;
+    background:rgba(90,159,208,.14)}
+  #hud .topicsbtn:hover{background:rgba(90,159,208,.26);border-color:rgba(150,195,225,.7)}
+  #hud .topicsbtn[hidden]{display:none}
+  #topicsPanel{position:fixed;z-index:45;top:44px;left:16px;width:340px;max-height:72vh;overflow:auto;
+    background:var(--panel);border:1px solid var(--line);border-radius:10px;
+    box-shadow:0 12px 34px rgba(38,54,70,.24);padding:6px}
+  #topicsPanel[hidden]{display:none}
+  #topicsPanel .wp-hd{font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--faint);
+    padding:6px 8px 5px}
+  /* a tier-1 heading is a SECTION LABEL, not a chip — SCHEMA §9 / design doc §4: it reaches
+     31-46 of 53 papers, so a click on it would be a useless filter. It groups; it doesn't run
+     a search. Only the leaf containers beneath it (.tp-chip) do that. */
+  #topicsPanel .tp-head{font-size:9px;letter-spacing:1.2px;text-transform:uppercase;font-weight:700;
+    color:var(--dim);margin:9px 8px 5px;padding-top:8px;border-top:1px solid var(--line)}
+  #topicsPanel .tp-head:first-of-type{margin-top:2px;padding-top:0;border-top:0}
+  #topicsPanel .tp-leaves{display:flex;flex-wrap:wrap;gap:5px;padding:0 8px 4px}
+  /* same family as .ctag (the card's own tag chips) — a topic search is exactly a saved tag
+     search, so the chip that starts one should look like the chip that starts the other */
+  #topicsPanel .tp-chip{display:inline-flex;align-items:baseline;gap:4px;font-size:10px;
+    color:#3f6486;background:#eef3f8;border:1px solid #d7e2ec;border-radius:999px;
+    padding:3px 9px;cursor:pointer}
+  #topicsPanel .tp-chip:hover{background:#e0ebf4;border-color:#b9cfe0;color:#295c86}
+  #topicsPanel .tp-chip .n{color:var(--faint);font-size:8px}
+  #topicsPanel .wp-note{padding:8px 8px 2px;font-size:10px;line-height:1.5;color:var(--faint)}
+
+  /* ── LIBRARY view (docs/2026-08-03-topics-and-claim-altitudes.md) ────────────────────────
+     The board answers "how does what I know hang together"; this answers "what do I have on X".
+     Two different questions that were fighting for one screen, so they get two surfaces:
+     BROWSE is where you find, the BOARD is where you reason. A row click hands off to
+     gotoPaper(), which is the seam between them.
+
+     It is a VIEW, not a second file: the graph payload is ~2.3 MB inlined, a second document
+     would either duplicate it or break the single-file offline property that makes `lit build`
+     work over file://. Same body-class idiom as .detached below — hide the graph chrome, let
+     the pane fill the window — except the HUD stays, since that is where the toggle lives.
+
+     Deliberately unlike the board: no columns, no edges, no panning. A vertical scroll with a
+     facet rail, which is the idiom every reference manager already taught the reader. */
+  #libraryPane{display:none}
+  body.library #board,body.library #searchResults,body.library #dockEmpty,body.library #dockGrip,
+  body.library #tip,body.library #ctxmenu,body.library #wipPanel,body.library #aimPanel,
+  body.library #topicsPanel{display:none!important}
+  body.library #libraryPane{display:flex;position:fixed;left:0;right:0;bottom:0;
+    top:var(--hud-top);z-index:20;background:var(--bg);transition:top .18s ease}
+  body.library{overflow:hidden}
+
+  /* facet rail — scope, then the topic tree, then sort. §4 of the design doc is the law here:
+     a tier-1 heading reaches 31–46 of 53 papers, so it groups and never filters; only the leaf
+     containers narrow. Same .tp-head / .tp-chip vocabulary as the topics panel on purpose —
+     it is the same axis, shown at more length. */
+  #libFacets{flex:0 0 232px;overflow:auto;padding:14px 0 40px;border-right:1px solid var(--line);
+    background:var(--panel)}
+  #libFacets .lf-hd{font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--faint);
+    padding:10px 14px 6px;margin-top:10px;border-top:1px solid var(--line)}
+  #libFacets .lf-hd:first-child{margin-top:0;border-top:0;padding-top:0}
+  #libFacets .lf-seg{display:flex;gap:4px;padding:0 14px 4px;flex-wrap:wrap}
+  #libFacets .lf-opt{font-size:10px;color:var(--dim);background:var(--bg);border:1px solid var(--line);
+    border-radius:999px;padding:3px 9px;cursor:pointer;user-select:none}
+  #libFacets .lf-opt:hover{border-color:#b9cfe0;color:#295c86}
+  #libFacets .lf-opt.on{background:#295c86;border-color:#295c86;color:#fff}
+  #libFacets .tp-head{font-size:9px;letter-spacing:1.2px;text-transform:uppercase;font-weight:700;
+    color:var(--dim);margin:10px 14px 5px}
+  #libFacets .tp-leaves{display:flex;flex-wrap:wrap;gap:5px;padding:0 14px 4px}
+  #libFacets .tp-chip{display:inline-flex;align-items:baseline;gap:4px;font-size:10px;
+    color:#3f6486;background:#eef3f8;border:1px solid #d7e2ec;border-radius:999px;
+    padding:3px 9px;cursor:pointer}
+  #libFacets .tp-chip:hover{background:#e0ebf4;border-color:#b9cfe0;color:#295c86}
+  #libFacets .tp-chip.on{background:#295c86;border-color:#295c86;color:#fff}
+  #libFacets .tp-chip.on .n{color:#c6dcec}
+  #libFacets .tp-chip .n{color:var(--faint);font-size:8px}
+  #libFacets .lf-note{padding:8px 14px 2px;font-size:9px;line-height:1.5;color:var(--faint)}
+
+  /* the list itself */
+  #libMain{flex:1;min-width:0;display:flex;flex-direction:column}
+  #libBar{flex:0 0 auto;display:flex;align-items:center;gap:12px;padding:11px 20px;
+    border-bottom:1px solid var(--line);background:var(--panel)}
+  #libBar #libFilter{flex:1;min-width:0;max-width:420px;font:inherit;font-size:12px;color:var(--ink);
+    background:var(--bg);border:1px solid var(--line);border-radius:999px;padding:5px 14px;outline:none;
+    -webkit-appearance:none}
+  #libBar #libFilter:focus{border-color:#9dbdd6;background:var(--panel)}
+  #libBar .lb-count{font-size:10px;letter-spacing:.6px;color:var(--faint);white-space:nowrap}
+  #libBar .lb-clear{font-size:10px;color:#295c86;cursor:pointer;white-space:nowrap;
+    border:1px solid #d7e2ec;border-radius:999px;padding:3px 10px;background:#eef3f8}
+  #libBar .lb-clear:hover{background:#e0ebf4}
+  #libBar .lb-clear[hidden]{display:none}
+
+  /* Windowed scroll: the bibliography is ~3.8k entries and painting them all costs a second of
+     layout on every keystroke. A fixed row height is what buys the window, so the row is a
+     fixed three-line shape and long tag lists ellipsize rather than wrap. */
+  #libScroll{flex:1;overflow:auto;position:relative}
+  #libSizer{position:relative;width:100%}
+  #libRows{position:absolute;left:0;right:0;top:0}
+  #libScroll .lr{height:76px;box-sizing:border-box;display:flex;flex-direction:column;
+    justify-content:center;gap:3px;padding:0 20px;border-bottom:1px solid var(--line);
+    cursor:pointer;background:var(--panel)}
+  #libScroll .lr:hover{background:#f4f7f9}
+  #libScroll .lr-t{font-size:12.5px;line-height:1.3;color:var(--ink);
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #libScroll .lr.stub .lr-t{color:var(--dim)}
+  #libScroll .lr-m{font-size:9.5px;color:var(--faint);
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #libScroll .lr-tags{display:flex;gap:4px;overflow:hidden;height:14px}
+  #libScroll .lr-tag{flex:0 0 auto;font-size:8px;color:#3f6486;background:#eef3f8;
+    border:1px solid #d7e2ec;border-radius:999px;padding:1px 6px;line-height:1.4}
+  #libScroll .lr-badge{font-size:7px;letter-spacing:.6px;text-transform:uppercase;color:#fff;
+    background:var(--faint);border-radius:3px;padding:1px 4px;margin-left:6px;vertical-align:1px}
+  /* curation pass is the library's own ranking — the board's landing column is sorted by it, so
+     losing it to a plain year sort would throw away a real judgement. It rides on the row. */
+  #libScroll .lr-pass{font-size:7px;letter-spacing:.6px;text-transform:uppercase;color:#fff;
+    background:var(--floor);border-radius:3px;padding:1px 4px;margin-left:6px;vertical-align:1px}
+  #libScroll .lr-none{padding:40px 20px;font-size:11px;color:var(--faint)}
+
+  #hud .libbtn{display:inline-flex;align-items:center;gap:6px;cursor:pointer;font:inherit;
+    font-size:10px;letter-spacing:1px;text-transform:uppercase;color:#bcd2e4;
+    border:1px solid rgba(120,170,210,.42);border-radius:999px;padding:3px 10px;
+    background:rgba(90,159,208,.14)}
+  #hud .libbtn:hover{background:rgba(90,159,208,.26);border-color:rgba(150,195,225,.7)}
+  #hud .libbtn.on{background:rgba(90,159,208,.34);border-color:rgba(170,205,230,.85);color:#fff}
+  #hud .libbtn[hidden]{display:none}
+
+  @media (max-width:760px){
+    #libFacets{flex-basis:170px}
+    #libScroll .lr{padding:0 12px}
+    #libBar{padding:9px 12px}
+  }
 
   /* "finish curation" — the DRIVE card window's counterpart to the picker row's ✓ (serve only) */
   #hud .donebtn{display:inline-flex;align-items:center;gap:6px;cursor:pointer;font:inherit;
@@ -142,6 +278,14 @@
   svg#edges{position:absolute;top:0;left:0;z-index:10;pointer-events:none;overflow:visible}
 
   .col{position:relative;z-index:5;display:flex;flex-direction:column;gap:14px;flex:none;width:var(--col)}
+  /* an empty landing column is a prompt, not a column: at full --col width it spends a third of
+     the screen on nothing and shoves the apex claims off the right edge, which is the opposite
+     of what landing on the top of the ladder is for. Shrink it to its own caption. */
+  .col.vacant{width:auto;max-width:200px}
+  .col.vacant .colhd{margin-bottom:0;line-height:1.6}
+  /* the centering padding exists to hold the landing column mid-screen; with nothing in it that
+     is half a screen of margin in front of the ladder you were meant to land on */
+  body.landing-vacant #board{padding-left:40px}
   .col .colhd{font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--faint);
     padding-left:4px;margin-bottom:-4px}
 
@@ -272,6 +416,18 @@
   .bn.titled .btx{font-size:9px;color:var(--dim)}
   .bn .meter{margin-top:6px;display:flex;gap:6px;font-size:8px}
   .bn .meter .s{color:var(--grounded)}.bn .meter .c{color:var(--cross)}
+  /* rung-opener: the band lands on its roots and drills down one generation per click, the
+     same "one click = one generation" idiom the rest of the board already runs on. Sits inside
+     the broad node but takes its own click — pinning is still the whole-card gesture. */
+  .bn .bdrills{margin-top:7px;display:flex;flex-wrap:wrap;gap:5px}
+  .bn .bdrill{display:inline-flex;align-items:center;gap:4px;font-size:8px;
+    letter-spacing:.7px;text-transform:uppercase;color:#6b3fae;background:#f2ecfa;
+    border:1px solid #ddd0ee;border-radius:999px;padding:2px 8px;cursor:pointer}
+  .bn .bdrill:hover{background:#e7dbf6;border-color:#c8b4e4}
+  /* papers pull leftward out of the band, so it borrows the paper-column blue, not the --broad
+     purple the rung-opener uses — the two chips do opposite things and shouldn't read alike */
+  .bn .bdrill.pap{color:#295c86;background:#eef3f8;border-color:#d7e2ec}
+  .bn .bdrill.pap:hover{background:#e0ebf4;border-color:#b9cfe0}
 
   /* tooltip */
   #tip{position:fixed;z-index:50;width:300px;border:1px solid var(--line);border-radius:10px;
@@ -347,7 +503,7 @@
      anyway); input affordances key off (hover:none)+(pointer:coarse). The three unconditional
      clamps below are desktop-safe (they only bite when a panel would overflow the viewport). */
   #tip{max-width:calc(100vw - 16px)}
-  #wipPanel,#aimPanel{max-width:calc(100vw - 16px)}
+  #wipPanel,#aimPanel,#topicsPanel{max-width:calc(100vw - 16px)}
   #board{overscroll-behavior-x:contain}          /* no back/forward-swipe hijack from the h-scroll */
   .pw-body{overscroll-behavior:contain}          /* nested page-scroll doesn't chain to the board */
 
@@ -356,7 +512,7 @@
     #board{gap:22px;padding:calc(var(--hud-h) + 22px) max(12px, calc(50vw - var(--col)/2)) 80px}
     #hud{gap:8px 10px;flex-wrap:wrap}
     #hud .widthctl{display:none}                 /* column ≈ full width — slider is moot (and ate swipes) */
-    #wipPanel,#aimPanel{left:8px;right:8px;width:auto;max-height:60vh}
+    #wipPanel,#aimPanel,#topicsPanel{left:8px;right:8px;width:auto;max-height:60vh}
   }
   @media (hover:none) and (pointer:coarse){
     /* the movable/resizable quote window becomes a near-fullscreen sheet: no drag, no resize,
@@ -364,8 +520,8 @@
     .pw{position:fixed !important;inset:8px !important;width:auto !important;height:auto !important}
     .pw-grip{display:none}
     .pw-bar{cursor:default}
-    .card,.slice,.slices .sgrp,.card.stack,.pw-tool,.pw-x,#hud .wip,
-    #wipPanel .wp-row,#aimPanel .ap-row{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+    .card,.slice,.slices .sgrp,.card.stack,.pw-tool,.pw-x,#hud .wip,#hud .topicsbtn,
+    #wipPanel .wp-row,#aimPanel .ap-row,#topicsPanel .tp-chip{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
     .slice{padding:7px 6px}                       /* fatter tap targets */
     .slices .sgrp{padding-top:9px;margin:9px 0 4px}
     #wipPanel .wp-row{padding:11px 10px}
@@ -434,7 +590,8 @@
   body.detached{overflow:hidden}
   body.detached #hud,body.detached #board,body.detached #searchResults,body.detached #dockEmpty,
   body.detached #dockGrip,body.detached #tip,body.detached #ctxmenu,
-  body.detached #wipPanel,body.detached #aimPanel{display:none!important}
+  body.detached #wipPanel,body.detached #aimPanel,body.detached #topicsPanel,
+  body.detached #libraryPane{display:none!important}
   body.detached #detachPane{display:block;position:fixed;inset:0;z-index:5;background:#e0e5e9}
   body.detached #detachEmpty{position:absolute;inset:0;display:flex;align-items:center;
     justify-content:center;text-align:center;padding:24px;color:var(--faint);font-size:12px}
@@ -455,6 +612,8 @@
   <b>litgraph</b>
   <input id="search" type="search" autocomplete="off" spellcheck="false"
          placeholder="find a paper — title, author, journal, tag…">
+  <button id="libBtn" class="libbtn" hidden>library</button>
+  <button id="topicsBtn" class="topicsbtn" hidden>topics</button>
   <span id="wip" class="wip" hidden></span>
   <span id="aims" class="wip" hidden></span>
   <button id="pdfToggle" class="pdfbtn" hidden>📄 PDF</button>
@@ -473,6 +632,19 @@
 <div id="ctxmenu"></div>
 <div id="wipPanel" hidden></div>
 <div id="aimPanel" hidden></div>
+<div id="topicsPanel" hidden></div>
+<div id="libraryPane">
+  <div id="libFacets"></div>
+  <div id="libMain">
+    <div id="libBar">
+      <input id="libFilter" type="search" autocomplete="off" spellcheck="false"
+             placeholder="filter the library — title, author, journal, tag…">
+      <span class="lb-count" id="libCount"></span>
+      <span class="lb-clear" id="libClear" hidden>clear filters</span>
+    </div>
+    <div id="libScroll"><div id="libSizer"><div id="libRows"></div></div></div>
+  </div>
+</div>
 
 <script>
 const NS="http://www.w3.org/2000/svg";
@@ -482,6 +654,12 @@ const PAPERS = GRAPH.papers;
 const BROAD = GRAPH.broad;
 const STUBS = GRAPH.stubs;
 const ORDER = GRAPH.order;
+// The topic axis (SCHEMA §9) — a saved-search tree over the paper `tags` vocabulary, computed
+// once in Python (build.py's _topics_json: closure + curated membership already reduced, so
+// this viewer never re-walks `broader`). `|| {}` covers both an untopiced repo (to_json_dict
+// still emits "topics": {}) and `lit preview`'s isolated payload, which carries no "topics" key
+// at all (preview.isolate() reduces to one paper — see preview.py).
+const TOPICS = GRAPH.topics || {};
 
 // slug -> every curated paper that links into that broad node (generalize / stance / answer),
 // independent of expansion state. Lets a broad-node hover reach papers still collapsed in the
@@ -522,8 +700,57 @@ let hover=null;          // {cardId,sid} — hovered slice row/broad node: redra
 let pin=[];              // [{cardId,sid}] — clicked isolations that persist after the pointer
                          // leaves and ACCUMULATE: each click hardens another target. Bright set
                          // = every pinned target ∪ the current hover; everything else stays dim.
-const SYNTH=1e6;         // synthesis band: broad nodes always sit in the rightmost column
+const SYNTH=1e6;         // synthesis band: broad nodes always sit at/after this column
                          // (papers occupy small levels; builds-on growth stays left of it)
+// The band is not one flat column: a broad node's OWN leads_to (SCHEMA §4) can ladder it into
+// a broader broad node, so the band is really a rightward ladder of tiers, SYNTH+0, SYNTH+1, ….
+// broadTier[slug] = the length of the longest chain of broad-to-broad leads_to edges ENDING at
+// that slug, i.e. its altitude: 0 for a node only ever fed by papers (a plain head — nearest
+// the papers), 1+max(tier of everything that ladders into it) otherwise. Recomputed once per
+// rebuild() (cheap — tens of nodes), so a DRIVE window's hot-reloaded BROAD is picked up too.
+let broadTier={};
+let broadKids={};        // slug -> the broad nodes that ladder INTO it (one rung below), set by
+                         // computeBroadTiers since it walks exactly that relation already
+// Which rungs are revealed. The band lands on its ROOTS only — the nodes nothing ladders out
+// of, i.e. the top of each chain — and a rung appears when the human opens the node above it.
+// Rendering all 42 at once was the original complaint: adding altitude made the ladder legible
+// without making the list shorter, because a ladder does not remove its leaves. 42 -> 14 on
+// the landing view, and the claim side goes 26 -> 4. Persists across rebuild() like `stacks`.
+const broadOpen=new Set();
+const broadRoots=()=>Object.keys(BROAD).filter(s=>!((BROAD[s].leads_to||[]).some(r=>BROAD[r])));
+// A node is on screen if it is a root, or if everything between it and a root is open. Walk
+// down from the roots rather than up from each node: that way a node with two parents shows
+// as soon as EITHER is open, which is what multi-parenting is for.
+function visibleBroad(){
+  const seen=new Set();
+  const walk=s=>{ if(seen.has(s)) return; seen.add(s);
+                  if(broadOpen.has(s)) for(const k of (broadKids[s]||[])) walk(k); };
+  broadRoots().forEach(walk);
+  return seen;
+}
+function computeBroadTiers(){
+  const kids={};                                    // slug -> broad nodes that ladder INTO it
+  for(const s in BROAD) kids[s]=[];
+  for(const [s,b] of Object.entries(BROAD))
+    for(const r of (b.leads_to||[])) if(kids[r]) kids[r].push(s);
+  const tier={}, visiting=new Set();
+  function tierOf(slug){
+    if(slug in tier) return tier[slug];
+    if(visiting.has(slug)) return 0;                // a cycle here means the build already
+    visiting.add(slug);                             // rejected it; just don't hang on stale data
+    let t=0;
+    for(const c of kids[slug]) t=Math.max(t,tierOf(c)+1);
+    visiting.delete(slug);
+    return tier[slug]=t;
+  }
+  for(const slug in BROAD) tierOf(slug);
+  broadKids=kids;
+  return tier;
+}
+const broadLevel=slug=>SYNTH+(broadTier[slug]||0);
+// tier 0 keeps the original wording (a landing-view reader needs no ladder vocabulary yet);
+// altitude echoes the design doc's own term for this axis once the band actually has rungs.
+const synthLabel=tier=>tier===0?"synthesis · now →":`synthesis · altitude ${tier} →`;
 
 // curation maturity (SCHEMA §4) as a pie-filled circle: pass/4. Empty ring = stub (0),
 // full disk = fully curated (4). Stubs have no `pass` → treated as 0.
@@ -933,7 +1160,7 @@ function hoistAll(els){
   }
 }
 function hoistBroad(slug){
-  const els=[document.getElementById(`card-${SYNTH}:${slug}`)];
+  const els=[document.getElementById(`card-${broadLevel(slug)}:${slug}`)];
   const seen=new Set();
   for(const lk of (BROAD_LINKS[slug]||[])){          // once per paper, however many slices feed the node
     if(seen.has(lk.key)) continue;
@@ -941,7 +1168,7 @@ function hoistBroad(slug){
     // every instance, not just the landing one: an expanded paper also has a card in the
     // grounds/builds column it spawned into, and that is where its real edge anchors
     for(const lvl of Object.keys(cols).map(Number))
-      if(lvl!==SYNTH&&cols[lvl].keys.has(lk.key))
+      if(lvl<SYNTH&&cols[lvl].keys.has(lk.key))
         els.push(document.getElementById(`card-${lvl}:${lk.key}`));
   }
   hoistAll(els);
@@ -957,7 +1184,22 @@ function broadCard(slug,level){
   let m = b.meter?`<div class="meter"><span class="s">▲ ${b.meter.s} support</span><span class="c">▼ ${b.meter.c} contradict</span></div>`:'';
   // optional `title` (SCHEMA §4): the at-a-glance name, with the full statement as its gloss
   let t = b.title?`<div class="btl">${b.title}</div>`:'';
-  el.innerHTML=`<div class="bkd">${b.kind}</div>${t}<div class="btx">${b.text}</div>${m}`;
+  // the rung-opener: present only when something ladders into this node, so a leaf carries no
+  // affordance it cannot honour. Its own click must not reach the pin handler below.
+  const kids=(broadKids[slug]||[]).length;
+  const dn=kids?`<div class="bdrill" data-act="rung">${broadOpen.has(slug)?"▾":"▸"} ${kids} below</div>`:"";
+  // …and the other direction: pull in the papers that assert this node. With the landing column
+  // collapsed this is how a paper reaches the board at all, short of naming it in the search box.
+  const np=LANDING_COLLAPSED?new Set((BROAD_LINKS[slug]||[]).map(l=>l.key)).size:0;
+  const dp=np?`<div class="bdrill pap" data-act="papers">${broadPapersOpen.has(slug)?"▾":"▸"} ${np} paper${np===1?"":"s"}</div>`:"";
+  el.innerHTML=`<div class="bkd">${b.kind}</div>${t}<div class="btx">${b.text}</div>${m}`
+              +(dn||dp?`<div class="bdrills">${dn}${dp}</div>`:"");
+  el.querySelectorAll(".bdrill").forEach(d=>d.addEventListener("click",e=>{
+    e.stopPropagation();                             // pinning stays the whole-card gesture
+    const set=d.dataset.act==="rung"?broadOpen:broadPapersOpen;
+    if(set.has(slug)) set.delete(slug); else set.add(slug);
+    rebuild();
+  }));
   // hovering a broad node isolates its edges and lights up the papers linked into it
   el.addEventListener("mousemove",()=>setHover({cardId:el.id,sid:null}));
   el.addEventListener("mouseleave",()=>setHover(null));
@@ -1007,7 +1249,24 @@ function addBroad(level,slug,label){
 // on the landing view and survives every rebuild. Unlinked-yet nodes stay hover-active
 // (broadExtraEdges lights their papers) like any other broad node.
 function ensureBroadBand(){
-  for(const slug of Object.keys(BROAD)) addBroad(SYNTH,slug,"synthesis · now →");
+  // Only the revealed rungs — see broadOpen. expandCard still materializes any broad node an
+  // OPEN paper points at, whether or not the ladder reveals it: a real edge from a card the
+  // human opened outranks the collapse, same as reveal() outranking a folded card.
+  for(const slug of visibleBroad())
+    addBroad(broadLevel(slug),slug,synthLabel(broadTier[slug]||0));
+  // The broad-to-broad half of `leads-to` (SCHEMA §4): a node's own generalization into a
+  // broader one, one rung up the same ladder its slices climb into it from below. Drawn like
+  // that in-paper ladder (kind:"gen", the --broad idiom), not a lateral or stance edge — and
+  // added here, not in expandCard, so it stands whether or not any paper is open: the whole
+  // point is that the band reads as one rightward structure, not four unrelated columns.
+  // …but only between rungs that are actually on screen: a collapsed child has no card for the
+  // arrow to land on, and addEdge would anchor it on nothing.
+  const here=slug=>{ const c=cols[broadLevel(slug)]; return c&&c.keys.has(slug); };
+  for(const [slug,b] of Object.entries(BROAD))
+    for(const r of (b.leads_to||[]))
+      if(BROAD[r]&&here(slug)&&here(r))
+        addEdge({cardId:`card-${broadLevel(slug)}:${slug}`,sid:null},
+                {cardId:`card-${broadLevel(r)}:${r}`,sid:null},"gen");
 }
 // Citation-wall collapse: a focused paper's UNCURATED sources never spawn cards — they fold
 // into one "▸ N sources" stack per focused card, expandable on demand and ONLY on demand
@@ -1077,6 +1336,8 @@ function rebuild(){
     }
   });
   edges=[]; edgeSeen.clear(); hover=null; unpinned=null;   // rows re-render; next mousemove re-isolates (docked viewer rests)
+  broadTier=computeBroadTiers();     // fresh before anything below places a broad card by it
+  syncLanding();                     // before the expansion sweep below reads cols[0].keys
   document.querySelectorAll(".card.open,.card.focus").forEach(c=>c.classList.remove("open","focus"));
   ctxOpen=new Set(); ctxDrill=new Map();
   const done=new Set();
@@ -1084,7 +1345,7 @@ function rebuild(){
   while(changed){
     changed=false;
     for(const lvl of Object.keys(cols).map(Number)){
-      if(lvl===SYNTH) continue;
+      if(lvl>=SYNTH) continue;
       for(const key of [...cols[lvl].keys]){
         const id=`${lvl}:${key}`;
         if(done.has(id)||!open.has(id)||!PAPERS[key]) continue;
@@ -1113,7 +1374,7 @@ function rebuild(){
 function findCardLevel(key,near){
   let best=null;
   for(const lvl of Object.keys(cols).map(Number)){
-    if(lvl===SYNTH||!cols[lvl].keys.has(key)) continue;
+    if(lvl>=SYNTH||!cols[lvl].keys.has(key)) continue;
     if(best===null||Math.abs(lvl-near)<Math.abs(best-near)) best=lvl;
   }
   return best===null?0:best;
@@ -1141,8 +1402,8 @@ function expandCard(level,key,p){
   (p.lateral||[]).forEach(l=>{
     const from={cardId:cid,sid:l.via};
     if(l.slug){                                      // stance toward a broad claim → synthesis band
-      addBroad(SYNTH,l.slug,"synthesis · now →");
-      addEdge(from,{cardId:`card-${SYNTH}:${l.slug}`,sid:null},l.sign);
+      addBroad(broadLevel(l.slug),l.slug,synthLabel(broadTier[l.slug]||0));
+      addEdge(from,{cardId:`card-${broadLevel(l.slug)}:${l.slug}`,sid:null},l.sign);
       return;
     }
     const tl=findCardLevel(l.key,level);
@@ -1155,8 +1416,8 @@ function expandCard(level,key,p){
   (p.ans||[]).forEach(a=>{
     const from={cardId:cid,sid:a.via};
     if(a.slug){
-      addBroad(SYNTH,a.slug,"synthesis · now →");
-      addEdge(from,{cardId:`card-${SYNTH}:${a.slug}`,sid:null},"answers");
+      addBroad(broadLevel(a.slug),a.slug,synthLabel(broadTier[a.slug]||0));
+      addEdge(from,{cardId:`card-${broadLevel(a.slug)}:${a.slug}`,sid:null},"answers");
       return;
     }
     const tl=findCardLevel(a.key,level);
@@ -1172,8 +1433,8 @@ function expandCard(level,key,p){
   });
   // RIGHTMOST — synthesis band; the edge sharpens to the generalizing claim once it's drilled
   (p.cons||[]).forEach(c=>{
-    addBroad(SYNTH,c.slug,"synthesis · now →");
-    addEdge({cardId:cid,sid:c.via},{cardId:`card-${SYNTH}:${c.slug}`,sid:null},"leads");
+    addBroad(broadLevel(c.slug),c.slug,synthLabel(broadTier[c.slug]||0));
+    addEdge({cardId:cid,sid:c.via},{cardId:`card-${broadLevel(c.slug)}:${c.slug}`,sid:null},"leads");
   });
 }
 
@@ -1276,7 +1537,8 @@ function redraw(){
   }
   W=Math.max(W,board.clientWidth); H=Math.max(H,board.clientHeight);   // always cover the viewport
   const sTop=board.scrollTop, sLeft=board.scrollLeft;
-  const stroke={grounded:cssv('--grounded'),cross:cssv('--cross'),question:cssv('--question')};
+  const stroke={grounded:cssv('--grounded'),cross:cssv('--cross'),question:cssv('--question'),
+               broad:cssv('--broad')};
   const plan=[];
   for(const e of work){
     const ra=anchorRect(e.from), rb=anchorRect(e.to);
@@ -1300,7 +1562,9 @@ function redraw(){
     <marker id="arx" markerWidth="8" markerHeight="8" refX="0" refY="3" orient="auto">
       <path d="M0,0 L6,3 L0,6 Z" fill="${stroke.cross}"/></marker>
     <marker id="arq" markerWidth="8" markerHeight="8" refX="0" refY="3" orient="auto">
-      <path d="M0,0 L6,3 L0,6 Z" fill="${stroke.question}"/></marker>`;
+      <path d="M0,0 L6,3 L0,6 Z" fill="${stroke.question}"/></marker>
+    <marker id="arg" markerWidth="8" markerHeight="8" refX="0" refY="3" orient="auto">
+      <path d="M0,0 L6,3 L0,6 Z" fill="${stroke.broad}"/></marker>`;
   const frag=document.createDocumentFragment();
   frag.appendChild(defs);
   // .hl is recomputed as a set difference so a card that stays lit is never touched — a no-op
@@ -1320,6 +1584,8 @@ function redraw(){
     const contra=e.kind==="contra"||e.kind==="contradict";
     const ans=e.kind==="answers";
     const lat=e.kind==="corr"||contra;
+    const gen=e.kind==="gen";           // broad->broad generalization (SCHEMA §4) — its own
+                                        // color/marker, solid like a support edge, never lateral
     let d;
     if(Math.abs((ra.left+ra.right)-(rb.left+rb.right))<80){
       // same column (e.g. a lateral edge between two landing cards): bow out the right side
@@ -1336,12 +1602,13 @@ function redraw(){
     const path=document.createElementNS(NS,"path");
     path.setAttribute("d",d);
     path.setAttribute("fill","none");
-    path.setAttribute("stroke",contra?stroke.cross:ans?stroke.question:stroke.grounded);
+    path.setAttribute("stroke",contra?stroke.cross:ans?stroke.question:gen?stroke.broad:stroke.grounded);
     path.setAttribute("stroke-width","1.6");
     if(lat) path.setAttribute("stroke-dasharray","5 4");
     else if(ans) path.setAttribute("stroke-dasharray","2 3");   // dotted: answers ≠ support
     path.setAttribute("opacity",on?(lat||ans?"0.85":"0.95"):"0.2");    // incident bright; dim floor lifted for the light canvas
     if(ans) path.setAttribute("marker-end","url(#arq)");
+    else if(gen) path.setAttribute("marker-end","url(#arg)");
     else if(!lat) path.setAttribute("marker-end","url(#ar)");
     else if(contra) path.setAttribute("marker-end","url(#arx)");
     frag.appendChild(path);
@@ -2139,9 +2406,55 @@ function landingKeys(){
         if(!l.slug && !PAPERS[l.key] && STUBS[l.key]) keep.add(l.key);
   return ORDER.filter(k=>keep.has(k));               // ORDER's ranking, filtered — never resorted
 }
+
+// ── the collapsed landing column ─────────────────────────────────────────────────────────
+// Same argument as the synthesis band: a list of 53 you must scroll is not a view, it's a
+// backlog. So the board lands on claims alone and papers arrive only when something asks for
+// them — a claim's "N papers" chip, or a jump from the library / search box. Browsing is the
+// library view's job now; the board's job is the reasoning.
+//
+// NOT in the single-purpose windows: a DRIVE card window and the mobile curation view are both
+// built around a landing column that is already there, and neither has a library to browse.
+const LANDING_COLLAPSED = !DRIVE && !MOBILE_CURATE;
+const landedStuck=new Set();       // arrived by name (gotoPaper) — outlives any claim's chip
+const broadPapersOpen=new Set();   // slugs whose supporting papers were pulled in
+function landedKeys(){
+  const want=new Set(landedStuck);
+  for(const slug of broadPapersOpen)
+    for(const lk of (BROAD_LINKS[slug]||[])) want.add(lk.key);
+  return want;
+}
+// Reconcile cols[0] against landedKeys(): add what's missing in ORDER's ranking (so the column
+// keeps the curator's pass order however the cards got here), drop what nothing wants any more.
+function syncLanding(){
+  if(!LANDING_COLLAPSED) return;
+  const c=cols[0]; if(!c) return;
+  const want=landedKeys();
+  for(const k of [...c.keys]){
+    if(want.has(k)||k.endsWith("::srcs")) continue;
+    c.keys.delete(k);
+    const el=document.getElementById(`card-0:${k}`); if(el) el.remove();
+  }
+  for(const k of landingKeys()){                     // ORDER's ranking — never resorted
+    if(!want.has(k)||ACTIVE.has(k)||c.keys.has(k)) continue;
+    addPaper(0,k);
+  }
+  for(const k of want){                              // a stub jumped to by name isn't in landingKeys()
+    if(ACTIVE.has(k)||c.keys.has(k)||!(PAPERS[k]||STUBS[k])) continue;
+    addPaper(0,k);
+  }
+  const hd=c.el.querySelector(".colhd");
+  if(hd) hd.textContent=c.keys.size?`papers · ${c.keys.size} shown`
+                                   :"papers · open a claim, or browse the library";
+  c.el.classList.toggle("vacant",!c.keys.size);
+  document.body.classList.toggle("landing-vacant",!c.keys.size);
+}
 function boot(){
-  ensureCol(0,"curated papers · search finds the rest");
-  landingKeys().forEach(k=>{ if(!ACTIVE.has(k)) addPaper(0,k); });  // in-progress papers live in their own windows
+  broadTier=computeBroadTiers();     // tiers ready before the very first ensureBroadBand()
+  ensureCol(0,LANDING_COLLAPSED?"papers · open a claim, or browse the library"
+                               :"curated papers · search finds the rest");
+  if(LANDING_COLLAPSED) syncLanding();               // starts empty — papers arrive by drill/search
+  else landingKeys().forEach(k=>{ if(!ACTIVE.has(k)) addPaper(0,k); });  // in-progress papers live in their own windows
   ensureBroadBand();                                 // synthesis band present from the landing view
   redraw();
 }
@@ -2220,7 +2533,10 @@ function buildSearchIndex(){
     const tags = (cur && p.tags) ? p.tags : [];            // tags are curated-only
     const blob = [key, p.title || "", authors.join(" "), journal, p.year || "", tags.join(" ")]
       .join(" ").toLowerCase();
-    rows.push({key, cur, title: p.title || key, authors, journal, year: p.year, tags, blob});
+    // `pass` is curated-only and rides along for the library view's ranking badge; the search
+    // dropdown ignores it.
+    rows.push({key, cur, title: p.title || key, authors, journal, year: p.year, tags,
+               pass: cur ? p.pass : null, blob});
   }
   return rows;
 }
@@ -2231,38 +2547,61 @@ function openResults(){
   searchResults.classList.add("on");
 }
 function closeSearch(){ searchResults.classList.remove("on"); }
+const SR_CAP = 12;
+function _srRow(r){
+  const who = r.authors.length
+    ? esc(r.authors.slice(0, 3).join(" · ")) + (r.authors.length > 3 ? " · …" : "") : "";
+  const bib = esc([r.journal, r.year].filter(Boolean).join(" · "));
+  const meta = [who, bib].filter(Boolean).join("  ·  ");
+  const badge = r.cur ? "" : `<span class="sr-badge">stub</span>`;
+  return `<div class="sr-row ${r.cur ? "" : "stub"}" data-key="${esc(r.key)}">`
+       + `<div class="sr-t">${esc(r.title)}${badge}</div>`
+       + `<div class="sr-m">${esc(r.key)}${meta ? "  ·  " + meta : ""}</div></div>`;
+}
+// A topic (SCHEMA §9) is not a second filter mechanism — it is a saved search over its
+// keyword closure, run through this SAME find-a-paper index. "topic:<slug>" is the box's own
+// query syntax for it (a leaf chip in the topic panel writes exactly that string in); typing
+// past it falls straight back to ordinary free-text search, same as editing a tag-chip search.
+function renderTopicResults(slug){
+  const topic = TOPICS[slug];
+  const hits = topic.papers.map(k => searchIndex.find(r => r.key === k)).filter(Boolean);
+  const hd = `<div class="sr-topic">topic · ${esc(topic.title)} · `
+           + `${hits.length} paper${hits.length === 1 ? "" : "s"}</div>`;
+  const body = hits.length
+    ? hits.slice(0, SR_CAP).map(_srRow).join("")
+      + (hits.length > SR_CAP ? `<div class="sr-more">+${hits.length - SR_CAP} more — refine the search</div>` : "")
+    : `<div class="sr-none">no curated paper carries this topic's keywords</div>`;
+  searchResults.innerHTML = hd + body;
+  openResults();
+}
 function renderResults(q){
   if(!searchIndex) searchIndex = buildSearchIndex();
-  const terms = q.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const q0 = q.trim();
+  const topicMatch = /^topic:([a-z0-9][a-z0-9-]*)$/i.exec(q0);
+  if(topicMatch && TOPICS[topicMatch[1]]){ renderTopicResults(topicMatch[1]); return; }
+  const terms = q0.toLowerCase().split(/\s+/).filter(Boolean);
   if(!terms.length){ closeSearch(); return; }
   const hits = searchIndex.filter(r => terms.every(t => r.blob.includes(t)));   // AND across terms
-  const CAP = 12;
   if(!hits.length){
     searchResults.innerHTML = `<div class="sr-none">no paper matches “${esc(q)}”</div>`;
   } else {
-    let html = hits.slice(0, CAP).map(r => {
-      const who = r.authors.length
-        ? esc(r.authors.slice(0, 3).join(" · ")) + (r.authors.length > 3 ? " · …" : "") : "";
-      const bib = esc([r.journal, r.year].filter(Boolean).join(" · "));
-      const meta = [who, bib].filter(Boolean).join("  ·  ");
-      const badge = r.cur ? "" : `<span class="sr-badge">stub</span>`;
-      return `<div class="sr-row ${r.cur ? "" : "stub"}" data-key="${esc(r.key)}">`
-           + `<div class="sr-t">${esc(r.title)}${badge}</div>`
-           + `<div class="sr-m">${esc(r.key)}${meta ? "  ·  " + meta : ""}</div></div>`;
-    }).join("");
-    if(hits.length > CAP) html += `<div class="sr-more">+${hits.length - CAP} more — refine the search</div>`;
+    let html = hits.slice(0, SR_CAP).map(_srRow).join("");
+    if(hits.length > SR_CAP) html += `<div class="sr-more">+${hits.length - SR_CAP} more — refine the search</div>`;
     searchResults.innerHTML = html;
   }
   openResults();
 }
 function gotoPaper(key){
   closeSearch();
+  // Naming a paper is a standing request for it: landedStuck outlives whatever claim chips are
+  // open, so a rebuild's syncLanding() never sweeps away the card you just jumped to.
+  if(!STUBS[key] && !PAPERS[key]) return;
+  landedStuck.add(key);
   let el = document.getElementById(`card-0:${key}`);
   if(!el){                                   // an uncurated stub: the landing list carries only
-    if(!STUBS[key] && !PAPERS[key]) return;  // curated papers, so mint its card now and keep it
-    addPaper(0, key);                        // (appended below the ranking — it's a search result,
-    el = document.getElementById(`card-0:${key}`);       // not part of the curation order)
-    if(!el) return;
+    addPaper(0, key);                        // curated papers, so mint its card now and keep it
+    el = document.getElementById(`card-0:${key}`);       // (appended below the ranking — it's a
+    if(!el) return;                                      // search result, not part of the order)
     redraw();                                            // the column grew; edges re-anchor
   }
   el.scrollIntoView({behavior: "smooth", block: "center"});
@@ -2275,6 +2614,12 @@ function runSearch(term){                                 // called by a tag chi
   searchInput.value = term;
   searchInput.focus();
   renderResults(term);
+}
+function runTopicSearch(slug){                     // called by a topic-panel leaf chip
+  if(!searchInput) return;
+  searchInput.value = `topic:${slug}`;
+  searchInput.focus();
+  renderResults(searchInput.value);
 }
 if(searchInput){
   searchInput.addEventListener("input", () => renderResults(searchInput.value));
@@ -2294,6 +2639,215 @@ if(searchInput){
     if(!e.target.closest("#searchResults, #search")) closeSearch();
   }, true);
 }
+
+// ── topic browser (SCHEMA §9): a saved-search panel over the keyword axis ───────────────────
+// A topic is NOT a second filtering system — it drives the same find-a-paper search a tag chip
+// does (above), just seeded from a keyword closure computed once in Python (build.py), not
+// walked here. Tier-1 headings (`root:true`) reach 31-46 of 53 papers — useless as a filter,
+// see docs/2026-08-03-topics-and-claim-altitudes.md §4 — so they render as section labels, not
+// chips; only the fourteen leaf containers beneath them are clickable. A container with two
+// parents (model-systems, morphogenesis, extracellular-matrix) lists under both, correctly.
+// Works from a static `lit build` too (topics ride in GRAPH.topics unconditionally), so unlike
+// the wip/aims pills below this is never LIVE-gated — only kept off the DRIVE/PDF/mobile
+// single-purpose windows, same as the search box itself just above.
+if(!DRIVE && !PDFWIN && !MOBILE_CURATE) (function(){
+  const btn = document.getElementById("topicsBtn");
+  const panel = document.getElementById("topicsPanel");
+  const heads = Object.entries(TOPICS).filter(([, t]) => t.root)
+    .sort((a, b) => a[1].title.localeCompare(b[1].title));
+  if(!btn || !panel || !heads.length) return;      // no topics/ tree -> renders exactly as before
+  const leavesOf = slug => Object.entries(TOPICS).filter(([, t]) => t.broader.includes(slug))
+    .sort((a, b) => a[1].title.localeCompare(b[1].title));
+  panel.innerHTML = `<div class="wp-hd">topics</div>` + heads.map(([slug, t]) => {
+    const leaves = leavesOf(slug);
+    if(!leaves.length) return "";                  // a heading with nothing under it has no chips
+    return `<div class="tp-head" title="${esc(t.note || "")}">${esc(t.title)}</div>`
+         + `<div class="tp-leaves">` + leaves.map(([lslug, lt]) =>
+             `<span class="tp-chip" data-slug="${esc(lslug)}" title="${esc(lt.note || "")}">`
+             + `${esc(lt.title)}<span class="n">${lt.papers.length}</span></span>`).join("")
+         + `</div>`;
+  }).join("") + `<div class="wp-note">headings group and can't be searched; click a container `
+              + `to search the papers it reaches.</div>`;
+  btn.hidden = false;
+  const closeOthers = () => {                      // one panel open at a time (mirrors wip/aims)
+    const wipPanel = document.getElementById("wipPanel"), aimPanel = document.getElementById("aimPanel");
+    if(wipPanel) wipPanel.hidden = true;
+    if(aimPanel) aimPanel.hidden = true;
+  };
+  btn.addEventListener("click", e => { e.stopPropagation(); closeOthers(); panel.hidden = !panel.hidden; });
+  panel.addEventListener("click", e => {
+    const chip = e.target.closest(".tp-chip");
+    if(!chip) return;
+    panel.hidden = true;
+    runTopicSearch(chip.dataset.slug);
+  });
+  addEventListener("keydown", e => { if(e.key === "Escape") panel.hidden = true; });
+  addEventListener("click", e => {
+    if(!panel.hidden && !e.target.closest("#topicsPanel,#topicsBtn")) panel.hidden = true;
+  }, true);
+})();
+
+// ── the LIBRARY view ─────────────────────────────────────────────────────────────────────
+// Reference-manager browsing: one vertical scroll over the WHOLE bibliography, narrowed by a
+// facet rail. It reuses buildSearchIndex() wholesale — that index already carries every field
+// a row needs for all 3.8k entries — so this view is a surface over the search machinery, not
+// a second copy of it. A row click leaves for the board via gotoPaper(), which mints a card
+// for an uncurated stub on demand.
+//
+// Why topic facets imply curated: `tags` are curated-only (a stub has no curation, so no tags)
+// and a topic reaches papers through tags. Selecting a container therefore cannot match a stub,
+// and pretending otherwise would show an empty list with no explanation. The scope pill flips
+// itself and says so.
+if(!DRIVE && !PDFWIN && !MOBILE_CURATE) (function(){
+  const btn = document.getElementById("libBtn");
+  const pane = document.getElementById("libraryPane");
+  const facets = document.getElementById("libFacets");
+  const scroll = document.getElementById("libScroll");
+  const sizer = document.getElementById("libSizer");
+  const rowsEl = document.getElementById("libRows");
+  const filterEl = document.getElementById("libFilter");
+  const countEl = document.getElementById("libCount");
+  const clearEl = document.getElementById("libClear");
+  if(!btn || !pane) return;
+
+  const ROW_H = 76, OVERSCAN = 6;
+  // pass ranking first because it is the board's own landing order — the curator's judgement
+  // about the library, which a plain year sort would silently discard.
+  const SORTS = {
+    pass:  {label: "curation pass", cmp: null},        // null = keep index order (ORDER is pass-ranked)
+    year:  {label: "year ↓", cmp: (a, b) => (b.year || 0) - (a.year || 0)},
+    title: {label: "title", cmp: (a, b) => a.title.localeCompare(b.title)},
+  };
+  const SCOPES = {all: "everything", curated: "curated", stub: "uncited stubs"};
+  let scope = "all", sort = "pass", topic = null, rows = [], view = [];
+
+  const leavesByHead = () => Object.entries(TOPICS).filter(([, t]) => t.root)
+    .sort((a, b) => a[1].title.localeCompare(b[1].title))
+    .map(([slug, t]) => [t, Object.entries(TOPICS).filter(([, x]) => x.broader.includes(slug))
+      .sort((a, b) => a[1].title.localeCompare(b[1].title))]);
+
+  function renderFacets(){
+    let html = `<div class="lf-hd">show</div><div class="lf-seg">`
+      + Object.entries(SCOPES).map(([k, lbl]) =>
+          `<span class="lf-opt${scope === k ? " on" : ""}" data-scope="${k}">${esc(lbl)}</span>`).join("")
+      + `</div>`;
+    const heads = leavesByHead().filter(([, leaves]) => leaves.length);
+    if(heads.length){
+      html += `<div class="lf-hd">topic</div>`
+        + heads.map(([t, leaves]) =>
+            `<div class="tp-head" title="${esc(t.note || "")}">${esc(t.title)}</div>`
+            + `<div class="tp-leaves">` + leaves.map(([lslug, lt]) =>
+                `<span class="tp-chip${topic === lslug ? " on" : ""}" data-slug="${esc(lslug)}" `
+                + `title="${esc(lt.note || "")}">${esc(lt.title)}`
+                + `<span class="n">${lt.papers.length}</span></span>`).join("")
+            + `</div>`).join("")
+        + `<div class="lf-note">headings group and can't be filtered; click a container to narrow. `
+        + `Topics reach curated papers only — a stub carries no tags.</div>`;
+    }
+    html += `<div class="lf-hd">sort</div><div class="lf-seg">`
+      + Object.entries(SORTS).map(([k, s]) =>
+          `<span class="lf-opt${sort === k ? " on" : ""}" data-sort="${k}">${esc(s.label)}</span>`).join("")
+      + `</div>`;
+    facets.innerHTML = html;
+  }
+
+  function recompute(){
+    if(!searchIndex) searchIndex = buildSearchIndex();
+    if(!rows.length) rows = searchIndex;              // ORDER's ranking, curated-first
+    const terms = filterEl.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    const inTopic = topic ? new Set(TOPICS[topic].papers) : null;
+    view = rows.filter(r => {
+      if(scope === "curated" && !r.cur) return false;
+      if(scope === "stub" && r.cur) return false;
+      if(inTopic && !inTopic.has(r.key)) return false;
+      return terms.every(t => r.blob.includes(t));
+    });
+    const cmp = SORTS[sort].cmp;
+    if(cmp) view = view.slice().sort(cmp);
+    countEl.textContent = `${view.length} of ${rows.length}`;
+    clearEl.hidden = !(topic || terms.length || scope !== "all" || sort !== "pass");
+    sizer.style.height = (view.length * ROW_H) + "px";
+    paint();
+  }
+
+  function rowHTML(r){
+    const who = r.authors.length
+      ? esc(r.authors.slice(0, 4).join(" · ")) + (r.authors.length > 4 ? " · …" : "") : "";
+    const bib = esc([r.journal, r.year].filter(Boolean).join(" · "));
+    const badge = r.cur
+      ? (r.pass ? `<span class="lr-pass">pass ${r.pass}</span>` : "")
+      : `<span class="lr-badge">stub</span>`;
+    const tags = (r.tags || []).slice(0, 8)
+      .map(t => `<span class="lr-tag">${esc(t)}</span>`).join("");
+    return `<div class="lr ${r.cur ? "" : "stub"}" data-key="${esc(r.key)}">`
+         + `<div class="lr-t">${esc(r.title)}${badge}</div>`
+         + `<div class="lr-m">${esc(r.key)}${who || bib ? "  ·  " + [who, bib].filter(Boolean).join("  ·  ") : ""}</div>`
+         + `<div class="lr-tags">${tags}</div></div>`;
+  }
+
+  // Windowed paint: only the rows the viewport can see are in the DOM, offset by a transform.
+  function paint(){
+    if(!view.length){
+      rowsEl.style.transform = "translateY(0)";
+      rowsEl.innerHTML = `<div class="lr-none">nothing in the library matches these filters.</div>`;
+      return;
+    }
+    const first = Math.max(0, Math.floor(scroll.scrollTop / ROW_H) - OVERSCAN);
+    const last = Math.min(view.length, first + Math.ceil(scroll.clientHeight / ROW_H) + OVERSCAN * 2);
+    rowsEl.style.transform = `translateY(${first * ROW_H}px)`;
+    rowsEl.innerHTML = view.slice(first, last).map(rowHTML).join("");
+  }
+
+  // named openLib/closeLib, not open/close: the outer scope has an `open` Set (focused cards)
+  // and window.close is a real function — shadowing either from in here is a trap for later.
+  function openLib(){
+    document.body.classList.add("library");
+    btn.classList.add("on");
+    btn.textContent = "← board";
+    renderFacets();
+    recompute();
+    scroll.scrollTop = 0;
+    paint();
+  }
+  function closeLib(){
+    document.body.classList.remove("library");
+    btn.classList.remove("on");
+    btn.textContent = "library";
+    redraw();                                   // the board was display:none; its edges need re-anchoring
+  }
+  const isOpen = () => document.body.classList.contains("library");
+
+  btn.hidden = false;
+  btn.addEventListener("click", () => isOpen() ? closeLib() : openLib());
+  scroll.addEventListener("scroll", paint);
+  addEventListener("resize", () => { if(isOpen()) paint(); });
+  filterEl.addEventListener("input", () => { scroll.scrollTop = 0; recompute(); });
+  clearEl.addEventListener("click", () => {
+    scope = "all"; sort = "pass"; topic = null; filterEl.value = "";
+    scroll.scrollTop = 0; renderFacets(); recompute();
+  });
+  facets.addEventListener("click", e => {
+    const sc = e.target.closest("[data-scope]"), so = e.target.closest("[data-sort]"),
+          ch = e.target.closest(".tp-chip");
+    if(sc) scope = sc.dataset.scope;
+    else if(so) sort = so.dataset.sort;
+    else if(ch){
+      topic = topic === ch.dataset.slug ? null : ch.dataset.slug;
+      if(topic && scope === "stub") scope = "curated";   // a stub can't carry a topic; say so by moving
+    } else return;
+    scroll.scrollTop = 0; renderFacets(); recompute();
+  });
+  // The seam: browsing found it, the board reasons about it. Leaving first means gotoPaper's
+  // scrollIntoView + flash land on a visible board rather than a hidden one.
+  scroll.addEventListener("click", e => {
+    const row = e.target.closest(".lr");
+    if(!row) return;
+    closeLib();
+    gotoPaper(row.dataset.key);
+  });
+  addEventListener("keydown", e => { if(e.key === "Escape" && isOpen()) closeLib(); });
+  if(new URLSearchParams(location.search).get("view") === "library") openLib();
+})();
 
 board.addEventListener("scroll",redraw);
 addEventListener("resize",redraw);
@@ -2347,7 +2901,9 @@ if (LIVE && !DRIVE && !PDFWIN && !MOBILE_CURATE) (function(){
     pill.addEventListener("click", e => {
       e.stopPropagation();
       const wipPanel = document.getElementById("wipPanel");
+      const topicsPanel = document.getElementById("topicsPanel");
       if (wipPanel) wipPanel.hidden = true;   // one panel open at a time
+      if (topicsPanel) topicsPanel.hidden = true;
       panel.hidden = !panel.hidden;
     });
     document.addEventListener("click", e => {
@@ -2427,7 +2983,13 @@ if (LIVE && !DRIVE && !PDFWIN && !MOBILE_CURATE) (function(){
     + `${COCKPIT ? ` · opens ${COCKPIT.agent}${COCKPIT.terminal ? ` in ${COCKPIT.terminal}` : ``}`
                 : ` · no Switchboard agent available`}</div>`;
 
-  pill.addEventListener("click", () => { panel.hidden = !panel.hidden; });
+  pill.addEventListener("click", () => {
+    const aimPanel = document.getElementById("aimPanel");
+    const topicsPanel = document.getElementById("topicsPanel");
+    if (aimPanel) aimPanel.hidden = true;     // one panel open at a time
+    if (topicsPanel) topicsPanel.hidden = true;
+    panel.hidden = !panel.hidden;
+  });
   panel.addEventListener("click", e => {
     const done = e.target.closest(".wp-done");
     if (done) { e.stopPropagation(); return returnToGraph(done.dataset.done); }
