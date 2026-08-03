@@ -9,7 +9,7 @@ EXAMPLE = Path(__file__).resolve().parents[3] / "example"
 
 def test_to_json_dict_shape():
     d = to_json_dict(build_graph(EXAMPLE))
-    assert set(d) == {"papers", "broad", "stubs", "order", "active"}
+    assert set(d) == {"papers", "broad", "stubs", "order", "active", "topics"}
     assert d["active"] == []           # no active list passed → empty (static build carries none)
     # curated paper carries computed slices + edge lists
     p = d["papers"]["Chen2021Sys"]
@@ -81,6 +81,38 @@ def test_active_list_filters_to_curated_in_order():
     assert d["active"] == ["Lopez2019Arch", "Chen2021Sys"]
 
 
+# --- the topic axis (SCHEMA §9): emitted as a saved search, never a graph node --------------
+
+def test_topics_emit_carries_derived_closure_and_membership():
+    """The viewer must never re-walk `broader` itself (design doc §4/§6): each topic's
+    `keywords` is already the full closure, and `papers` is already reduced to the curated
+    citekeys it reaches — both computed in Python from the same helpers topics.py tests
+    against (keyword_closure / papers_in), not re-derived here."""
+    d = to_json_dict(build_graph(EXAMPLE))
+    t = d["topics"]
+    assert set(t) == {"performance", "throughput", "modelling"}
+    # performance is the tier-1 heading: no keywords of its own, but its closure rolls up
+    # everything the two containers beneath it own (the shared "batching" keyword included)
+    assert t["performance"]["root"] is True
+    assert t["performance"]["broader"] == []
+    assert t["performance"]["keywords"] == ["batching", "queueing-model", "throughput"]
+    # the leaves are not roots, and carry their own (smaller) closure
+    assert t["throughput"]["root"] is False and t["throughput"]["broader"] == ["performance"]
+    assert t["throughput"]["keywords"] == ["batching", "throughput"]
+    # membership is paper citekeys, curated-only, reached transitively through `broader`
+    assert t["performance"]["papers"] == ["Chen2021Sys"]
+    assert t["throughput"]["papers"] == ["Chen2021Sys"]
+    assert t["performance"]["title"] == "Systems performance"
+
+
+def test_topics_emit_is_empty_dict_when_repo_has_no_topics_tree(tmp_path):
+    """A repo with no topics/ directory must render exactly as it did before this axis
+    existed — an absent tree is `{}`, not a missing key or an error."""
+    (tmp_path / "curated").mkdir()
+    d = to_json_dict(build_graph(tmp_path))
+    assert d["topics"] == {}
+
+
 def test_cons_skips_local_generalization():
     # a local leads_to is a same-paper ladder (nests in place); only broad slugs are
     # right-band synthesis nodes, so a phantom "c3" node must not be emitted.
@@ -117,8 +149,18 @@ def test_emit_writes_self_contained_viewer(tmp_path):
         "manifest.webmanifest", "icon-192.png", "icon-512.png", "apple-touch-icon.png"))
 
 
-from litgraph.graph import Graph, Paper, Slice
+from litgraph.graph import BroadNode, Graph, Paper, Slice
 from litgraph.build import _answers, _builds
+
+
+def test_broad_payload_carries_leads_to():
+    """The broad tier's own `leads_to` (SCHEMA §4) rides into the payload so the viewer can
+    lay the synthesis band out as a ladder instead of one flat column."""
+    head = BroadNode(slug="head", kind="broad claim", text="h", leads_to=["apex"])
+    apex = BroadNode(slug="apex", kind="broad claim", text="a")
+    d = to_json_dict(Graph(papers={}, broad={"head": head, "apex": apex}, order=[]))
+    assert d["broad"]["head"]["leads_to"] == ["apex"]
+    assert d["broad"]["apex"]["leads_to"] == []
 
 
 def _paper(citekey, *slices, curated=True):

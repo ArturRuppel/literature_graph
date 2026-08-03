@@ -74,6 +74,10 @@ class BroadNode:
     kind: str                       # "broad claim" | "broad question" | "broad method"
     text: str
     title: str = ""                 # optional at-a-glance name; viewer falls back to `text`
+    # generalizes further up the ladder (SCHEMA §4): a broad claim into a broader one, same
+    # kind, `leads-to`'s broad-to-broad half. The claim ladder's own altitude, on top of the
+    # slice-to-broad altitude `leads_to` already carries one level down.
+    leads_to: list[str] = field(default_factory=list)
     # computed (filled by build_graph in a later task):
     support: int = 0
     contradict: int = 0
@@ -197,7 +201,8 @@ def load_repo(root: Path) -> tuple[dict[str, Paper], dict[str, BroadNode]]:
         for f in sorted((root / group).glob("*.yaml")):
             raw = _yaml.load(f.read_text()) or {}
             broad[f.stem] = BroadNode(slug=f.stem, kind=kind, text=raw.get("text", ""),
-                                      title=raw.get("title", ""))
+                                      title=raw.get("title", ""),
+                                      leads_to=list(raw.get("leads_to", []) or []))
     return papers, broad
 
 
@@ -317,7 +322,9 @@ def validate(papers: dict[str, Paper], broad: dict[str, BroadNode],
     reaches_floor's seen-set, not here.)
 
     Aims validate identically to papers — same refs, same kind coherence — plus the
-    programme-only rules in `_check_kinds` (programme design §9)."""
+    programme-only rules in `_check_kinds` (programme design §9). The broad tier's own
+    `leads_to` (a thin broad slice generalizing into a broader one, SCHEMA §4) is a separate,
+    smaller check — `_validate_broad_ladder` — since it lives on BroadNode, not on a Slice."""
     aims = aims or {}
     containers: dict[str, Paper | Aim] = {**papers, **aims}
     if set(papers) & set(aims):
@@ -344,6 +351,40 @@ def validate(papers: dict[str, Paper], broad: dict[str, BroadNode],
                         raise BuildError(
                             f"{ck}:{s.id} {field_name} -> dangling ref {r!r}")
             _check_kinds(ck, s, broad, by_id)
+
+    _validate_broad_ladder(broad)
+
+
+def _validate_broad_ladder(broad: dict[str, BroadNode]) -> None:
+    """The broad tier's own half of `leads-to` (SCHEMA §4/§6): a thin broad slice's
+    `leads_to` generalizes it into a broader one, one rung up the same ladder a slice's
+    `leads_to` climbs into the broad tier from below. The same two structural rules apply
+    here, one level up: the target must resolve and be the **same kind** (§6.6 — a broad
+    claim ladders into a broad claim, never into a broad question or method), and the
+    broad-to-broad graph must be **acyclic** (§6.5)."""
+    for slug, b in broad.items():
+        for r in b.leads_to:
+            if r not in broad:
+                raise BuildError(f"{slug} leads_to -> unknown broad slug {r!r}")
+            if broad[r].kind != b.kind:
+                raise BuildError(f"{slug} leads_to -> {r!r} is a {broad[r].kind}; "
+                                 f"a {b.kind} generalizes into a {b.kind}")
+
+    state: dict[str, int] = {}          # 0 = visiting, 1 = done
+
+    def walk(slug: str, path: list[str]) -> None:
+        if state.get(slug) == 1:
+            return
+        if state.get(slug) == 0:
+            cycle = path[path.index(slug):] + [slug]
+            raise BuildError(f"broad leads_to cycle: {' -> '.join(cycle)}")
+        state[slug] = 0
+        for r in broad[slug].leads_to:
+            walk(r, path + [slug])
+        state[slug] = 1
+
+    for slug in broad:
+        walk(slug, [])
 
 
 def _target_id(ref: str, kind: str) -> str:

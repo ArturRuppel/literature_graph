@@ -8,6 +8,8 @@ import shutil
 from pathlib import Path
 
 from litgraph.graph import Aim, Graph, Paper, Slice, classify_ref
+from litgraph.topics import keyword_closure, papers_in
+from litgraph.topics import roots as topic_roots
 
 
 def _up(s: Slice) -> list[str]:
@@ -152,6 +154,20 @@ def _aim_json(a: Aim, builds: list[dict]) -> dict:
     }
 
 
+def _topics_json(g: Graph) -> dict:
+    """The topic axis (SCHEMA §9), reduced to what the viewer needs to run a saved search —
+    it must never re-walk `broader` itself. `keywords` is the full closure (own + everything
+    beneath via `broader`), not just the topic's own list, and `papers` is already filtered to
+    curated citekeys (`papers_in` gates on that). `{}` when the repo has no topics/ tree, so a
+    viewer built against such a repo renders exactly as it did before this axis existed."""
+    root_slugs = set(topic_roots(g.topics))
+    return {slug: {"title": t.title, "note": t.note or "", "broader": list(t.broader),
+                   "keywords": sorted(keyword_closure(g.topics, slug)),
+                   "papers": papers_in(g.topics, slug, g.papers),
+                   "root": slug in root_slugs}
+            for slug, t in g.topics.items()}
+
+
 def to_json_dict(g: Graph, active: "tuple[str, ...]" = (), cockpit: "dict | None" = None,
                  include_aims: bool = False) -> dict:
     """Serialize the graph for the viewer. Aims are **off by default**: the landing view is
@@ -167,14 +183,18 @@ def to_json_dict(g: Graph, active: "tuple[str, ...]" = (), cockpit: "dict | None
              for ck, p in g.papers.items() if not p.curated}
     broad = {slug: {"kind": b.kind, "title": b.title, "text": b.text,
                     "meter": ({"s": b.support, "c": b.contradict}
-                              if b.kind == "broad claim" else None)}
+                              if b.kind == "broad claim" else None),
+                    "leads_to": list(b.leads_to)}
              for slug, b in g.broad.items()}
     # `active` is the manual in-progress list (config.toml); keep only citekeys that are actually
     # curated papers, preserving the given order. Empty for static `lit build` (the WIP panel is
     # serve-only), so a shared artifact never carries the curator's private worklist.
     active_curated = [k for k in active if k in curated]
+    # Unlike `active`/`cockpit` below, topics carry no worklist or server state — they are
+    # public library structure, so (per SCHEMA §9) they belong in both a static `lit build`
+    # and `lit serve` alike.
     out = {"papers": curated, "broad": broad, "stubs": stubs, "order": g.order,
-           "active": active_curated}
+           "active": active_curated, "topics": _topics_json(g)}
     # `cockpit` is serve-only (`lit serve --curate`): its presence flips the viewer into the
     # three-pane curate layout and carries the embedded terminal's port. Absent for static
     # `lit build`, so the shared artifact never sprouts a curate UI or a terminal iframe.

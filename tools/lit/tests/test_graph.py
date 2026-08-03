@@ -237,6 +237,58 @@ def test_validate_floor_only_on_a_claim():
         validate({"P1": p}, _B)
 
 
+# ── the broad tier's own leads_to (SCHEMA §4): the claim ladder one rung above the slices ──
+
+def test_load_repo_reads_broad_leads_to(tmp_path):
+    (tmp_path / "curated").mkdir()
+    (tmp_path / "claims").mkdir()
+    (tmp_path / "claims" / "head.yaml").write_text('text: "a head"\nleads_to: [apex]\n')
+    (tmp_path / "claims" / "apex.yaml").write_text('text: "an apex"\n')
+    _, broad = load_repo(tmp_path)
+    assert broad["head"].leads_to == ["apex"]
+    assert broad["apex"].leads_to == []              # no `leads_to:` key -> [], never None
+
+
+def test_validate_broad_ladder_flags_dangling_target():
+    broad = {"head": BroadNode(slug="head", kind="broad claim", text="h", leads_to=["nope"])}
+    with pytest.raises(BuildError, match="unknown broad slug"):
+        validate({}, broad)
+
+
+def test_validate_broad_ladder_rejects_kind_mismatch():
+    # mirrors §6.6 one tier up: a broad claim generalizes into a broad claim, never a question
+    broad = {"head": BroadNode(slug="head", kind="broad claim", text="h", leads_to=["b-q"]),
+             "b-q": BroadNode(slug="b-q", kind="broad question", text="q")}
+    with pytest.raises(BuildError, match="broad question"):
+        validate({}, broad)
+
+
+def test_validate_broad_ladder_rejects_a_cycle_and_names_the_path():
+    broad = {"a": BroadNode(slug="a", kind="broad claim", text="a", leads_to=["b"]),
+             "b": BroadNode(slug="b", kind="broad claim", text="b", leads_to=["a"])}
+    with pytest.raises(BuildError, match="a -> b -> a"):
+        validate({}, broad)
+
+
+def test_validate_broad_ladder_rejects_a_self_cycle():
+    broad = {"a": BroadNode(slug="a", kind="broad claim", text="a", leads_to=["a"])}
+    with pytest.raises(BuildError, match="cycle"):
+        validate({}, broad)
+
+
+def test_validate_broad_ladder_accepts_a_multi_parented_dag():
+    # a broad claim may ladder into two heads at once (division-injects-active-stress does,
+    # in the real library) -- a DAG, not a cycle, and must pass clean
+    broad = {
+        "child": BroadNode(slug="child", kind="broad claim", text="c",
+                           leads_to=["head1", "head2"]),
+        "head1": BroadNode(slug="head1", kind="broad claim", text="h1", leads_to=["apex"]),
+        "head2": BroadNode(slug="head2", kind="broad claim", text="h2", leads_to=["apex"]),
+        "apex": BroadNode(slug="apex", kind="broad claim", text="a"),
+    }
+    validate({}, broad)          # no raise
+
+
 from litgraph.graph import build_graph, Graph
 
 
