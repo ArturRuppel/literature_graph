@@ -22,8 +22,16 @@ def _normalize(md: str) -> str:
 
 
 def to_markdown(pdf_path: str) -> str:
-    """Whole-PDF Markdown, normalized for verbatim-quote fidelity."""
-    raw = pymupdf4llm.to_markdown(pdf_path, show_progress=False)
+    """Whole-PDF Markdown, normalized for verbatim-quote fidelity.
+
+    `use_ocr=False` because pymupdf4llm's layout path defaults it *on* and decides per page,
+    via a bundled model, whether to run tesseract. That costs us both ways: it needs tesseract
+    language data (absent here, and its absence is a hard error, not a skip), and OCR'd text is
+    not reproducible — which would break the verbatim `quote` weld this whole module exists to
+    serve. Publisher PDFs carry a real text layer; a page that genuinely needs OCR is one to
+    notice and handle, not to silently guess at.
+    """
+    raw = pymupdf4llm.to_markdown(pdf_path, show_progress=False, use_ocr=False)
     return _normalize(raw)
 
 
