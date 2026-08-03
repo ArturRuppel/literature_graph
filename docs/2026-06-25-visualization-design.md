@@ -7,8 +7,13 @@ How the lean slice graph (CONCEPT: one primitive, the slice, in a container P, w
 edges) is *shown* to a human. Reference mockups live in [`mockups/`](mockups/) — open in a
 browser:
 
-- [`mockups/litgraph-columns.html`](mockups/litgraph-columns.html) — **the default**: the
-  paper list and the lazy column expansion this doc describes.
+- [`mockups/litgraph-walk.html`](mockups/litgraph-walk.html) — **the walk** (2026-08-03,
+  now in the viewer behind the HUD's `walk` toggle): one focus, one relation, an indented
+  tree, no drawn edges. See [the walk design doc](2026-08-03-the-walk-design.md) for why
+  the column board below stops scaling at 53 curated papers. The board this doc describes
+  is unchanged and still the landing view — the two sit side by side.
+- [`mockups/litgraph-columns.html`](mockups/litgraph-columns.html) — the column board this
+  doc describes: the paper list and its lazy column expansion.
 - [`mockups/litgraph-containers.html`](mockups/litgraph-containers.html) — an earlier
   container sketch (the vertical-generality framing this revision rotates; kept for reference).
 - [`mockups/litgraph-lean.html`](mockups/litgraph-lean.html) — the fully drilled-in slice DAG

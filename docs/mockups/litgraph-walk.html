@@ -1,0 +1,806 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>litgraph · the walk (one focus, one relation, no drawn edges)</title>
+<style>
+  :root{
+    --bg:#0e1116;--ink:#e6edf3;--dim:#9aa7b4;--faint:#6b7785;--line:#30363d;--panel:#1c2430;
+    --floor:#e3b341;--model:#d2a8ff;--grounded:#4cc38a;--borrowed:#58a6ff;
+    --question:#e3863d;--broad:#7a5cff;--cross:#ff7b72;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);
+    font:13px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif}
+
+  /* ── HUD ───────────────────────────────────────────────────────────────── */
+  #hud{position:fixed;top:0;left:0;right:0;height:46px;z-index:30;display:flex;align-items:center;
+    gap:12px;padding:8px 16px;background:#0e1116ee;border-bottom:1px solid var(--line);
+    backdrop-filter:blur(6px)}
+  #hud b{font-size:13px}
+  #hud .sub{color:var(--faint);font-size:11px}
+  #hud .spacer{margin-left:auto}
+  #hud .knob{display:flex;align-items:center;gap:6px;font-size:10px;color:var(--dim)}
+  #hud .knob input[type=range]{width:74px;accent-color:var(--grounded)}
+  #density{font-size:10px;color:var(--faint);font-variant-numeric:tabular-nums;
+    border:1px solid var(--line);border-radius:7px;padding:4px 9px;background:#131922}
+  #density b{color:var(--grounded);font-size:10px}
+  #density .bad{color:var(--cross)}
+
+  /* ── layout ────────────────────────────────────────────────────────────── */
+  #app{position:absolute;inset:46px 0 0 0;display:flex;overflow:hidden}
+  #rail{flex:none;width:236px;border-right:1px solid var(--line);overflow:auto;
+    padding:12px 0 40px;background:#0b0e13}
+  #stage{flex:1;overflow:auto;padding:20px 30px 90px;position:relative}
+  .railhd{font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--faint);
+    padding:0 14px;margin:14px 0 6px}
+  .railhd:first-child{margin-top:0}
+
+  /* ── library list (the rail) ──────────────────────────────────────────── */
+  .lib{display:flex;align-items:center;gap:7px;padding:4px 14px;cursor:pointer;font-size:11px;
+    border-left:2px solid transparent}
+  .lib:hover{background:#ffffff08}
+  .lib.on{background:#4cc38a14;border-left-color:var(--grounded)}
+  .lib .pie{flex:none;width:11px;height:11px;border-radius:50%;border:1.3px solid var(--faint)}
+  .lib .k{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .lib .n{margin-left:auto;font-size:9px;color:var(--faint);font-variant-numeric:tabular-nums}
+  .lib.hot .n{color:var(--cross)}
+  .topic{padding:3px 14px;font-size:10.5px;color:var(--dim);cursor:pointer;
+    border-left:2px solid transparent}
+  .topic:hover{background:#ffffff08;color:var(--ink)}
+  .topic.on{background:#7a5cff18;border-left-color:var(--broad);color:#dcd2ff}
+  .topic .n{float:right;font-size:9px;color:var(--faint)}
+
+  /* ── focus header ─────────────────────────────────────────────────────── */
+  #crumbs{font-size:10px;color:var(--faint);margin-bottom:10px;display:flex;gap:6px;flex-wrap:wrap;
+    align-items:center;min-height:14px}
+  #crumbs a{color:var(--dim);cursor:pointer;text-decoration:none}
+  #crumbs a:hover{color:var(--grounded)}
+  #crumbs .sep{opacity:.5}
+
+  .focus{border:1.5px solid var(--line);border-left:3px solid var(--grounded);border-radius:12px;
+    background:var(--panel);padding:13px 16px 14px;margin-bottom:2px;max-width:900px}
+  .focus.q{border-left-color:var(--question)}
+  .focus.b{border-left-color:var(--broad)}
+  .focus .fk{display:flex;align-items:center;gap:8px;margin-bottom:5px}
+  .focus .kind{font-size:7.5px;letter-spacing:1.4px;text-transform:uppercase;color:var(--faint)}
+  .focus .key{font-size:12px;font-weight:700}
+  .focus .yr{font-size:9.5px;color:var(--faint);margin-left:auto;font-variant-numeric:tabular-nums}
+  .focus .ttl{font-size:11px;color:var(--dim);line-height:1.35}
+  .focus .txt{font-size:12px;color:#dbe5ef;line-height:1.45;margin-top:4px;max-width:70ch}
+  .focus .auth{font-size:9.5px;color:var(--faint);margin-top:6px}
+  .focus .auth .star{color:var(--floor)}
+  .focus .quote{margin-top:9px;font-size:10.5px;color:#cfe6da;border-left:2px solid var(--grounded);
+    padding-left:9px;line-height:1.4;font-style:italic}
+
+  /* ── relation tabs ────────────────────────────────────────────────────── */
+  #tabs{display:flex;gap:5px;margin:14px 0 4px;flex-wrap:wrap;align-items:center}
+  .tab{display:flex;align-items:center;gap:6px;font-size:10.5px;color:var(--dim);cursor:pointer;
+    border:1px solid var(--line);border-radius:999px;padding:5px 11px;background:#131922;
+    transition:border-color .12s,color .12s,background .12s}
+  .tab:hover:not(.off){border-color:#52606d;color:var(--ink)}
+  .tab.on{background:#4cc38a1c;border-color:var(--grounded);color:#bdf0d6}
+  .tab.on.q{background:#e3863d1c;border-color:var(--question);color:#f4d0ac}
+  .tab.on.b{background:#7a5cff1c;border-color:var(--broad);color:#d8ceff}
+  .tab.on.x{background:#ff7b721c;border-color:var(--cross);color:#ffc9c5}
+  .tab.off{opacity:.32;cursor:default}
+  .tab .ct{font-size:9px;font-variant-numeric:tabular-nums;color:var(--faint);
+    background:#ffffff10;border-radius:999px;padding:1px 5px;min-width:17px;text-align:center}
+  .tab.on .ct{color:inherit;background:#ffffff1c}
+  .tabnote{font-size:9.5px;color:var(--faint);margin:0 0 12px;max-width:78ch;line-height:1.4}
+
+  /* ── the walk (indented tree, zero drawn edges) ───────────────────────── */
+  #walk{max-width:1000px}
+  .row{display:flex;align-items:flex-start;min-height:23px;border-radius:5px;
+    padding:2px 6px 2px 0;cursor:pointer}
+  .row:hover{background:#ffffff09}
+  .row.rep{cursor:pointer}
+  .g{flex:none;width:17px;align-self:stretch;position:relative}
+  .g.v::before{content:"";position:absolute;left:8px;top:0;bottom:0;border-left:1px solid #ffffff14}
+  .g.e::before{content:"";position:absolute;left:8px;top:0;height:11px;border-left:1px solid #ffffff24}
+  .g.e::after{content:"";position:absolute;left:8px;top:11px;width:7px;border-top:1px solid #ffffff24}
+  .g.e.mid::before{bottom:0;height:auto}
+
+  .tw{flex:none;width:13px;font-size:9px;color:var(--faint);text-align:center;line-height:20px}
+  .row:hover .tw{color:var(--ink)}
+  .gl{flex:none;font-size:7.5px;font-weight:700;padding:1px 4px;border-radius:3px;color:#0c0e14;
+    margin:3px 6px 0 0;line-height:1.35}
+  .gl.cl{background:var(--grounded)}.gl.fl{background:var(--floor)}.gl.mo{background:var(--model)}
+  .gl.q{background:var(--question)}.gl.bo{background:var(--borrowed)}.gl.br{background:var(--broad)}
+  .gl.pa{background:#7ea8d8}.gl.st{background:#48505c;color:#c2ccd8}
+
+  .lb{flex:1;min-width:0;font-size:11px;line-height:1.4;color:#dbe5ef;padding:2px 0}
+  .lb .k{color:var(--dim);font-weight:600}
+  .lb .yr{color:var(--faint);font-size:9.5px;font-variant-numeric:tabular-nums}
+  .row.dimmed .lb{color:var(--faint)}
+  .lb .lad{color:var(--broad);font-size:10px}
+  .lb .sgn{font-weight:700}
+  .lb .sgn.p{color:var(--grounded)}.lb .sgn.m{color:var(--cross)}
+  .quoterow{font-size:10px;color:#cfe6da;font-style:italic;line-height:1.4;
+    border-left:2px solid #4cc38a55;padding:1px 0 1px 9px;margin:1px 0 3px}
+
+  /* badges: every relation you are NOT walking */
+  .bg{flex:none;display:flex;gap:3px;margin:2px 0 0 10px;align-items:center}
+  .b{font-size:9px;font-variant-numeric:tabular-nums;border:1px solid #ffffff18;border-radius:5px;
+    padding:0 4px;color:var(--faint);background:#ffffff08;cursor:pointer;line-height:16px}
+  .b:hover{border-color:currentColor;background:#ffffff14}
+  .b.gr{color:#8fd9b6}.b.bu{color:#9fc9ea}.b.ge{color:#bfaeff}
+  .b.an{color:#f0b783}.b.st{color:#ffa9a3}
+  .b.z{display:none}
+
+  /* overflow chips — the wall, folded by construction */
+  .chip{display:inline-flex;align-items:center;gap:6px;font-size:10px;color:var(--faint);
+    border:1px dashed var(--line);border-radius:7px;padding:2px 9px;margin:3px 0 3px 0;
+    cursor:pointer;background:#ffffff05}
+  .chip:hover{color:var(--ink);border-color:#52606d}
+  .chip b{color:var(--dim);font-variant-numeric:tabular-nums}
+  .chiprow{display:flex;align-items:center;min-height:22px}
+
+  /* repeat marker */
+  .rep .lb{color:var(--faint)}
+  .rep .also{font-size:9px;color:var(--borrowed);margin-left:7px}
+  .flash{animation:fl 1.1s ease-out}
+  @keyframes fl{0%{background:#4cc38a40}100%{background:transparent}}
+
+  /* ── stance ledger ────────────────────────────────────────────────────── */
+  #ledger{display:grid;grid-template-columns:1fr 1fr;gap:0 26px;max-width:1000px}
+  #ledger .lhd{font-size:9px;letter-spacing:1.5px;text-transform:uppercase;padding:0 0 6px;
+    border-bottom:1px solid var(--line);margin-bottom:8px}
+  #ledger .lhd.p{color:var(--grounded);border-color:#4cc38a55}
+  #ledger .lhd.m{color:var(--cross);border-color:#ff7b7255}
+  #ledger .lhd span{float:right;color:var(--faint);font-variant-numeric:tabular-nums}
+  .ent{border-left:2px solid transparent;padding:5px 0 6px 10px;margin-bottom:4px;cursor:pointer;
+    border-radius:0 5px 5px 0}
+  .ent:hover{background:#ffffff08}
+  .ent.p{border-left-color:#4cc38a66}.ent.m{border-left-color:#ff7b7266}
+  .ent .src{font-size:9.5px;color:var(--dim);font-weight:600}
+  .ent .src .yr{color:var(--faint);font-weight:400}
+  .ent .t{font-size:10.5px;color:#dbe5ef;line-height:1.38;margin-top:2px}
+  .ent .qt{font-size:9.5px;color:#cfe6da;font-style:italic;line-height:1.35;margin-top:4px;
+    border-left:2px solid #ffffff1a;padding-left:8px}
+  .ent .wild{font-size:8.5px;color:var(--borrowed);border:1px dashed #58a6ff55;border-radius:4px;
+    padding:0 4px;margin-left:4px;font-weight:400}
+  .empty{font-size:10px;color:var(--faint);font-style:italic;padding:6px 0 0 10px}
+
+  /* ── landing ──────────────────────────────────────────────────────────── */
+  .land{max-width:760px;color:var(--dim);font-size:12px;line-height:1.6}
+  .land h2{font-size:15px;color:var(--ink);margin:0 0 10px;font-weight:600}
+  .land code{background:#ffffff10;border-radius:4px;padding:1px 5px;font-size:11px}
+  .land .pt{margin:16px 0 0;padding-left:14px;border-left:2px solid var(--line)}
+  .land .pt b{color:var(--ink);font-weight:600}
+  .hint{position:fixed;bottom:11px;right:16px;font-size:10px;color:var(--faint);z-index:30}
+</style>
+</head>
+<body>
+
+<div id="hud">
+  <b>litgraph</b>
+  <span class="sub">the walk &mdash; one focus, one relation, <b style="color:var(--grounded)">no drawn edges</b> · synthetic library at measured scale</span>
+  <span class="spacer"></span>
+  <span class="knob">depth <input type="range" id="kdepth" min="1" max="6" value="2"><i id="kdv">2</i></span>
+  <span class="knob">siblings <input type="range" id="kcap" min="3" max="24" value="7"><i id="kcv">7</i></span>
+  <span id="density"></span>
+</div>
+
+<div id="app">
+  <aside id="rail"></aside>
+  <main id="stage"></main>
+</div>
+<div class="hint">Click a row to walk one level · click a <b>badge</b> to pivot into that relation · <b>▸</b> chips unfold the wall</div>
+
+<script>
+/* ══════════════════════════════════════════════════════════════════════════
+   SYNTHETIC LIBRARY — generated to match the measured statistics of the real
+   one (53 curated papers · 532 slices · 3766 stubs · median fanout 3 with a
+   62-card hub · 360 grounds · 294 support · 177 broad · 119 answers · 42
+   broad slices · 18 topics). No real content lives in this public repo.
+   ══════════════════════════════════════════════════════════════════════════ */
+const seed=20260803;
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);
+  t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+const R=mulberry32(seed);
+const pick=a=>a[Math.floor(R()*a.length)];
+const int=(lo,hi)=>lo+Math.floor(R()*(hi-lo+1));
+const some=(a,n)=>{const c=a.slice();const o=[];while(o.length<n&&c.length)o.push(c.splice(Math.floor(R()*c.length),1)[0]);return o};
+
+const SURNAME=["Ruppel","Hohmann","Tambe","Rossetti","Guillamat","Zegers","Alisafaei","Cheung",
+"Deforet","Marchetti","Bi","Dupont","Nyga","Jacques","Drozdowski","Guo","Atia","Park","Trepat",
+"Ladoux","Charras","Sheetz","Discher","Fredberg","Silberzan","Gardel","Manning","Serra","Vedula",
+"Angelini","Sadati","Notbohm","Saw","Doostmohammadi","Kawaguchi","Blanch","Xi","Balland","Nier",
+"Etienne","Prost","Joanny","Lecuit","Heisenberg","Sixt","Mongera","Petridou","Wyatt","Kim","Lee",
+"Bergert","Roux","Maitre","Campas","Bonnet"];
+const VENUE=["NatPhys","NatMater","Pnas","eLife","SoftMatter","PhysRevLett","NatCommun","CellRep",
+"Science","NatCellBiology","BiophysJ","PLoSCompBiol","CommunPhys","SciAdv","CurrBiol","DevCell"];
+const GIVEN=["A.","M.","J.","L.","T.","S.","C.","P.","R.","E.","G.","N.","K.","D."];
+
+const CLAIM=[
+"Traction stress at the monolayer edge grows with substrate rigidity and saturates above ~30 kPa",
+"Cell shape index above 3.81 marks the fluid side of the unjamming transition",
+"Intercellular tension propagates over a correlation length of several cell diameters",
+"Myosin II inhibition lowers cortical tension and cell-cell adhesion together",
+"Nuclear YAP localisation tracks cytoskeletal tension rather than substrate stiffness per se",
+"Topological defects in the nematic order concentrate compressive stress",
+"Leader cells at a migrating front carry the largest traction, not the largest speed",
+"Confinement below one cell width switches migration from mesenchymal to amoeboid",
+"The monolayer stores elastic energy that a T1 transition releases irreversibly",
+"Density alone does not determine jamming; tension sets the transition line",
+"Substrate curvature reorients the actin cytoskeleton along the direction of least bending",
+"Cadherin-mediated junctions transmit force in proportion to their engagement time",
+"Collective speed decays exponentially with distance from a free edge",
+"Stress fibres act as the propulsive engine of layer reorganisation",
+"Focal-adhesion size correlates with traction only below a saturating force per area",
+"The tissue behaves as a viscoelastic solid on minutes and a fluid on hours",
+"Cell division locally fluidises the tissue and resets accumulated stress",
+"Extrusion relieves crowding without changing the mean tension of the layer",
+"Adhesion strength and contractility set an equilibrium the cell tunes actively",
+"A rigidity gradient biases migration toward the stiffer side (durotaxis)",
+"Traction reconstruction is ill-posed and regularisation sets the recovered magnitude",
+"Vertex-model energy landscapes admit multiple minima separated by finite barriers",
+"Anisotropic active stress alone can generate three-dimensional folds",
+"Nuclear deformation gates transcription independently of adhesion signalling",
+"Intermediate filaments buffer large strains that actin cannot sustain",
+"The stress field is more heterogeneous than the velocity field at every density",
+"Cell-cell junction remodelling rate sets the tissue's effective viscosity",
+"Heterogeneity in single-cell contractility broadens the jamming transition",
+"Boundary conditions dominate the interior stress field in confined monolayers",
+"Curvature-induced stress explains lumen formation without a patterning signal",
+"Active nematic turbulence appears above a critical activity-to-elasticity ratio",
+"Traction forces balance to zero over any closed monolayer island",
+"Substrate deformation under a monolayer decays over the gel thickness, not the cell size",
+"Migration persistence and speed are coupled through actin retrograde flow",
+"Layer thickness modulates the measured traction by a geometric factor of order unity",
+"Optogenetic activation of RhoA raises tension with a 30 s lag and a 3 min recovery",
+"The apparent elastic modulus depends on indentation depth in a layered tissue",
+"Fluidisation precedes, rather than follows, the onset of collective migration",
+"Cell-substrate friction sets the length over which traction is transmitted",
+"Topological charge is conserved during monolayer remodelling"];
+
+const QUESTION=[
+"Does tension or density set the jamming transition in a heterogeneous layer?",
+"What sets the correlation length of intercellular stress?",
+"Is the shape-index threshold universal across tissue types?",
+"How does substrate curvature enter the active-nematic description?",
+"Can T1 energy barriers be measured rather than inferred?",
+"Does traction saturation reflect the cell or the measurement?",
+"What fraction of layer stress is carried by intermediate filaments?",
+"Is durotaxis a single-cell or a collective phenomenon?",
+"How is topological charge dissipated at a free boundary?",
+"Does heterogeneity broaden or shift the unjamming transition?",
+"What is the correct constitutive law for a monolayer over hours?",
+"Are leader cells selected mechanically or biochemically?",
+"How much does regularisation choice bias reported traction magnitudes?",
+"Does extrusion actively relieve stress or passively follow it?",
+"Is the elastic energy released by a T1 recoverable?",
+"What sets the timescale of junction remodelling in vivo?"];
+
+const METHOD=[
+["Traction force microscopy on polyacrylamide","meas"],
+["Monolayer stress microscopy","model"],
+["Particle image velocimetry of the layer","meas"],
+["Vertex model of the confluent layer","model"],
+["Adhesive micropatterning","meas"],
+["Optogenetic RhoA control","meas"],
+["Atomic force microscopy indentation","meas"],
+["Confined-migration microchannel assay","meas"],
+["Tunable-stiffness hydrogel substrates","meas"],
+["Self-propelled Voronoi simulation","model"],
+["Live nuclear-YAP reporter imaging","meas"],
+["Bayesian force inference from geometry","model"],
+["Laser ablation of junctions","meas"],
+["Active-nematic continuum solver","model"],
+["Single-cell shape-index segmentation","meas"],
+["Finite-element substrate deconvolution","model"]];
+
+const BROAD=[
+["tissue-behaviour-is-collective-mechanics","Tissue behaviour is collective mechanics"],
+["cell-shape-encodes-material-state","Shape reads out material state"],
+["active-stress-generates-tissue-form","Active stress generates form"],
+["tension-not-density-sets-jamming","Tension, not density, sets jamming"],
+["force-transmission-is-long-ranged","Force transmission is long-ranged"],
+["stiffness-is-read-through-contractility","Stiffness is read through contractility"],
+["topological-defects-organise-stress","Topological defects organise stress"],
+["confinement-reprograms-migration-mode","Confinement reprograms migration mode"],
+["tissues-are-viscoelastic-across-scales","Tissues are viscoelastic across scales"],
+["division-fluidises-the-layer","Division fluidises the layer"],
+["heterogeneity-broadens-transitions","Heterogeneity broadens transitions"],
+["boundaries-dominate-interior-stress","Boundaries dominate interior stress"],
+["traction-force-microscopy","Traction force microscopy"],
+["monolayer-stress-microscopy","Monolayer stress microscopy"],
+["tunable-stiffness-matrix","Tunable-stiffness matrix"],
+["adhesive-micropatterning","Adhesive micropatterning"],
+["confined-migration-assay","Confined-migration assay"],
+["optogenetic-cytoskeletal-control","Optogenetic cytoskeletal control"],
+["computational-model-of-cell-mechanics","Computational model of cell mechanics"],
+["force-inference-from-geometry","Force inference from geometry"],
+["nuclear-mechanotransduction","Nuclear mechanotransduction"],
+["yap-taz-nuclear-relay","YAP/TAZ nuclear relay"],
+["junction-remodelling-sets-viscosity","Junction remodelling sets viscosity"],
+["curvature-guides-cytoskeletal-order","Curvature guides cytoskeletal order"],
+["energy-landscape-of-t1-transitions","Energy landscape of T1 transitions"],
+["durotaxis-is-collective","Durotaxis is collective"],
+["extrusion-relieves-crowding","Extrusion relieves crowding"],
+["intermediate-filaments-buffer-strain","Intermediate filaments buffer strain"],
+["friction-sets-transmission-length","Friction sets transmission length"],
+["leader-cells-are-mechanically-selected","Leader cells are mechanically selected"],
+["regularisation-biases-traction","Regularisation biases traction"],
+["fluidisation-precedes-migration","Fluidisation precedes migration"],
+["stress-is-more-heterogeneous-than-flow","Stress is more heterogeneous than flow"],
+["curvature-induced-stress-shapes-lumens","Curvature-induced stress shapes lumens"],
+["activity-elasticity-ratio-sets-turbulence","Activity/elasticity sets turbulence"],
+["adhesion-tension-equilibrium","The adhesion-tension equilibrium"],
+["persistence-couples-to-retrograde-flow","Persistence couples to retrograde flow"],
+["substrate-geometry-biases-measurement","Substrate geometry biases measurement"],
+["mechanical-memory-in-tissues","Mechanical memory in tissues"],
+["topological-charge-is-conserved","Topological charge is conserved"],
+["what-is-the-constitutive-law","What is the tissue constitutive law?"],
+["can-barriers-be-measured","Can energy barriers be measured?"]];
+
+const TOPIC=[["active-matter","Active matter & topology"],["jamming","Jamming & unjamming"],
+["traction","Traction & stress microscopy"],["mechanotransduction","Mechanotransduction"],
+["migration","Collective migration"],["vertex-models","Vertex & Voronoi models"],
+["adhesion","Adhesion & junctions"],["substrates","Substrates & stiffness"],
+["confinement","Confinement & geometry"],["morphogenesis","Morphogenesis"],
+["rheology","Tissue rheology"],["nucleus","Nuclear mechanics"],
+["heterogeneity","Heterogeneity & disorder"],["imaging","Imaging & segmentation"],
+["force-inference","Force inference"],["optogenetics","Optogenetics"],
+["curvature","Curvature & 3D form"],["methods-review","Methods reviews"]];
+
+/* ── build the library ───────────────────────────────────────────────────── */
+const N={};                                   // id -> node
+const CH={grounds:{},builds:{},gen:{},answers:{},corr:{},contra:{}};
+const add=(rel,a,b)=>{(CH[rel][a]=CH[rel][a]||[]).push(b)};
+const node=o=>{N[o.id]=o;return o.id};
+
+const PAPERS=[];const STUBS=[];
+// three hubs reproduce the measured tail: 62 / 51 / 47 spawned cards.
+// Everything else follows from `pass` — which is the real point: fanout is not
+// random, it is *curation maturity*. The board dies exactly where the work went.
+const HUB={0:{sl:32,src:34,lat:12},1:{sl:21,src:31,lat:2},2:{sl:31,src:26,lat:19}};
+let stubN=0;
+
+for(let i=0;i<53;i++){
+  const h=HUB[i];
+  const yr=h?int(2022,2026):int(2002,2026);
+  const key=pick(SURNAME)+yr+pick(VENUE)+(i<10?"":String.fromCharCode(97+i%3));
+  const nAuth=int(3,8);
+  const authors=[];
+  for(let a=0;a<nAuth;a++)authors.push([pick(SURNAME)+", "+pick(GIVEN),a===nAuth-1]);
+  const pass=h?4:(R()<.45?int(0,1):R()<.75?2:R()<.92?3:4);
+  const id="P"+i;
+  node({id,t:"paper",key,year:yr,pass,
+    title:pick(CLAIM).replace(/^./,c=>c.toUpperCase()),authors,
+    type:R()<.22?"review":"original",topics:some(TOPIC.map(t=>t[0]),int(1,3))});
+  PAPERS.push(id);
+
+  /* slices — a barely-touched paper has almost none */
+  const nS=h?h.sl:pass<=1?int(2,7):pass===2?int(6,12):int(10,20);
+  const slices=[];
+  for(let s=0;s<nS;s++){
+    const r=R();
+    const kind=r<.62?"claim":r<.80?"question":"method";
+    const sid=id+":"+(kind==="claim"?"c":kind==="question"?"q":"m")+(s+1);
+    if(kind==="method"){const[m,mk]=pick(METHOD);
+      node({id:sid,t:"method",mk,paper:id,label:m,
+        quote:mk==="meas"?"“"+m+" was performed as described previously, with n = "+int(3,12)+" independent preparations.”":null});
+    }else if(kind==="question"){
+      node({id:sid,t:"question",paper:id,label:pick(QUESTION),
+        quote:"“It remains unclear whether "+pick(CLAIM).toLowerCase().slice(0,60)+"…”"});
+    }else{
+      node({id:sid,t:"claim",paper:id,label:pick(CLAIM),
+        quote:"“"+pick(CLAIM)+" (Fig. "+int(1,6)+String.fromCharCode(97+int(0,3))+").”"});
+    }
+    slices.push(sid);
+  }
+  N[id].slices=slices;
+
+  /* within-paper support DAG: a claim rests on earlier slices (294 total) */
+  slices.forEach((s,j)=>{
+    if(N[s].t==="method")return;
+    const pool=slices.slice(0,j).filter(x=>x!==s);
+    if(!pool.length)return;
+    some(pool,Math.min(pool.length,R()<.45?2:1)).forEach(p=>add("grounds",s,p));
+  });
+  /* questions get answered by claims (119) */
+  slices.filter(s=>N[s].t==="question").forEach(q=>{
+    const cs=slices.filter(x=>N[x].t==="claim");
+    if(cs.length&&R()<.9)some(cs,int(1,3)).forEach(c=>{add("answers",q,c);add("answers",c,q)});
+  });
+
+  /* the citation wall: the sources this paper actually cites */
+  const nSrc=h?h.src:pass<=1?int(0,2):pass===2?int(2,6):pass===3?int(6,14):int(14,24);
+  const wall=[];
+  for(let s=0;s<nSrc;s++){
+    const sid="S"+(stubN++);
+    node({id:sid,t:"stub",key:pick(SURNAME)+int(1998,2024)+pick(VENUE),year:int(1998,2024),
+      title:pick(CLAIM)});
+    wall.push(sid);STUBS.push(sid);
+  }
+  N[id].wall=wall;
+}
+
+/* broad slices (42) + the topic axis */
+BROAD.forEach(([slug,title])=>node({id:"B:"+slug,t:"broad",slug,label:title,
+  text:title+" — the rolled-up statement this library's granular claims ladder into.",s:0,c:0}));
+
+/* the rest of the stub registry — cited by nobody yet, but known (3766 total) */
+while(STUBS.length<3766){
+  const sid="S"+(stubN++);
+  node({id:sid,t:"stub",key:pick(SURNAME)+int(1998,2024)+pick(VENUE),year:int(1998,2024),
+    title:pick(CLAIM)});
+  STUBS.push(sid);
+}
+
+/* cross-paper grounding — always toward older work, and scaled by maturity */
+const byYear=PAPERS.slice().sort((a,b)=>N[a].year-N[b].year);
+byYear.forEach((p,i)=>{
+  const older=byYear.slice(0,i);
+  if(!older.length)return;
+  const h=HUB[+p.slice(1)],ps=N[p].pass;
+  // rare, as in the real library: 13 curated→curated edges across 53 papers.
+  // Almost everything a paper grounds in is still an uncurated stub.
+  const n=h?int(2,4):ps<=1?0:(R()<.22?1:0);
+  some(older,Math.min(older.length,n)).forEach(o=>{add("grounds",p,o);add("builds",o,p)});
+});
+
+/* generalisation ladder into the broad band — an uncurated paper has no ladder yet */
+PAPERS.forEach(p=>{
+  const pr=N[p].pass<=1?.12:.42;
+  N[p].slices.filter(s=>N[s].t!=="question").forEach(s=>{
+    if(R()<pr){const b="B:"+pick(BROAD)[0];add("gen",s,b);add("builds",b,s)}
+  });
+});
+
+/* stance — the edges with no layout home on a board (corroborate / contradict) */
+const CLAIMS=PAPERS.flatMap(p=>N[p].slices.filter(s=>N[s].t==="claim"));
+PAPERS.forEach(p=>{
+  const h=HUB[+p.slice(1)];
+  const n=h?h.lat:(R()<.30?int(1,3):0);
+  const mine=N[p].slices.filter(s=>N[s].t==="claim");
+  if(!mine.length)return;
+  for(let k=0;k<n;k++){
+    const a=pick(mine),b=pick(CLAIMS);
+    if(N[b].paper===p)continue;
+    const rel=R()<.68?"corr":"contra";
+    add(rel,a,b);add(rel,b,a);
+    const bb=(CH.gen[a]||[])[0];if(bb)N[bb][rel==="corr"?"s":"c"]++;
+  }
+});
+BROAD.forEach(([slug])=>{const b=N["B:"+slug];const k=(CH.builds[b.id]||[]).length;
+  b.s=Math.max(b.s,Math.round(k*.7));b.c=Math.max(b.c,R()<.3?int(1,2):0)});
+
+/* ══════════════════════════════════════════════════════════════════════════
+   RELATIONS — what the walk can follow. Exactly one is active at a time.
+   ══════════════════════════════════════════════════════════════════════════ */
+const RELS=[
+ {id:"grounds",lbl:"grounded in",gl:"⊣",cls:"",  note:"Downward, toward evidence and older work. A paper's grounds are its curated sources; a claim's grounds are the slices it rests on, ending at a measurement floor or an axiom."},
+ {id:"builds", lbl:"built on by",gl:"⊢",cls:"",  note:"The inverse walk — newer work and broader statements that rest on this."},
+ {id:"gen",    lbl:"generalises to",gl:"⤴",cls:"b",note:"The ladder: granular, quote-bound claims rolling up into the broad statements you would write in an intro."},
+ {id:"answers",lbl:"answers",gl:"?",cls:"q",     note:"Question ⇄ the claims that answer it. Bipartite, so it reads as two levels and never more."},
+ {id:"stance", lbl:"stance",gl:"⚖",cls:"x",      note:"Corroboration and contradiction. Not support — it never belongs on the support walk, so it gets its own shape: a ledger, evidence for on the left, against on the right."}
+];
+function childrenOf(id,rel){
+  const n=N[id];
+  if(!n)return[];
+  if(rel==="stance")return[];
+  if(rel==="grounds"){
+    if(n.t==="paper"){
+      const cur=(CH.grounds[id]||[]);
+      return cur.concat(n.wall&&n.wall.length?[{wall:id}]:[]);
+    }
+    return CH.grounds[id]||[];
+  }
+  if(rel==="builds"){
+    if(n.t==="broad")return CH.builds[id]||[];
+    return CH.builds[id]||[];
+  }
+  if(rel==="gen"){
+    if(n.t==="paper")return n.slices.filter(s=>(CH.gen[s]||[]).length);
+    return CH.gen[id]||[];
+  }
+  if(rel==="answers"){
+    if(n.t==="paper")return n.slices.filter(s=>N[s].t==="question");
+    return CH.answers[id]||[];
+  }
+  return[];
+}
+function stanceOf(id){
+  const n=N[id];if(!n)return[];
+  if(n.t==="paper")return n.slices.flatMap(s=>(CH.corr[s]||[]).concat(CH.contra[s]||[]));
+  if(n.t==="broad")return(CH.builds[id]||[]).flatMap(s=>(CH.corr[s]||[]).concat(CH.contra[s]||[]));
+  return(CH.corr[id]||[]).concat(CH.contra[id]||[]);
+}
+function relCount(id,rel){
+  if(rel==="stance")return stanceOf(id).length;
+  const c=childrenOf(id,rel);
+  return c.reduce((a,x)=>a+(x&&x.wall?N[x.wall].wall.length:1),0);
+}
+/* what the *board* would have rendered for the same focus — the comparison */
+function boardCost(id){
+  const n=N[id];if(!n)return{cards:0,edges:0};
+  if(n.t!=="paper")return{cards:relCount(id,"grounds")+relCount(id,"builds")+relCount(id,"stance"),
+                          edges:relCount(id,"grounds")+relCount(id,"builds")+relCount(id,"stance")};
+  // on the board every source is a card (the stack folds them, but they are still spawned)
+  const gr=(CH.grounds[id]||[]).length+n.wall.length,bu=(CH.builds[id]||[]).length;
+  const gen=n.slices.reduce((a,s)=>a+(CH.gen[s]||[]).length,0);
+  const st=n.slices.reduce((a,s)=>a+(CH.corr[s]||[]).length+(CH.contra[s]||[]).length,0);
+  return{cards:gr+bu+gen+st+1,edges:gr+bu+gen+st+n.slices.length};
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   STATE
+   ══════════════════════════════════════════════════════════════════════════ */
+let FOCUS=null, REL="grounds", TOPICSEL=null;
+const OPEN=new Set();        // opened paths
+const UNFOLD=new Set();      // unfolded overflow chips (path keys)
+let TRAIL=[];
+let MAXD=2, CAP=7;
+
+/* ══════════════════════════════════════════════════════════════════════════
+   RENDER — the rail
+   ══════════════════════════════════════════════════════════════════════════ */
+const rail=document.getElementById("rail"), stage=document.getElementById("stage");
+const esc=s=>String(s).replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+const pieCss=p=>p===0?"":`background:conic-gradient(var(--grounded) ${p/4*360}deg,transparent 0);border-color:var(--grounded)`;
+
+function drawRail(){
+  const list=PAPERS.filter(p=>!TOPICSEL||N[p].topics.includes(TOPICSEL))
+    .sort((a,b)=>N[b].pass-N[a].pass||N[b].year-N[a].year);
+  rail.innerHTML=
+    `<div class="railhd">topics · 18</div>`+
+    TOPIC.map(([s,t])=>`<div class="topic ${TOPICSEL===s?"on":""}" data-t="${s}">${esc(t)}<span class="n">${
+      PAPERS.filter(p=>N[p].topics.includes(s)).length}</span></div>`).join("")+
+    `<div class="railhd">library · ${list.length} curated${TOPICSEL?" in topic":""}</div>`+
+    list.map(p=>{const c=boardCost(p);
+      return `<div class="lib ${FOCUS===p?"on":""} ${c.cards>30?"hot":""}" data-p="${p}">
+        <span class="pie" style="${pieCss(N[p].pass)}"></span>
+        <span class="k">${esc(N[p].key)}</span><span class="n">${c.cards}</span></div>`}).join("")+
+    `<div class="railhd">broad · 42</div>`+
+    BROAD.map(([s,t])=>`<div class="topic" data-b="B:${s}">${esc(t)}</div>`).join("");
+}
+rail.onclick=e=>{
+  const t=e.target.closest("[data-t]"),p=e.target.closest("[data-p]"),b=e.target.closest("[data-b]");
+  if(t){TOPICSEL=TOPICSEL===t.dataset.t?null:t.dataset.t;drawRail();return}
+  // a paper opens on the ladder, not on grounds: at paper granularity almost
+  // everything a paper grounds in is still an uncurated stub, so `grounds` is one chip
+  if(p)setFocus(p.dataset.p,"gen");
+  if(b)setFocus(b.dataset.b,"builds");
+};
+
+/* ══════════════════════════════════════════════════════════════════════════
+   RENDER — focus header + tabs
+   ══════════════════════════════════════════════════════════════════════════ */
+function glyphOf(n){
+  if(n.t==="paper")return['pa',n.type==="review"?"rev":"pap"];
+  if(n.t==="stub")return['st','src'];
+  if(n.t==="broad")return['br','broad'];
+  if(n.t==="question")return['q','?'];
+  if(n.t==="method")return[n.mk==="meas"?'fl':'mo',n.mk==="meas"?'meas':'model'];
+  return[(CH.grounds[n.id]||[]).length?'cl':'bo','claim'];
+}
+function labelOf(n){
+  if(n.t==="paper")return`<span class="k">${esc(n.key)}</span> <span class="yr">${n.year}</span> · ${esc(n.title)}`;
+  if(n.t==="stub")return`<span class="k">${esc(n.key)}</span> <span class="yr">${n.year}</span>`;
+  if(n.t==="broad")return`<span class="lad">⤴</span> ${esc(n.label)}`;
+  return esc(n.label)+` <span class="yr">${esc(N[n.paper].key)}</span>`;
+}
+function headerHtml(n){
+  const cls=n.t==="question"?"q":n.t==="broad"?"b":"";
+  if(n.t==="paper"){
+    const au=n.authors.map(([a,c])=>c?`<span class="star">${esc(a)}*</span>`:esc(a)).join(", ");
+    return `<div class="focus ${cls}"><div class="fk">
+      <span class="kind">${n.type}</span><span class="key">${esc(n.key)}</span>
+      <span class="yr">${n.year} · pass ${n.pass}/4 · ${n.slices.length} slices · ${n.wall.length} sources</span></div>
+      <div class="ttl">${esc(n.title)}</div><div class="auth">${au}</div></div>`;
+  }
+  if(n.t==="broad")return `<div class="focus b"><div class="fk"><span class="kind">broad claim</span>
+    <span class="key">${esc(n.label)}</span><span class="yr">${n.s} support · ${n.c} contra</span></div>
+    <div class="txt">${esc(n.text)}</div></div>`;
+  if(n.t==="stub")return `<div class="focus"><div class="fk"><span class="kind">uncurated source</span>
+    <span class="key">${esc(n.key)}</span><span class="yr">${n.year}</span></div>
+    <div class="ttl">${esc(n.title)}</div></div>`;
+  const p=N[n.paper];
+  return `<div class="focus ${cls}"><div class="fk">
+    <span class="kind">${n.t}${n.mk?" · "+n.mk:""}</span><span class="key">${esc(p.key)}:${n.id.split(":")[1]}</span>
+    <span class="yr">${p.year}</span></div><div class="txt">${esc(n.label)}</div>
+    ${n.quote?`<div class="quote">${esc(n.quote)}</div>`:""}</div>`;
+}
+function tabsHtml(id){
+  return `<div id="tabs">`+RELS.map(r=>{
+    const c=relCount(id,r.id);
+    return `<div class="tab ${r.cls} ${REL===r.id?"on":""} ${c?"":"off"}" data-r="${r.id}">
+      <span>${r.gl}</span><span>${r.lbl}</span><span class="ct">${c}</span></div>`}).join("")+`</div>
+    <p class="tabnote">${RELS.find(r=>r.id===REL).note}</p>`;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   RENDER — THE WALK: an indented tree, zero drawn edges
+   ══════════════════════════════════════════════════════════════════════════ */
+let rowCount=0;
+function badges(id,skip){
+  return `<span class="bg">`+RELS.filter(r=>r.id!==skip).map(r=>{
+    const c=relCount(id,r.id);
+    const k={grounds:"gr",builds:"bu",gen:"ge",answers:"an",stance:"st"}[r.id];
+    return `<span class="b ${k} ${c?"":"z"}" data-piv="${id}" data-pr="${r.id}"
+      title="${r.lbl}: ${c} — click to pivot the walk here">${r.gl}${c}</span>`}).join("")+`</span>`;
+}
+function rowHtml(id,depth,flags,path,kids,isLast,extra){
+  const n=N[id];const[g,gl]=glyphOf(n);
+  let guides="";
+  for(let d=0;d<depth-1;d++)guides+=`<span class="g ${flags[d]?"":"v"}"></span>`;
+  if(depth>0)guides+=`<span class="g e ${isLast?"":"mid"}"></span>`;
+  const open=OPEN.has(path);
+  const tw=kids>0?(open?"▾":"▸"):"·";
+  return `<div class="row ${extra||""}" data-path="${path}" data-id="${id}">
+    ${guides}<span class="tw">${tw}</span>
+    <span class="gl ${g}">${gl}</span>
+    <span class="lb">${labelOf(n)}</span>
+    ${badges(id,REL)}</div>`;
+}
+function walkHtml(root){
+  const out=[];const seen=new Map();rowCount=0;
+  seen.set(root,"·");
+  (function rec(id,depth,flags,path){
+    let kids=childrenOf(id,REL);
+    if(!kids.length)return;
+    // sibling cap — the citation wall folds by construction
+    const chipKey=path+"/…";
+    let shown=kids,hidden=0;
+    if(kids.length>CAP&&!UNFOLD.has(chipKey)){shown=kids.slice(0,CAP);hidden=kids.length-CAP}
+    shown.forEach((k,i)=>{
+      const isLast=(i===shown.length-1)&&!hidden;
+      if(k&&k.wall){                                   // the folded source wall
+        const w=N[k.wall].wall;const wk=path+"/wall";
+        const un=UNFOLD.has(wk);
+        let guides="";for(let d=0;d<depth;d++)guides+=`<span class="g ${flags[d]?"":"v"}"></span>`;
+        out.push(`<div class="chiprow">${guides}<span class="g e ${isLast?"":"mid"}"></span>
+          <span class="chip" data-unfold="${wk}">${un?"▾":"▸"} <b>${w.length}</b> uncurated sources</span></div>`);
+        rowCount++;
+        if(un)w.slice(0,CAP).forEach((s,j)=>{
+          out.push(rowHtml(s,depth+2,flags.concat([isLast,false]),wk+"/"+s,0,j===Math.min(CAP,w.length)-1,"dimmed"));rowCount++});
+        if(un&&w.length>CAP){
+          let g2="";for(let d=0;d<depth+1;d++)g2+=`<span class="g v"></span>`;
+          out.push(`<div class="chiprow">${g2}<span class="chip">… <b>${w.length-CAP}</b> more, not shown</span></div>`);rowCount++}
+        return;
+      }
+      const p2=path+"/"+k;
+      if(seen.has(k)){                                  // DAG → tree, by repetition
+        out.push(rowHtml(k,depth+1,flags,p2,0,isLast,"rep")
+          .replace("</div>",`<span class="also" data-goto="${seen.get(k)}">↩ also under ${
+            esc(shortOf(seen.get(k)))}</span></div>`));
+        rowCount++;return;
+      }
+      seen.set(k,p2);
+      const kc=childrenOf(k,REL).length;
+      const autoOpen=depth+1<MAXD&&kc;
+      if(autoOpen&&!OPEN.has(p2)&&!OPEN.has("!"+p2))OPEN.add(p2);
+      out.push(rowHtml(k,depth+1,flags,p2,kc,isLast));rowCount++;
+      const nq=N[k];
+      if(nq.quote&&OPEN.has(p2)&&(nq.t==="method"||!kc)){
+        let g3="";for(let d=0;d<depth+1;d++)g3+=`<span class="g ${flags[d]?"":"v"}"></span>`;
+        out.push(`<div class="chiprow">${g3}<span class="g"></span><span class="g"></span>
+          <span class="quoterow">${esc(nq.quote)}</span></div>`);rowCount++;
+      }
+      if(OPEN.has(p2))rec(k,depth+1,flags.concat([isLast]),p2);
+    });
+    if(hidden){
+      let g4="";for(let d=0;d<depth;d++)g4+=`<span class="g ${flags[d]?"":"v"}"></span>`;
+      out.push(`<div class="chiprow">${g4}<span class="g e"></span>
+        <span class="chip" data-unfold="${chipKey}">▸ <b>${hidden}</b> more</span></div>`);rowCount++;
+    }
+  })(root,0,[],"·");
+  return out.length?out.join(""):`<p class="empty">Nothing along this relation — try another tab.</p>`;
+}
+function shortOf(path){const last=path.split("/").pop();const n=N[last];
+  return n?(n.t==="paper"||n.t==="stub"?n.key:n.t==="broad"?n.label:N[n.paper].key):"root"}
+
+/* ── stance: a ledger, not an arrow ──────────────────────────────────────── */
+function ledgerHtml(id){
+  const side=(rel,cls,ttl)=>{
+    let src=CH[rel][id]||[];
+    if(N[id].t==="paper")src=N[id].slices.flatMap(s=>(CH[rel][s]||[]));
+    if(N[id].t==="broad")src=(CH.builds[id]||[]).flatMap(s=>(CH[rel][s]||[]));
+    return `<div><div class="lhd ${cls}">${ttl}<span>${src.length}</span></div>`+
+      (src.length?src.map(s=>{
+        const n=N[s];if(!n)return"";
+        // an endpoint may rest on the container — the unsharpened wildcard (CONCEPT §2)
+        const sl=!!n.paper,p=sl?N[n.paper]:n;
+        const head=sl?`${esc(p.key)}:${s.split(":").pop()} <span class="yr">${p.year}</span>`
+                     :`${esc(p.key||p.label||s)} <span class="yr">${p.year||""}</span>
+                       <span class="wild">▸ not yet sliced</span>`;
+        const body=sl?n.label:(n.title||n.text||"");
+        return `<div class="ent ${cls}" data-id="${s}">
+          <div class="src">${head}</div>
+          <div class="t">${esc(body)}</div>
+          ${n.quote?`<div class="qt">${esc(n.quote)}</div>`:""}</div>`}).join("")
+        :`<div class="empty">none recorded</div>`)+`</div>`};
+  rowCount=stanceOf(id).length;
+  return `<div id="ledger">${side("corr","p","corroborates")}${side("contra","m","contradicts")}</div>`;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   PAINT
+   ══════════════════════════════════════════════════════════════════════════ */
+function setFocus(id,rel){
+  if(FOCUS!==id){TRAIL.push(FOCUS);OPEN.clear();UNFOLD.clear()}
+  FOCUS=id;if(rel)REL=rel;
+  if(!relCount(FOCUS,REL)){const r=RELS.find(r=>relCount(FOCUS,r.id));if(r)REL=r.id}
+  paint();
+}
+function paint(){
+  drawRail();
+  if(!FOCUS){stage.innerHTML=landing();density(null);return}
+  const n=N[FOCUS];
+  const body=REL==="stance"?ledgerHtml(FOCUS):`<div id="walk">${walkHtml(FOCUS)}</div>`;
+  stage.innerHTML=crumbs()+headerHtml(n)+tabsHtml(FOCUS)+body;
+  density(FOCUS);
+}
+function crumbs(){
+  const t=TRAIL.filter(Boolean).slice(-5);
+  return `<div id="crumbs">`+(t.length?t.map((x,i)=>
+    `<a data-back="${x}">${esc(shortOf("·/"+x))}</a><span class="sep">›</span>`).join(""):"")+
+    `<a data-back="">library</a></div>`;
+}
+function density(id){
+  const d=document.getElementById("density");
+  if(!id){d.innerHTML="";return}
+  const c=boardCost(id);
+  d.innerHTML=`walk <b>${rowCount} rows · 0 edges</b> &nbsp;·&nbsp; board would draw <span class="${
+    c.cards>28?"bad":""}">${c.cards} cards · ${c.edges} edges</span>`;
+}
+function landing(){
+  return `<div class="land"><h2>One focus. One relation. No drawn edges.</h2>
+  <p>The board draws five relations at once — <code>grounds</code>, within-paper support,
+  the generalisation ladder, <code>answers</code>, and stance — as lines across one canvas.
+  Each has a different natural shape, so superimposed, none of them is readable. This view
+  walks <b>one</b> at a time and renders it as an indented tree, so there is nothing to cross.</p>
+  <div class="pt"><b>Every relation you are not walking is a badge, not a line.</b>
+  <code>⊣3 ⊢2 ⤴1 ?1 ⚖2</code> sits on each row. Clicking one doesn't draw anything —
+  it pivots the walk into that relation, with that node as the new focus.</div>
+  <div class="pt"><b>Stance gets a ledger, not an arrow.</b> "What contradicts this" is a
+  different question from "what grounds this", and answering it with a line across a board is
+  why the board looks the way it does.</div>
+  <div class="pt"><b>The mess is structurally impossible.</b> Depth and sibling budgets (top
+  right) cap what can render; the citation wall folds by construction, never by clean-up.
+  The readout compares each focus against what the column board would have drawn.</div>
+  <p style="margin-top:20px;color:var(--faint)">Pick a paper on the left — the number beside it
+  is what the board would spawn for it. The <span style="color:var(--cross)">red</span> ones are
+  the hubs the board cannot survive.</p></div>`;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   EVENTS
+   ══════════════════════════════════════════════════════════════════════════ */
+stage.onclick=e=>{
+  const piv=e.target.closest("[data-piv]");
+  if(piv){setFocus(piv.dataset.piv,piv.dataset.pr);return}
+  const back=e.target.closest("[data-back]");
+  if(back){const v=back.dataset.back;TRAIL=[];if(!v){FOCUS=null;OPEN.clear();paint()}else setFocus(v);return}
+  const un=e.target.closest("[data-unfold]");
+  if(un){const k=un.dataset.unfold;UNFOLD.has(k)?UNFOLD.delete(k):UNFOLD.add(k);paint();return}
+  const go=e.target.closest("[data-goto]");
+  if(go){const el=stage.querySelector(`[data-path="${CSS.escape(go.dataset.goto)}"]`);
+    if(el){el.scrollIntoView({block:"center",behavior:"smooth"});el.classList.remove("flash");
+      void el.offsetWidth;el.classList.add("flash")}return}
+  const ent=e.target.closest(".ent");
+  if(ent){setFocus(ent.dataset.id,"grounds");return}
+  const row=e.target.closest(".row");
+  if(row){
+    if(row.classList.contains("rep"))return;
+    const p=row.dataset.path;
+    if(e.detail===2||e.shiftKey){setFocus(row.dataset.id);return}
+    if(OPEN.has(p)){OPEN.delete(p);OPEN.add("!"+p)}else{OPEN.add(p);OPEN.delete("!"+p)}
+    paint();
+  }
+};
+stage.addEventListener("click",e=>{const t=e.target.closest("[data-r]");
+  if(t&&!t.classList.contains("off")){REL=t.dataset.r;OPEN.clear();UNFOLD.clear();paint()}},true);
+
+const kd=document.getElementById("kdepth"),kc=document.getElementById("kcap");
+kd.oninput=()=>{MAXD=+kd.value;document.getElementById("kdv").textContent=MAXD;OPEN.clear();paint()};
+kc.oninput=()=>{CAP=+kc.value;document.getElementById("kcv").textContent=CAP;paint()};
+
+paint();
+</script>
+</body>
+</html>
