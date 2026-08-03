@@ -93,38 +93,6 @@
   #hud .pdfbtn.on{background:rgba(90,159,208,.34);border-color:rgba(170,205,230,.85);color:#fff}
   #hud .pdfbtn[hidden]{display:none}
 
-  /* topic browser (SCHEMA §9) — a saved-search panel, not curation state, so it gets the same
-     passive blue as the PDF toggle rather than the amber "in progress" wip pills. Works in a
-     static `lit build` too (topics ride in GRAPH.topics unconditionally), so unlike wip/aims
-     it is never LIVE-gated. */
-  #hud .topicsbtn{display:inline-flex;align-items:center;gap:6px;cursor:pointer;font:inherit;
-    font-size:10px;letter-spacing:1px;text-transform:uppercase;color:#bcd2e4;
-    border:1px solid rgba(120,170,210,.42);border-radius:999px;padding:3px 10px;
-    background:rgba(90,159,208,.14)}
-  #hud .topicsbtn:hover{background:rgba(90,159,208,.26);border-color:rgba(150,195,225,.7)}
-  #hud .topicsbtn[hidden]{display:none}
-  #topicsPanel{position:fixed;z-index:45;top:44px;left:16px;width:340px;max-height:72vh;overflow:auto;
-    background:var(--panel);border:1px solid var(--line);border-radius:10px;
-    box-shadow:0 12px 34px rgba(38,54,70,.24);padding:6px}
-  #topicsPanel[hidden]{display:none}
-  #topicsPanel .wp-hd{font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--faint);
-    padding:6px 8px 5px}
-  /* a tier-1 heading is a SECTION LABEL, not a chip — SCHEMA §9 / design doc §4: it reaches
-     31-46 of 53 papers, so a click on it would be a useless filter. It groups; it doesn't run
-     a search. Only the leaf containers beneath it (.tp-chip) do that. */
-  #topicsPanel .tp-head{font-size:9px;letter-spacing:1.2px;text-transform:uppercase;font-weight:700;
-    color:var(--dim);margin:9px 8px 5px;padding-top:8px;border-top:1px solid var(--line)}
-  #topicsPanel .tp-head:first-of-type{margin-top:2px;padding-top:0;border-top:0}
-  #topicsPanel .tp-leaves{display:flex;flex-wrap:wrap;gap:5px;padding:0 8px 4px}
-  /* same family as .ctag (the card's own tag chips) — a topic search is exactly a saved tag
-     search, so the chip that starts one should look like the chip that starts the other */
-  #topicsPanel .tp-chip{display:inline-flex;align-items:baseline;gap:4px;font-size:10px;
-    color:#3f6486;background:#eef3f8;border:1px solid #d7e2ec;border-radius:999px;
-    padding:3px 9px;cursor:pointer}
-  #topicsPanel .tp-chip:hover{background:#e0ebf4;border-color:#b9cfe0;color:#295c86}
-  #topicsPanel .tp-chip .n{color:var(--faint);font-size:8px}
-  #topicsPanel .wp-note{padding:8px 8px 2px;font-size:10px;line-height:1.5;color:var(--faint)}
-
   /* ── LIBRARY view (docs/2026-08-03-topics-and-claim-altitudes.md) ────────────────────────
      The board answers "how does what I know hang together"; this answers "what do I have on X".
      Two different questions that were fighting for one screen, so they get two surfaces:
@@ -140,8 +108,8 @@
      facet rail, which is the idiom every reference manager already taught the reader. */
   #libraryPane{display:none}
   body.library #board,body.library #searchResults,body.library #dockEmpty,body.library #dockGrip,
-  body.library #tip,body.library #ctxmenu,body.library #wipPanel,body.library #aimPanel,
-  body.library #topicsPanel{display:none!important}
+  body.library #tip,body.library #ctxmenu,body.library #wipPanel,
+  body.library #aimPanel{display:none!important}
   body.library #libraryPane{display:flex;position:fixed;left:0;right:0;bottom:0;
     top:var(--hud-top);z-index:20;background:var(--bg);transition:top .18s ease}
   body.library{overflow:hidden}
@@ -528,7 +496,7 @@
      anyway); input affordances key off (hover:none)+(pointer:coarse). The three unconditional
      clamps below are desktop-safe (they only bite when a panel would overflow the viewport). */
   #tip{max-width:calc(100vw - 16px)}
-  #wipPanel,#aimPanel,#topicsPanel{max-width:calc(100vw - 16px)}
+  #wipPanel,#aimPanel{max-width:calc(100vw - 16px)}
   #board{overscroll-behavior-x:contain}          /* no back/forward-swipe hijack from the h-scroll */
   .pw-body{overscroll-behavior:contain}          /* nested page-scroll doesn't chain to the board */
 
@@ -537,7 +505,7 @@
     #board{gap:22px;padding:calc(var(--hud-h) + 22px) max(12px, calc(50vw - var(--col)/2)) 80px}
     #hud{gap:8px 10px;flex-wrap:wrap}
     #hud .widthctl{display:none}                 /* column ≈ full width — slider is moot (and ate swipes) */
-    #wipPanel,#aimPanel,#topicsPanel{left:8px;right:8px;width:auto;max-height:60vh}
+    #wipPanel,#aimPanel{left:8px;right:8px;width:auto;max-height:60vh}
   }
   @media (hover:none) and (pointer:coarse){
     /* the movable/resizable quote window becomes a near-fullscreen sheet: no drag, no resize,
@@ -545,8 +513,8 @@
     .pw{position:fixed !important;inset:8px !important;width:auto !important;height:auto !important}
     .pw-grip{display:none}
     .pw-bar{cursor:default}
-    .card,.slice,.slices .sgrp,.card.stack,.pw-tool,.pw-x,#hud .wip,#hud .topicsbtn,
-    #wipPanel .wp-row,#aimPanel .ap-row,#topicsPanel .tp-chip,
+    .card,.slice,.slices .sgrp,.card.stack,.pw-tool,.pw-x,#hud .wip,
+    #wipPanel .wp-row,#aimPanel .ap-row,#libFacets .tp-chip,
     .card .cdrop,.bn .lens,.bn .bdrill{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
     .slice{padding:7px 6px}                       /* fatter tap targets */
     .slices .sgrp{padding-top:9px;margin:9px 0 4px}
@@ -621,7 +589,7 @@
   body.detached{overflow:hidden}
   body.detached #hud,body.detached #board,body.detached #searchResults,body.detached #dockEmpty,
   body.detached #dockGrip,body.detached #tip,body.detached #ctxmenu,
-  body.detached #wipPanel,body.detached #aimPanel,body.detached #topicsPanel,
+  body.detached #wipPanel,body.detached #aimPanel,
   body.detached #libraryPane{display:none!important}
   body.detached #detachPane{display:block;position:fixed;inset:0;z-index:5;background:#e0e5e9}
   body.detached #detachEmpty{position:absolute;inset:0;display:flex;align-items:center;
@@ -644,7 +612,6 @@
   <input id="search" type="search" autocomplete="off" spellcheck="false"
          placeholder="find a paper — title, author, journal, tag…">
   <button id="libBtn" class="libbtn" hidden>library</button>
-  <button id="topicsBtn" class="topicsbtn" hidden>topics</button>
   <span id="wip" class="wip" hidden></span>
   <span id="aims" class="wip" hidden></span>
   <button id="pdfToggle" class="pdfbtn" hidden>📄 PDF</button>
@@ -663,7 +630,6 @@
 <div id="ctxmenu"></div>
 <div id="wipPanel" hidden></div>
 <div id="aimPanel" hidden></div>
-<div id="topicsPanel" hidden></div>
 <div id="libraryPane">
   <div id="libFacets"></div>
   <div id="libMain">
@@ -2670,8 +2636,10 @@ function _srRow(r){
 }
 // A topic (SCHEMA §9) is not a second filter mechanism — it is a saved search over its
 // keyword closure, run through this SAME find-a-paper index. "topic:<slug>" is the box's own
-// query syntax for it (a leaf chip in the topic panel writes exactly that string in); typing
-// past it falls straight back to ordinary free-text search, same as editing a tag-chip search.
+// query syntax for it; typing past it falls straight back to ordinary free-text search, same as
+// editing a tag-chip search. The library's facet rail is now the way you BROWSE the topic tree
+// (it filters rows in place, which is strictly more useful than a dropdown of search results),
+// so this syntax is what's left of the old topics panel: still exact, no longer the front door.
 function renderTopicResults(slug){
   const topic = TOPICS[slug];
   const hits = topic.papers.map(k => searchIndex.find(r => r.key === k)).filter(Boolean);
@@ -2730,12 +2698,6 @@ function runSearch(term){                                 // called by a tag chi
   searchInput.focus();
   renderResults(term);
 }
-function runTopicSearch(slug){                     // called by a topic-panel leaf chip
-  if(!searchInput) return;
-  searchInput.value = `topic:${slug}`;
-  searchInput.focus();
-  renderResults(searchInput.value);
-}
 if(searchInput){
   searchInput.addEventListener("input", () => renderResults(searchInput.value));
   searchInput.addEventListener("focus", () => { if(searchInput.value.trim()) renderResults(searchInput.value); });
@@ -2754,53 +2716,6 @@ if(searchInput){
     if(!e.target.closest("#searchResults, #search")) closeSearch();
   }, true);
 }
-
-// ── topic browser (SCHEMA §9): a saved-search panel over the keyword axis ───────────────────
-// A topic is NOT a second filtering system — it drives the same find-a-paper search a tag chip
-// does (above), just seeded from a keyword closure computed once in Python (build.py), not
-// walked here. Tier-1 headings (`root:true`) reach 31-46 of 53 papers — useless as a filter,
-// see docs/2026-08-03-topics-and-claim-altitudes.md §4 — so they render as section labels, not
-// chips; only the fourteen leaf containers beneath them are clickable. A container with two
-// parents (model-systems, morphogenesis, extracellular-matrix) lists under both, correctly.
-// Works from a static `lit build` too (topics ride in GRAPH.topics unconditionally), so unlike
-// the wip/aims pills below this is never LIVE-gated — only kept off the DRIVE/PDF/mobile
-// single-purpose windows, same as the search box itself just above.
-if(!DRIVE && !PDFWIN && !MOBILE_CURATE) (function(){
-  const btn = document.getElementById("topicsBtn");
-  const panel = document.getElementById("topicsPanel");
-  const heads = Object.entries(TOPICS).filter(([, t]) => t.root)
-    .sort((a, b) => a[1].title.localeCompare(b[1].title));
-  if(!btn || !panel || !heads.length) return;      // no topics/ tree -> renders exactly as before
-  const leavesOf = slug => Object.entries(TOPICS).filter(([, t]) => t.broader.includes(slug))
-    .sort((a, b) => a[1].title.localeCompare(b[1].title));
-  panel.innerHTML = `<div class="wp-hd">topics</div>` + heads.map(([slug, t]) => {
-    const leaves = leavesOf(slug);
-    if(!leaves.length) return "";                  // a heading with nothing under it has no chips
-    return `<div class="tp-head" title="${esc(t.note || "")}">${esc(t.title)}</div>`
-         + `<div class="tp-leaves">` + leaves.map(([lslug, lt]) =>
-             `<span class="tp-chip" data-slug="${esc(lslug)}" title="${esc(lt.note || "")}">`
-             + `${esc(lt.title)}<span class="n">${lt.papers.length}</span></span>`).join("")
-         + `</div>`;
-  }).join("") + `<div class="wp-note">headings group and can't be searched; click a container `
-              + `to search the papers it reaches.</div>`;
-  btn.hidden = false;
-  const closeOthers = () => {                      // one panel open at a time (mirrors wip/aims)
-    const wipPanel = document.getElementById("wipPanel"), aimPanel = document.getElementById("aimPanel");
-    if(wipPanel) wipPanel.hidden = true;
-    if(aimPanel) aimPanel.hidden = true;
-  };
-  btn.addEventListener("click", e => { e.stopPropagation(); closeOthers(); panel.hidden = !panel.hidden; });
-  panel.addEventListener("click", e => {
-    const chip = e.target.closest(".tp-chip");
-    if(!chip) return;
-    panel.hidden = true;
-    runTopicSearch(chip.dataset.slug);
-  });
-  addEventListener("keydown", e => { if(e.key === "Escape") panel.hidden = true; });
-  addEventListener("click", e => {
-    if(!panel.hidden && !e.target.closest("#topicsPanel,#topicsBtn")) panel.hidden = true;
-  }, true);
-})();
 
 // ── the LIBRARY view ─────────────────────────────────────────────────────────────────────
 // Reference-manager browsing: one vertical scroll over the WHOLE bibliography, narrowed by a
@@ -3016,9 +2931,7 @@ if (LIVE && !DRIVE && !PDFWIN && !MOBILE_CURATE) (function(){
     pill.addEventListener("click", e => {
       e.stopPropagation();
       const wipPanel = document.getElementById("wipPanel");
-      const topicsPanel = document.getElementById("topicsPanel");
       if (wipPanel) wipPanel.hidden = true;   // one panel open at a time
-      if (topicsPanel) topicsPanel.hidden = true;
       panel.hidden = !panel.hidden;
     });
     document.addEventListener("click", e => {
@@ -3100,9 +3013,7 @@ if (LIVE && !DRIVE && !PDFWIN && !MOBILE_CURATE) (function(){
 
   pill.addEventListener("click", () => {
     const aimPanel = document.getElementById("aimPanel");
-    const topicsPanel = document.getElementById("topicsPanel");
     if (aimPanel) aimPanel.hidden = true;     // one panel open at a time
-    if (topicsPanel) topicsPanel.hidden = true;
     panel.hidden = !panel.hidden;
   });
   panel.addEventListener("click", e => {
