@@ -9,6 +9,8 @@ from pathlib import Path
 
 from ruamel.yaml import YAML
 
+from .topics import Topic, load_topics, validate_topics
+
 _yaml = YAML(typ="safe")
 
 _LOCAL = re.compile(r"^[cqmtk]\d+$")    # c claim · q question · m method · t test · k capability
@@ -102,6 +104,10 @@ class Graph:
     broad: dict[str, BroadNode]
     order: list[str]                # paper citekeys, landing-list order
     aims: dict[str, Aim] = field(default_factory=dict)   # keyed by "@slug"; empty on a pure literature repo
+    # The topic axis (SCHEMA §9) rides along so it is loaded and validated once, at build.
+    # It is NOT graph: no edge targets it, no emergent property reads it, and the emit layer
+    # ignores it. Membership is derived from paper `tags` on demand — see topics.papers_in.
+    topics: dict[str, "Topic"] = field(default_factory=dict)
 
 
 class BuildError(Exception):
@@ -536,4 +542,9 @@ def build_graph(root) -> Graph:
     papers, broad = load_repo(root)
     aims = load_programme(root)
     validate(papers, broad, aims)
-    return compute_emergent(papers, broad, aims)
+    g = compute_emergent(papers, broad, aims)
+    # The topic axis is loaded and validated here so every `lit build` checks it, but it is
+    # deliberately the last step and touches nothing above it (SCHEMA §9).
+    g.topics = load_topics(root)
+    validate_topics(g.topics, set(broad))
+    return g

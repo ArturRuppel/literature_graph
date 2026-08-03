@@ -152,6 +152,17 @@ def main(argv: list[str] | None = None) -> int:
                                                               "line (Pass 1); prints candidates, writes nothing")
     p_tag.add_argument("--root", default=".", help="data root (curated/, stubs.yaml, config.toml)")
 
+    p_top = sub.add_parser("topics", help="report the topic axis (SCHEMA §9): the tree with paper "
+                                          "counts, or one topic's papers; --orphans finds tags no "
+                                          "topic files and keywords no paper carries")
+    p_top.add_argument("slug", nargs="?",
+                       help="one topic — list the papers it reaches (omit for the whole tree)")
+    p_top.add_argument("--orphans", action="store_true",
+                       help="report unfiled tags, dead keywords and stranded papers instead")
+    p_top.add_argument("--strict", action="store_true",
+                       help="exit non-zero if --orphans flags anything (for CI)")
+    p_top.add_argument("--root", default=".", help="data root (topics/, curated/, ...)")
+
     p_prog = sub.add_parser("programme", help="report the programme graph's emergent state: "
                                               "load-bearing assumptions by blast radius, tests at "
                                               "risk, aspirational capabilities, open questions, orphans")
@@ -207,6 +218,66 @@ def main(argv: list[str] | None = None) -> int:
             print(f"quote-flag: {w}", file=sys.stderr)
         emit(graph, out)
         print(f"built {len(graph.papers)} papers -> {out}/index.html")
+        return 0
+
+    if args.command == "topics":
+        from .graph import load_repo
+        from .topics import (TopicError, children, coverage, keyword_closure,
+                             load_topics, papers_in, roots, validate_topics)
+        cfg = load_config(args.root)
+        papers, broad = load_repo(cfg.root)          # skips the full slice validate: topics
+        topics = load_topics(cfg.root)               # are independent of the graph by design
+        if not topics:
+            print(f"no topics/ tree under {cfg.root}", file=sys.stderr)
+            return 1
+        try:
+            validate_topics(topics, set(broad))
+        except TopicError as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 1
+
+        if args.orphans:
+            unfiled, dead, stranded = coverage(topics, papers)
+            for label, items, gloss in (
+                ("unfiled tags", unfiled, "on a paper, in no topic — the topic layer is behind"),
+                ("dead keywords", dead, "in a topic, on no paper — a typo or a renamed tag"),
+                ("stranded papers", stranded, "curated, reached by no topic"),
+            ):
+                print(f"{label} ({len(items)}) — {gloss}")
+                for i in items:
+                    print(f"    {i}")
+            return 1 if (args.strict and (unfiled or dead or stranded)) else 0
+
+        if args.slug:
+            if args.slug not in topics:
+                print(f"error: no such topic: {args.slug}", file=sys.stderr)
+                return 2
+            hits = papers_in(topics, args.slug, papers)
+            t = topics[args.slug]
+            print(f"{t.title or args.slug} — {len(hits)} paper{'' if len(hits) == 1 else 's'}"
+                  f"  [{', '.join(sorted(keyword_closure(topics, args.slug)))}]")
+            for ck in hits:
+                print(f"    {ck}  {papers[ck].title}")
+            return 0
+
+        kids = children(topics)
+        seen: set[str] = set()
+
+        def show(slug: str, depth: int) -> None:
+            n = len(papers_in(topics, slug, papers))
+            kw = len(keyword_closure(topics, slug))
+            mark = " ↑" if len(topics[slug].broader) > 1 and slug in seen else ""
+            print(f"  {'    ' * depth}{'· ' if depth else ''}{slug:<{36 - 4 * depth}}"
+                  f"{n:>4} paper{' ' if n == 1 else 's'}  {kw:>3} keywords{mark}")
+            seen.add(slug)
+            for c in kids[slug]:
+                show(c, depth + 1)
+
+        for r in roots(topics):
+            show(r, 0)
+        ncur = sum(1 for p in papers.values() if p.curated)
+        print(f"\n{len(topics)} topics over {ncur} curated papers "
+              f"(a topic may appear under several parents; ↑ = repeat)")
         return 0
 
     if args.command == "preview":

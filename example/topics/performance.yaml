@@ -1,0 +1,6 @@
+# Topic (SCHEMA §9) — a tier-1 heading. Holds no keywords of its own: everything it reaches,
+# it reaches through the topics below it. A grouping node with an empty `keywords` is legal
+# and is how you add a layer without touching the containers under it.
+title: "Systems performance"
+note: "The heading. Navigation only — it reaches every tagged paper, so it is not a useful filter; the containers beneath it are."
+keywords: []

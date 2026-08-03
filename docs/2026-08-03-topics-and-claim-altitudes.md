@@ -112,14 +112,33 @@ papers, which is useless as a query and fine as a place to start drilling. The l
 containers are the filter that actually narrows (10–24 papers each). Worth knowing before
 anyone wires a UI that treats the two tiers alike.
 
-## 5. Deliberately not decided
+## 5. Tooling — `lit topics`
+
+`litgraph/topics.py` holds the axis, deliberately outside `graph.py`. `build_graph` loads and
+validates it as a last step that touches nothing above it, so every `lit build` checks the
+tree; the emit layer ignores `Graph.topics` entirely.
+
+```
+lit topics                 # the tree, with papers reached and keywords owned per node
+lit topics <slug>          # the papers one topic reaches, and its keyword closure
+lit topics --orphans       # unfiled tags · dead keywords · stranded papers  (--strict for CI)
+```
+
+**`--orphans` is the load-bearing one.** The other two are conveniences; this is what stops
+the layer rotting as the tag vocabulary grows. Three signals, none of them build errors:
+
+| Signal | Means |
+|---|---|
+| *unfiled tag* — on a paper, in no topic | the topic layer has fallen behind the tagging |
+| *dead keyword* — in a topic, on no paper | a typo, or a tag since renamed |
+| *stranded paper* — curated, reached by nothing | untagged, or tagged only in unfiled vocabulary |
+
+Run it after a tagging session. The library is currently clean on all three.
+
+## 6. Deliberately not decided
 
 - **Rendering.** No viewer work was done. The data layer stands alone and the eventual
   presentation — sidebar, chips on the card, a landing grid — is unconstrained by it.
-- **Tooling.** No `lit` verb reads `topics/` yet; the files are hand-authored YAML and the
-  coverage check that produced §4 was a throwaway script. A `lit topics` verb (list,
-  coverage, `--orphans` for unfiled tags) is the obvious next step, and the unfiled-tag
-  report is the part that matters — it is what stops this layer rotting as tags accumulate.
 - **Whether claims should carry topics.** They should not, for now. A topic on a broad claim
   is arguable (nothing in the graph could derive it), but it buys nothing the paper-level
   axis does not already deliver, and it reopens a rule that is currently load-bearing.

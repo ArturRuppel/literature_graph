@@ -305,7 +305,9 @@ axis is deliberately a DAG, not a tree.
    `methods/` slug — a topic is never an edge target, and the disjointness keeps it that way.
 3. **Warn, don't fail**, on a *dead keyword* (in a topic, on no paper) and on an *unfiled tag*
    (on a paper, in no topic). Both are curation signals, not errors: the unfiled-tag report is
-   what stops the topic layer silently rotting as the tag vocabulary grows.
+   what stops the topic layer silently rotting as the tag vocabulary grows. Surfaced by
+   `lit topics --orphans` (with *stranded papers* — curated, reached by no topic); `--strict`
+   turns them into a non-zero exit for CI.
 4. Topics are **absent from the slice graph entirely** — a topic slug in any `grounded_in` /
    `leads_to` / `answers` / `corroborates` / `contradicts` is a dangling ref (rule §6.1) and
    fails the build.

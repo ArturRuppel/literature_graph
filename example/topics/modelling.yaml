@@ -1,0 +1,5 @@
+# Topic (SCHEMA §9) — shares the `batching` keyword with `throughput` (see there).
+title: "Analytic modelling"
+note: "The queueing-theory side, as opposed to the measurement it is fitted to."
+broader: [performance]
+keywords: [queueing-model, batching]

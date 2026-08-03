@@ -134,6 +134,13 @@ the rate limiter; never flood. A half-finished graph is a normal, valid state.**
   `--suggest` proposes tags from the paper's **author-keyword line** (scraped + kebab-cased from the
   full text) — a **Pass-1** step (CURATION.md): it prints candidates and a ready `lit tag` command and
   **writes nothing**, so the curator gates which land in the filter axis.
+- **`lit topics`** — report the **topic axis** (SCHEMA §9): keyword containers over the `tags`
+  vocabulary, so papers stay findable as it grows. Bare prints the tree with papers reached and
+  keywords owned; `lit topics <slug>` lists one topic's papers; **`--orphans`** is the one that
+  matters — unfiled tags (on a paper, in no topic), dead keywords (in a topic, on no paper) and
+  stranded papers, the three signals that keep the layer from rotting behind the tagging
+  (`--strict` exits non-zero for CI). Run it after a tagging session. Topics are **not graph**:
+  never an edge target, membership derived from tags alone, nothing on a paper names one.
 - **`lit focus <citekey> [--quote "…"]`** — aim a running `lit serve` session's **paper window** at
   a quote (my hand during curation): resolves the quote and re-aims the PDF. The card window's
   quote-clicks drive the same wire, so agent and human stay in one truth.

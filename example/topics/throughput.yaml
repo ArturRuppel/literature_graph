@@ -1,0 +1,6 @@
+# Topic (SCHEMA §9) — a keyword container. `batching` also appears in `modelling`: keywords
+# are deliberately non-exclusive, so one tag can file a paper under two topics at once.
+title: "Throughput & batching"
+note: "Measured end-to-end rate, and the batching that buys it."
+broader: [performance]
+keywords: [throughput, batching]
