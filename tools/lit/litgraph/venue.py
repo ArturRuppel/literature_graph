@@ -17,6 +17,20 @@ _OVERRIDES: dict[str, str] = {
     "proceedings of the national academy of sciences of the united states of america": "Pnas",
     "biochimica et biophysica acta (bba) - molecular cell research": "BBA",
     "biochimica et biophysica acta molecular cell research": "BBA",
+    # The Physical Review family. OpenAlex serves two spellings of each of these — the modern
+    # "Physical Review E" and a catalogue form "Physical review. E" — plus the pre-2000 section
+    # names, which are the *same journal* under its old title. Left to iso4 they abbreviate on
+    # their own casing ("Physrev...") and the sprawling old titles survive nearly whole, so one
+    # journal mints several tokens and the same paper can enter the graph under two citekeys.
+    # Pin the whole family to the modern token.
+    "physical review. a, general physics": "PhysRevA",
+    "physical review. b, condensed matter": "PhysRevB",
+    "physical review. d. particles, fields, gravitation, and cosmology/physical review. d, "
+    "particles, fields, gravitation, and cosmology": "PhysRevD",
+    "physical review. e": "PhysRevE",
+    "physical review. e, statistical physics, plasmas, fluids, and related interdisciplinary "
+    "topics": "PhysRevE",
+    "physical review. general physics": "PhysRev",
 }
 
 
