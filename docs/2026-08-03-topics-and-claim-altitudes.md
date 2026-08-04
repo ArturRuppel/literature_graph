@@ -177,13 +177,20 @@ still held 31 of 42 broad nodes; the leftmost synthesis column was still a 31-it
 ladder makes altitude legible, but it does not remove leaves.* The list only got shorter when
 the band was **collapsed to its roots** — the 14 nodes nothing ladders out of — with one click
 revealing one generation, the same drill idiom the rest of the board already used. 42 → 14 on
-the landing view; 26 broad claims → 4.
+the landing view; 26 broad claims → 4. *(That collapse was later reversed: hoisting turned out to
+be the whole answer and hiding only subtracted — see "The band goes flat" below. The 31-item
+column is back, deliberately.)*
 
 **The landing column went the same way.** Papers now arrive only when something asks for them:
 a claim you show, or a jump from the search box or the library. The board landed on 53 curated
-papers for the same bad reason the band landed on 42 nodes.
+papers for the same bad reason the band landed on 42 nodes. *(Also reversed, and by the same
+argument — see "…and the landing column with it" below.)*
 
 ### Arriving is easy; leaving has to be too
+
+*(This whole subsection describes machinery that no longer exists — the landing column is flat and
+nothing arrives or leaves. It is kept because the diagnosis is the reason the collapse was
+eventually abandoned: read it as the bill of costs, not as a description of the viewer.)*
 
 The first cut of the collapse got the doors in and forgot the door out, and it was unusable for
 three compounding reasons worth recording, because they are the generic failure of any
@@ -201,7 +208,8 @@ Underneath all three: the column had no identity. It was not "this claim's evide
 pile" — it was whatever had asked, with mixed provenance and mixed lifetime, and *that* is why
 nobody could predict what would remove a card.
 
-The fix keeps the accumulate model and makes it legible. Three sets, one rule:
+The fix keeps the accumulate model and makes it legible. Three sets, one rule *(superseded: only
+`landedStuck` and `shownBroad` survive, both narrowed — see "…and the landing column with it")*:
 
 | Set | Filled by | Lifetime |
 |---|---|---|
@@ -256,7 +264,8 @@ insertion order.
 Folding a claim takes its whole **subtree** with it (`pruneShown`, iterated to a fixpoint): a
 narrower claim you reached *through* a parent has no card once the parent folds, and a shown claim
 with no card is one still landing papers with nothing on screen to say why. A claim with two parents
-survives until the last of them folds, which is what multi-parenting is for.
+survives until the last of them folds, which is what multi-parenting is for. *(Superseded — the band
+is flat now and `pruneShown` is gone; see "The band goes flat" below.)*
 
 Two consequences to know. Clicking empty board space thaws the slice-row pins but *not* the claims,
 since dropping a claim's brightness while its evidence stayed on the board would rebuild exactly the
@@ -307,6 +316,82 @@ Two ties fall out of that rule and are worth stating. A card wanted by two group
 still reading. And re-opening something you had closed counts as a **fresh arrival**, landing at
 the bottom, because `open` and `shownBroad` are both ordered by last touch.
 
+### The band goes flat — hoisting replaces hiding
+
+The two mechanisms above were built for the same complaint (*42 nodes at once is a backlog*) and
+only one of them was needed. **Collapsing the band to its roots** hid what you had not clicked;
+**hoisting** gathered what you did click, with its narrower claims and its papers, into one
+screenful at the top of their columns. Running both meant a click did two different kinds of thing
+at once — reveal *and* place — and the revealing half was the one carrying all the costs:
+
+- **You cannot see what is not there.** The band's job is to be the standing map of what the
+  library claims. A map that renders only the branch you already walked is a worse map than a long
+  one, and the roots-only view named 14 of 42 nodes — a reader with no way to know the other 28
+  existed, let alone what altitude they sat at.
+- **A rung's ladder was invisible until walked.** Altitude was added precisely so generality would
+  read left-to-right, and then collapsed so that it could not: the tiered columns landed nearly
+  empty, with the whole shape of the ladder deferred behind clicks.
+- **A multi-parented claim flickered.** It appeared as soon as *either* parent was shown and
+  vanished with the last of them — correct behaviour for a rule nobody could see, and the entire
+  reason `pruneShown` had to iterate to a fixpoint.
+- **Two meanings on one click.** Folding a claim both put its papers away and *deleted* cards
+  elsewhere on the band, which is a lot of consequence for a toggle whose readout said `3 narrower`.
+
+So the band is now **flat**: every rung of every ladder has a card, always, at its own altitude
+(31 · 8 · 2 · 1 across the four tiers). `shownBroad` still exists and still means exactly one thing —
+whose block is gathered at the top and whose papers are in the column — but nothing about it decides
+what *exists* on screen. `visibleBroad`, `broadRoots` and `pruneShown` are gone with the mechanism
+they served, and the `▸ / ▾` caret went off the `3 narrower` pill, because there is nothing left to
+unfold: the pill is a constant fact about the ladder, and its **fill** is the whole state readout.
+
+> **Order organizes; absence doesn't.** Put what the reader asked for at the top. Never make the
+> rest of the graph unmentionable to get it there.
+
+### …and the landing column with it
+
+The same rule applied to the papers, and it collected a larger debt there. The column now lists
+**every curated paper** (69 today) in `ORDER`'s pass ranking, from boot, permanently — plus the tail
+of cards `landingKeys()` already minted for the 49 uncurated papers some lateral / `answers` edge
+points at, which exist so those arrows have an anchor and are not part of the curated list the header
+counts. Showing a claim hoists its papers to the top of that column instead of fetching them into an
+empty one.
+
+Everything the collapse needed in order to be usable went away with it, and that is the strongest
+evidence it was the wrong mechanism — the machinery was all bookkeeping for a problem it had itself
+created:
+
+| Removed | Why it existed |
+|---|---|
+| `landedDropped` + the per-card `×` | a card could be *put away*, so there had to be a way to put it away |
+| the drop-outranks-everything rule | two sets could want the same card, so removal needed a tiebreak |
+| `showBroad`'s drop-reset loop | an old `×` would otherwise silently shrink a claim asked for later |
+| the lens chip's `showing 3 of 4` | a total was a lie once a drop had happened |
+| `LANDING_COLLAPSED` | the DRIVE / mobile windows needed the un-collapsed path — which is now the only path |
+
+Three things survive, with narrower jobs. **`landedStuck`** no longer means "a paper I asked for by
+name" (a curated paper is already there, so naming one is a scroll-and-flash) — it means a **stub**
+summoned by name, the one class of card the flat list does not carry. **`clear`** no longer empties
+the column, because a flat list has nothing to empty: it *releases* — every shown claim put away,
+every summoned stub dismissed — and it appears only when there is something to release. And the
+per-card **provenance strip** stops being an excuse for the card's presence and becomes a block
+label: with two claims gathered at the top and no visual delimiter between their blocks, `evidence
+for "…"` is the only thing that says which is which. A card with nothing to say shows no strip.
+
+> **A flat list needs no bookkeeping.** Every rule the collapsed column needed was a rule about its
+> own contents. The flat one has no contents to have rules about.
+
+The cost is scroll and layout, and it is smaller than the collapse's own performance note suggests:
+`landingKeys()` had already trimmed the column from `ORDER`'s ~3.8k entries to the 118 that can carry
+an edge, so the board is **8.8k px** tall rather than the ~187k px that made every forced relayout
+expensive. Measured unthrottled after the change: `rebuild()` 4–5 ms, a claim click 8 ms.
+
+The flat band costs nothing in arrow clutter, which is worth stating because it looks like it should:
+edges touching a broad node are already drawn *only* while that node is isolated (`redraw`), so the
+band's 31 ladder rungs stay quiet until one is hovered or clicked. What it costs is scroll — the
+`synthesis · now` column is a 31-card column again, exactly the list §6 set out to shorten. The
+difference is that shortening it is no longer the only tool available: the reader's attention is
+placed by hoisting, and a long column below the hoisted block is inert rather than lost.
+
 ## 7. Deliberately not decided
 
 - **Whether claims should carry topics.** They should not, for now. A topic on a broad claim
@@ -322,7 +407,9 @@ the bottom, because `open` and `shownBroad` are both ordered by last touch.
   derived pin means exclusivity would be a rule about `shownBroad` alone. It would also have to
   say what exclusivity means *up the ladder*: showing a claim inside the block you are already
   reading should surely not put the parent away.
-- **Whether the band should separate kinds.** 8 of the 14 landing nodes are broad *methods*,
-  so the first thing the eye meets is instrumentation rather than the claim ladder the collapse
-  was built to expose. Splitting claims from methods into their own bands would fix that and
-  would also change what the board's horizontal axis means. Not done unilaterally.
+- **Whether the band should separate kinds.** All 14 broad *methods* now stand on the flat band
+  beside the 26 claims, interleaved with them by altitude rather than by kind, so the eye meets
+  instrumentation and reasoning in one column. Splitting claims from methods into their own bands
+  would fix that and would also change what the board's horizontal axis means. Not done
+  unilaterally — and note the flat band makes it more pressing, not less, since the collapse used
+  to keep 6 of the methods off the landing view.
