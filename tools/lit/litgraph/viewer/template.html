@@ -2068,18 +2068,23 @@ function redraw(){
     // which is the question you actually had. Broad-to-broad rungs go with them — same rule, one
     // rule, and the band's own ladder is one click away.
     if(!on&&(isBroadEnd(e.from)||isBroadEnd(e.to))) continue;
-    const ra=anchorRect(e.from), rb=anchorRect(e.to);
+    // `rowRect` is the row's rect CLIPPED to the boxes that actually clip it, and null once
+    // nothing is left — so an endpoint scrolled out of the card's sideways-scrolling slice graph
+    // falls back to its card here rather than anchoring where only the layout can see it.
+    const fa=rowRect(e.from), fb=rowRect(e.to);
+    const ra=fa||cardRect(e.from), rb=fb||cardRect(e.to);
     if(!ra||!rb) continue;                          // no visible endpoint yet
     // Both ends name a specific slice but neither is on screen (e.g. a source→method grounding
     // while the sources stack is collapsed and methods aren't entry rows): the edge has no row
     // to land on, so both ends fall back to their card and it collapses onto the identical
     // container→container line — piling up with its siblings into one opaque, never-dimming
     // arrow at the card border. Skip it until a drill reveals a row for it to sharpen onto.
-    if(e.from.sid && e.to.sid && !rowVisible(e.from) && !rowVisible(e.to)) continue;
+    if(e.from.sid && e.to.sid && !fa && !fb) continue;
     // A card's own columns scroll sideways inside it, and this SVG spans the whole board with
     // no per-card clip — so an arc to a node scrolled out of its card would be drawn straight
-    // across the card's neighbours. The card's own box is the clip region.
-    if(e.intra&&!inCard(e.from.cardId,ra,rb)) continue;
+    // across the card's neighbours. An intra-card rung is only meaningful while BOTH its nodes
+    // are on screen; the moment one scrolls out there is nothing honest left to draw.
+    if(e.intra&&!(fa&&fb)) continue;
     plan.push({e,ra,rb,on});
   }
 
@@ -2155,37 +2160,44 @@ function redraw(){
   svg.appendChild(frag);                            // one insertion, not one per edge
 }
 function cssv(n){return getComputedStyle(document.documentElement).getPropertyValue(n).trim();}
-// Both ends of an intra-card arc still inside their card's box (see the plan loop's clip).
-function inCard(cardId,ra,rb){
-  const c=document.getElementById(cardId);
-  if(!c) return false;
-  const r=c.getBoundingClientRect();
-  return ra.right>r.left&&ra.left<r.right&&rb.right>r.left&&rb.left<r.right;
+// The VISIBLE slab of an endpoint's row: its rect ∩ every box that clips it. A row's layout rect
+// is not where the eye sees it — a card hides its own overflow (`.card{overflow:hidden}`) and the
+// slice graph inside it scrolls sideways (`.snodes{overflow-x:auto}`), so a node scrolled out of
+// view goes on reporting a rect, one that can sit clear outside the card and even left of the
+// whole board. Anchoring an edge on that rect threw the arc across every column to an arrowhead
+// planted in blank canvas — twenty of them at once when a paper's sources all ground slices that
+// had been scrolled off. Clipping to the scroller answers "where is this node on screen"; null
+// means nowhere, and the caller falls back to the card the way an un-drilled endpoint does.
+// (Clipping is to the CARD's box, not the viewport: a row scrolled out of sight down the board is
+// still a legitimate anchor, since the overlay spans the board rather than the window.)
+function rowRect(end){
+  const card=end.sid&&document.getElementById(end.cardId);
+  if(!card) return null;
+  // drilled rows may render the same slice at several paths — take the first one on screen
+  for(const rowEl of card.querySelectorAll(`[data-sid="${end.sid}"]`)){
+    const r=rowEl.getBoundingClientRect();
+    if(r.width<=0) continue;                        // folded away, not merely scrolled
+    let l=r.left,t=r.top,ri=r.right,b=r.bottom;
+    for(const clip of [rowEl.closest(".snodes"),card]){
+      if(!clip) continue;
+      const c=clip.getBoundingClientRect();
+      l=Math.max(l,c.left); ri=Math.min(ri,c.right);
+      t=Math.max(t,c.top);  b=Math.min(b,c.bottom);
+    }
+    if(ri>l&&b>t) return {left:l,top:t,right:ri,bottom:b};
+  }
+  return null;
 }
-// Resolve an endpoint: the first visible row carrying the endpoint's sid — a slice row
-// (drilled rows may render the same slice at several paths) or a stack's source row —
-// else the card itself. Falling back to the card is what keeps un-drilled edges aggregate.
-function anchorRect(end){
+// The card itself — the aggregate anchor, and what an endpoint with no on-screen row falls back to.
+function cardRect(end){
   const card=document.getElementById(end.cardId);
   if(!card) return null;
-  if(end.sid){
-    for(const rowEl of card.querySelectorAll(`[data-sid="${end.sid}"]`)){
-      const r=rowEl.getBoundingClientRect();
-      if(r.width>0) return r;
-    }
-  }
   const r=card.getBoundingClientRect();
   return r.width>0?r:null;
 }
-// True iff the endpoint's sid resolves to an on-screen row (not the container fallback) — lets
-// redraw() tell a sharpened edge from one that merely fell back to the card.
-function rowVisible(end){
-  const card=end.sid&&document.getElementById(end.cardId);
-  if(!card) return false;
-  for(const rowEl of card.querySelectorAll(`[data-sid="${end.sid}"]`))
-    if(rowEl.getBoundingClientRect().width>0) return true;
-  return false;
-}
+// Resolve an endpoint: its on-screen row (a slice row, or a stack's source row) else the card.
+// Falling back to the card is what keeps un-drilled edges aggregate.
+function anchorRect(end){ return rowRect(end)||cardRect(end); }
 
 // ── tooltip ────────────────────────────────────────────────────────────────────────────
 // Served over HTTP (`lit serve`), the tooltip upgrades: pdfs.json says which curated
