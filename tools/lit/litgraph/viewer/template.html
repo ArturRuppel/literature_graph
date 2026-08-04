@@ -21,7 +21,7 @@
     /* programme layer: a claim's modality, and the two feasibility kinds */
     --proposed:#8a6db1;--test:#2f6f8f;--capability:#5a7a52;--risk:#9a3b3b;
     --navy:#263646;   /* the signature ELN accent bar (the HUD) */
-    --col:340px;   /* content-container width; the width slider in the HUD drives it */
+    --col:500px;   /* content-container width; the width slider in the HUD drives it */
     --grip:8px;    /* the graph/PDF seam's grab width — widened for fingers under (pointer:coarse).
                       Lives on :root so that override wins: an equal-specificity `body` rule later
                       in this sheet would otherwise beat the one inside the media query. */
@@ -107,17 +107,24 @@
      Deliberately unlike the board: no columns, no edges, no panning. A vertical scroll with a
      facet rail, which is the idiom every reference manager already taught the reader. */
   #libraryPane{display:none}
-  body.library #board,body.library #searchResults,body.library #dockEmpty,body.library #dockGrip,
+  body.library #board,body.library #searchResults,
   body.library #tip,body.library #ctxmenu,body.library #wipPanel,
   body.library #aimPanel{display:none!important}
   body.library #libraryPane{display:flex;position:fixed;left:0;right:0;bottom:0;
     top:var(--hud-top);z-index:20;background:var(--bg);transition:top .18s ease}
   body.library{overflow:hidden}
+  /* The PDF dock stays live in the library, because reading is what browsing is FOR: a row click
+     aims it (see the scroll handler), so the pane has to yield the same width the board does.
+     The portrait half of this rule lives with the rest of the split, in the one orientation
+     block below — a second one would fight it for order. */
+  body.library.dock-open #libraryPane{right:var(--dock-w)}
 
-  /* facet rail — scope, then the topic tree, then sort. §4 of the design doc is the law here:
-     a tier-1 heading reaches 31–46 of 53 papers, so it groups and never filters; only the leaf
-     containers narrow. Same .tp-head / .tp-chip vocabulary as the topics panel on purpose —
-     it is the same axis, shown at more length. */
+  /* facet rail — the controls (scope, sort), then three filter axes: topic, journal, author.
+     §4 of the design doc is the law for the topic tree: a tier-1 heading reaches 31–46 of 53
+     papers, so it groups and never filters; only the leaf containers narrow. Same .tp-head /
+     .tp-chip vocabulary as the topics panel on purpose — it is the same axis, shown at more
+     length. Journal and author are long tails over the whole ~4.9k bibliography, so they are
+     ranked lists (count desc) capped at a head, not chip clouds. */
   #libFacets{flex:0 0 232px;overflow:auto;padding:14px 0 40px;border-right:1px solid var(--line);
     background:var(--panel)}
   #libFacets .lf-hd{font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--faint);
@@ -139,6 +146,19 @@
   #libFacets .tp-chip.on .n{color:#c6dcec}
   #libFacets .tp-chip .n{color:var(--faint);font-size:8px}
   #libFacets .lf-note{padding:8px 14px 2px;font-size:9px;line-height:1.5;color:var(--faint)}
+  /* ranked facet (journal · author): a row, not a chip, because these are long strings and the
+     count is the point — right-aligned and tabular so the ranking reads as a column. */
+  #libFacets .lf-list{display:flex;flex-direction:column;padding:0 8px 2px}
+  #libFacets .lf-row{display:flex;align-items:baseline;gap:6px;font-size:10px;color:#3f6486;
+    padding:2px 6px;border-radius:4px;cursor:pointer}
+  #libFacets .lf-row:hover{background:#e0ebf4;color:#295c86}
+  #libFacets .lf-row.on{background:#295c86;color:#fff}
+  #libFacets .lf-row .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #libFacets .lf-row .n{flex:0 0 auto;font-size:8px;color:var(--faint);font-variant-numeric:tabular-nums}
+  #libFacets .lf-row.on .n{color:#c6dcec}
+  #libFacets .lf-more{font-size:9px;color:#295c86;cursor:pointer;padding:3px 14px 2px;
+    user-select:none}
+  #libFacets .lf-more:hover{text-decoration:underline}
 
   /* the list itself */
   #libMain{flex:1;min-width:0;display:flex;flex-direction:column}
@@ -160,9 +180,21 @@
   #libScroll{flex:1;overflow:auto;position:relative}
   #libSizer{position:relative;width:100%}
   #libRows{position:absolute;left:0;right:0;top:0}
-  #libScroll .lr{height:76px;box-sizing:border-box;display:flex;flex-direction:column;
-    justify-content:center;gap:3px;padding:0 20px;border-bottom:1px solid var(--line);
-    cursor:pointer;background:var(--panel)}
+  /* The row is HORIZONTAL: a fixed indicator gutter, then the text block. The gutter exists
+     because .lr-t is nowrap+ellipsis — a badge riding inside the title line is the first thing
+     clipped away, and it was clipped on exactly the long titles. Outside the ellipsized box it
+     is unconditionally visible, and it lands in a column the eye can run down. */
+  #libScroll .lr{height:76px;box-sizing:border-box;display:flex;align-items:center;gap:11px;
+    padding:0 20px;border-bottom:1px solid var(--line);cursor:pointer;background:var(--panel)}
+  #libScroll .lr-ind{flex:0 0 16px;display:flex;align-items:center;justify-content:center}
+  #libScroll .lr-body{flex:1;min-width:0;display:flex;flex-direction:column;
+    justify-content:center;gap:3px}
+  /* the handoff to the board is its own button on the far right, because the row itself now
+     means "read this" — two different destinations must not share one gesture */
+  #libScroll .lr-go{flex:0 0 auto;font:inherit;font-size:9px;letter-spacing:.7px;
+    text-transform:uppercase;color:#7d94a8;background:var(--bg);border:1px solid var(--line);
+    border-radius:999px;padding:4px 10px;cursor:pointer;white-space:nowrap}
+  #libScroll .lr-go:hover{background:#295c86;border-color:#295c86;color:#fff}
   #libScroll .lr:hover{background:#f4f7f9}
   #libScroll .lr-t{font-size:12.5px;line-height:1.3;color:var(--ink);
     overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -172,12 +204,11 @@
   #libScroll .lr-tags{display:flex;gap:4px;overflow:hidden;height:14px}
   #libScroll .lr-tag{flex:0 0 auto;font-size:8px;color:#3f6486;background:#eef3f8;
     border:1px solid #d7e2ec;border-radius:999px;padding:1px 6px;line-height:1.4}
+  /* "stub" leads the META line, not the title line — the title ellipsizes, the meta starts with
+     the citekey and so has room at its head. The curation pass it used to carry is the gutter
+     circle's job now (an empty ring already reads as "nothing curated here"). */
   #libScroll .lr-badge{font-size:7px;letter-spacing:.6px;text-transform:uppercase;color:#fff;
-    background:var(--faint);border-radius:3px;padding:1px 4px;margin-left:6px;vertical-align:1px}
-  /* curation pass is the library's own ranking — the board's landing column is sorted by it, so
-     losing it to a plain year sort would throw away a real judgement. It rides on the row. */
-  #libScroll .lr-pass{font-size:7px;letter-spacing:.6px;text-transform:uppercase;color:#fff;
-    background:var(--floor);border-radius:3px;padding:1px 4px;margin-left:6px;vertical-align:1px}
+    background:var(--faint);border-radius:3px;padding:1px 4px;margin-right:5px;vertical-align:1px}
   #libScroll .lr-none{padding:40px 20px;font-size:11px;color:var(--faint)}
 
   #hud .libbtn{display:inline-flex;align-items:center;gap:6px;cursor:pointer;font:inherit;
@@ -256,22 +287,20 @@
   body.landing-vacant #board{padding-left:40px}
   .col .colhd{font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--faint);
     padding-left:4px;margin-bottom:-4px}
-  /* the guaranteed exit. Per-card × handles one paper; this empties every source at once, and
-     without it a column built from three different doors had no way back to empty at all. */
+  /* the release-everything exit: puts every shown claim away and dismisses every stub summoned by
+     name. Present only while there is something to release (see syncLanding). */
   .col .colhd .hd-clear{margin-left:7px;padding:1px 7px;border:1px solid var(--line);
     border-radius:999px;cursor:pointer;letter-spacing:.6px}
   .col .colhd .hd-clear:hover{background:#f7e8e8;border-color:#e0bcbc;color:#a33}
 
-  /* Provenance + exit, landing column only. A card's presence used to be unexplained — three
-     doors led in, one of them (a jump by name) had no door out, and a paper wanted by two
-     sources ignored the chip you clicked to remove it. So each card now says what is holding
-     it here, and × means gone regardless of which source that was. */
+  /* Provenance, landing column only: the shown claims this paper answers to. With the column flat
+     a card needs no excuse for being here, so the strip is not an explanation any more — it is what
+     tells you whose hoisted block a card belongs to when two claims are gathered at the top. No
+     reason to state means no strip (.plain), rather than a dashed rule under every one of 54 cards. */
   .card .cprov{display:flex;align-items:center;gap:6px;padding:3px 8px 4px 11px;
     border-top:1px dashed var(--line);font-size:8px;letter-spacing:.4px;color:var(--faint)}
+  .card.plain .cprov{display:none}
   .card .cvia{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .card .cdrop{flex:0 0 auto;padding:0 5px;border-radius:3px;font-size:12px;line-height:1.1;
-    color:var(--faint);cursor:pointer}
-  .card .cdrop:hover{background:#f7e8e8;color:#a33}
 
   /* paper card */
   .card{position:relative;border:1.5px solid var(--line);border-radius:12px;background:var(--panel);
@@ -430,9 +459,10 @@
   .bn .meter{margin-top:6px;display:flex;gap:6px;font-size:8px}
   .bn .meter .s{color:var(--grounded)}.bn .meter .c{color:var(--cross)}
   /* The two evidence readouts. NEITHER is a control: showing a claim is the CARD's click, and
-     these report what that click did — the rung chip how many narrower claims it put on the band
-     (▸ folded, ▾ shown), the lens how many papers it put in the column and how many of those are
-     still there after any × dismissals. Both were buttons once, and having three ways to say
+     these report what that click did — the rung chip how many narrower claims it gathered up with
+     the card (they were on the band either way), the lens how many papers it put in the column and
+     how many of those are still there after any × dismissals. Both were buttons once, and having
+     three ways to say
      "show me this claim" was the confusion; making them labels rather than restyling them is the
      fix. pointer-events:none on each, so a click aimed at a chip lands on the card. */
   .bn .bdrills{margin-top:7px;display:flex;flex-wrap:wrap;gap:5px}
@@ -540,17 +570,16 @@
     .pw-bar{cursor:default}
     .card,.slice,.slices .sgrp,.card.stack,.pw-tool,.pw-x,#hud .wip,
     #wipPanel .wp-row,#aimPanel .ap-row,#libFacets .tp-chip,
-    .card .cdrop,.bn{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+    .bn{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
     .slice{padding:7px 6px}                       /* fatter tap targets */
     .slices .sgrp{padding-top:9px;margin:9px 0 4px}
     #wipPanel .wp-row{padding:11px 10px}
     /* the aim rows wrap on a narrow screen: title on one line, the flag beneath it */
     #aimPanel .ap-row{padding:12px 10px;flex-wrap:wrap;gap:2px 8px}
     #aimPanel .ap-row .flag{margin-left:0;flex-basis:100%}
-    /* the × needs a finger-sized target especially, since it sits on the same card a tap is
-       meant to open. Neither chip is tappable — the whole claim card is the target. */
+    /* nothing on a card is tappable but the card: the strip is a label, and neither chip on a
+       claim is a control — the whole claim card is the target. */
     .card .cprov{padding:5px 8px 6px 11px}
-    .card .cdrop{padding:2px 10px;font-size:15px}
     .bn .lens,.bn .bdrill{padding:4px 10px}
     .card:active{border-color:#b8c3cc}            /* tap feedback (replaces the lost :hover cue) */
     .slice.drillable:active{background:#e9eef2}
@@ -604,6 +633,7 @@
     body.dock-open #dockGrip{left:0;right:0;top:auto;bottom:var(--dock-h);width:auto;
       height:var(--grip);margin:0 0 calc(var(--grip) / -2) 0;cursor:ns-resize}
     #dockGrip::after{width:38px;height:3px}
+    body.library.dock-open #libraryPane{right:0;bottom:var(--dock-h)}
   }
   /* ── PDF-only window (index.html?detached=1 or ?focus=1) ────────────────────────────────
      One document, two drivers: the browse view's popped-out dock (`detached`, mirrored over a
@@ -820,9 +850,10 @@
   <span id="wip" class="wip" hidden></span>
   <span id="aims" class="wip" hidden></span>
   <button id="pdfToggle" class="pdfbtn" hidden>📄 PDF</button>
+  <button id="backBtn" class="libbtn" hidden>← graph</button>
   <button id="finishBtn" class="donebtn" hidden>✓ finish curation</button>
   <label class="widthctl">width
-    <input id="colw" type="range" min="220" max="720" step="4" value="340">
+    <input id="colw" type="range" min="220" max="720" step="4" value="500">
     <span class="val"></span>
   </label>
 </div>
@@ -921,39 +952,20 @@ const SYNTH=1e6;         // synthesis band: broad nodes always sit at/after this
 let broadTier={};
 let broadKids={};        // slug -> the broad nodes that ladder INTO it (one rung below), set by
                          // computeBroadTiers since it walks exactly that relation already
-// Which rungs are revealed. The band lands on its ROOTS only — the nodes nothing ladders out
-// of, i.e. the top of each chain — and a rung appears when the human opens the node above it.
-// Rendering all 42 at once was the original complaint: adding altitude made the ladder legible
-// without making the list shorter, because a ladder does not remove its leaves. 42 -> 14 on
-// the landing view, and the claim side goes 26 -> 4. Persists across rebuild() like `stacks`.
+// The band is FLAT: every rung of every ladder has a card, always, at its own altitude.
 //
-// "Revealed" here means `shownBroad` — the SAME set that lands a claim's papers. A claim's evidence
-// is whatever sits one step below it, and which KIND of thing that is (papers at the bottom of the
-// ladder, narrower claims anywhere above it) is a fact about the graph, not a choice the reader
-// should have to make with a second chip. See showBroad.
-const broadRoots=()=>Object.keys(BROAD).filter(s=>!((BROAD[s].leads_to||[]).some(r=>BROAD[r])));
-// A node is on screen if it is a root, or if everything between it and a root is shown. Walk
-// down from the roots rather than up from each node: that way a node with two parents shows
-// as soon as EITHER is shown, which is what multi-parenting is for.
-function visibleBroad(){
-  const seen=new Set();
-  const walk=s=>{ if(seen.has(s)) return; seen.add(s);
-                  if(shownBroad.has(s)) for(const k of (broadKids[s]||[])) walk(k); };
-  broadRoots().forEach(walk);
-  return seen;
-}
-// Hiding a claim takes its subtree down with it: a narrower claim you reached THROUGH that claim
-// has no card once the parent folds, and a shown claim with no card is one still landing papers
-// with nothing on screen to say why. Iterate, because dropping one node can orphan the next; it
-// terminates because roots are always visible, so the set can only shrink.
-function pruneShown(){
-  for(;;){
-    const vis=visibleBroad();
-    const gone=[...shownBroad].filter(s=>!vis.has(s));
-    if(!gone.length) return;
-    for(const s of gone) shownBroad.delete(s);
-  }
-}
+// It was not always. The band used to land on its ROOTS only — the nodes nothing ladders out of —
+// and a rung appeared when the human showed the node above it, on the theory that 42 nodes at once
+// is a backlog and 14 is a view. Hiding was the wrong tool for that job, and hoisting is the right
+// one: `hoistShown` gathers a shown claim, its narrower claims and its papers into one screenful at
+// the top of their columns, so the reader's attention is placed by ORDER rather than by absence.
+// Once order does the organizing, hiding only subtracts — you cannot see that a claim you have not
+// clicked exists, cannot read the shape of the ladder without walking it, and a claim reachable
+// through two parents flickered in and out depending on which one you had open. A long band you can
+// scroll past is strictly better than a short one that lies about how much graph there is.
+//
+// So `shownBroad` now means one thing only: whose block is gathered at the top (and whose papers are
+// in the column). Nothing about it decides what exists on screen.
 function computeBroadTiers(){
   const kids={};                                    // slug -> broad nodes that ladder INTO it
   for(const s in BROAD) kids[s]=[];
@@ -1075,15 +1087,13 @@ function paperCard(key, level){
     }
     body += `<div class="slices"></div>`;   // filled by renderSlices from the drill state
   }
-  // The provenance strip, landing column only. Left empty here and filled by syncLanding, because
-  // *why* a card is here changes after it is built: opening a second claim that also rests on this
-  // paper adds a reason without adding a card.
-  if (level === 0 && LANDING_COLLAPSED)
-    body += `<div class="cprov"><span class="cvia"></span>`
-          + `<span class="cdrop" title="remove this paper from the column">×</span></div>`;
+  // The provenance strip, landing column only: which shown claims this paper answers to. Born empty
+  // (hence .plain) and filled by syncLanding, because what a card is doing here changes after it is
+  // built — showing a second claim that also rests on this paper adds a reason.
+  if (level === 0)
+    body += `<div class="cprov"><span class="cvia"></span></div>`;
   el.innerHTML = body;
-  const drop = el.querySelector(".cdrop");
-  if (drop) drop.addEventListener("click", e => { e.stopPropagation(); dropLanded(key); });
+  if (level === 0) el.classList.add("plain");
   // a tag chip runs a search for that tag (the whole filter-by-tag story — no separate panel);
   // stopPropagation keeps the click off cardClick's fold/drill routing
   if (cur) el.querySelectorAll(".ctag").forEach(chip =>
@@ -1640,19 +1650,22 @@ function broadCard(slug,level){
   // it). A claim can have either, both, or neither; a leaf carries no affordance it cannot honour.
   const on=shownBroad.has(slug);
   const kids=(broadKids[slug]||[]).length;
+  // no caret: ▸/▾ was left over from the collapsed band, where the click revealed these claims.
+  // They are always on the band now (see broadTier), so the count is a constant fact about the
+  // ladder and the pill's FILL is the whole state readout — gathered with this claim, or not.
   const dn=kids?`<div class="bdrill${on?" on":""}"`
-          +` title="the narrower claims that ladder into this one — click the card to bring them onto the board">`
-          +`${on?"▾":"▸"} ${kids} narrower</div>`:"";
-  // the paper readout. When the claim is shown it reports what is actually on screen rather than a
-  // bare total, so a paper dismissed with × leaves the count honest instead of leaving the card
-  // claiming papers that are gone.
-  const keys=LANDING_COLLAPSED?[...new Set((BROAD_LINKS[slug]||[]).map(l=>l.key))]:[];
-  const shown=on?keys.filter(k=>!landedDropped.has(k)).length:0;
-  const lbl=!on?`${keys.length} paper${keys.length===1?"":"s"}`
-              :(shown===keys.length?`showing ${shown}`:`showing ${shown} of ${keys.length}`);
+          +` title="the narrower claims that ladder into this one — they stand on the band at their`
+          +` own altitude; click the card to gather them up here with it">`
+          +`${kids} narrower</div>`:"";
+  // the paper readout — same shape as the rung pill, and for the same reason. It used to read
+  // "showing 3 of 4", because a × could dismiss one of the papers the claim had just landed; with
+  // the column flat there is nothing to dismiss and nothing to land, so the count is again a
+  // constant fact about the graph and the fill says whether the block is gathered.
+  const keys=[...new Set((BROAD_LINKS[slug]||[]).map(l=>l.key))];
   const dp=keys.length?`<div class="blens"><span class="lens${on?" on":""}"`
-          +` title="the papers that assert this — click the card to bring them into the papers column">`
-          +`◂ ${lbl}</span></div>`:"";
+          +` title="the papers that assert this — they stand in the curated list; click the card to`
+          +` gather them at the top of it">`
+          +`◂ ${keys.length} paper${keys.length===1?"":"s"}</span></div>`:"";
   el.innerHTML=`<div class="bkd">${b.kind}</div>${t}<div class="btx">${b.text}</div>${m}`
               +(dn?`<div class="bdrills">${dn}</div>`:"")+dp;
   // No per-chip handlers left: the card is the only thing on it that takes a click.
@@ -1720,22 +1733,20 @@ function addBroad(level,slug,label,grp){
 // on the landing view and survives every rebuild. Unlinked-yet nodes stay hover-active
 // (broadExtraEdges lights their papers) like any other broad node.
 function ensureBroadBand(){
-  // Only the revealed rungs — see visibleBroad. expandCard still materializes any broad node an
-  // OPEN paper points at, whether or not the ladder reveals it: a real edge from a card the
-  // human opened outranks the collapse, same as reveal() outranking a folded card.
-  for(const slug of visibleBroad())
+  // Every rung, every rebuild — the band is flat (see broadTier). addBroad de-dups, so the ones
+  // expandCard already materialized for an open paper's real edges are left where they stand.
+  for(const slug in BROAD)
     addBroad(broadLevel(slug),slug,synthLabel(broadTier[slug]||0));
   // The broad-to-broad half of `leads-to` (SCHEMA §4): a node's own generalization into a
   // broader one, one rung up the same ladder its slices climb into it from below. Drawn like
   // that in-paper ladder (kind:"gen", the --broad idiom), not a lateral or stance edge — and
   // added here, not in expandCard, so it stands whether or not any paper is open: the whole
   // point is that the band reads as one rightward structure, not four unrelated columns.
-  // …but only between rungs that are actually on screen: a collapsed child has no card for the
-  // arrow to land on, and addEdge would anchor it on nothing.
-  const here=slug=>{ const c=cols[broadLevel(slug)]; return c&&c.keys.has(slug); };
+  // Every rung is on screen now, so every rung's arrow has both anchors — the on-screen guard this
+  // loop used to carry was there for the collapsed band and has nothing left to exclude.
   for(const [slug,b] of Object.entries(BROAD))
     for(const r of (b.leads_to||[]))
-      if(BROAD[r]&&here(slug)&&here(r))
+      if(BROAD[r])
         addEdge({cardId:`card-${broadLevel(slug)}:${slug}`,sid:null},
                 {cardId:`card-${broadLevel(r)}:${r}`,sid:null},"gen");
 }
@@ -1814,8 +1825,6 @@ function rebuild(hold){
   });
   edges=[]; edgeSeen.clear(); hover=null; unpinned=null;   // rows re-render; next mousemove re-isolates (docked viewer rests)
   broadTier=computeBroadTiers();     // fresh before anything below places a broad card by it
-  pruneShown();                      // …and before syncLanding, so a claim folded away with its
-                                     // parent stops asking for papers in the same pass
   syncLanding();                     // before the expansion sweep below reads cols[0].keys
   document.querySelectorAll(".card.open,.card.focus").forEach(c=>c.classList.remove("open","focus"));
   ctxOpen=new Set(); ctxDrill=new Map();
@@ -2247,6 +2256,24 @@ if (DRIVE || MOBILE_CURATE) (function(){
     if (seen === null) { seen = f.data_version; return; }   // baseline: first poll after opening
     if (f.data_version !== seen) { seen = f.data_version; refreshDriveData(); }
   }, 500);
+})();
+// Leaving the card WITHOUT finishing: ✓ finish is a statement about the paper (it comes off the
+// worklist), and it was the only way out of this window — so stepping back to the graph to look
+// something up meant declaring the curation over. This button is the plain exit: navigate back to
+// the browse view and leave `[curation] active` untouched, so the paper is still on the "in
+// progress" pill and one click re-enters its card. Nothing else is disturbed — the PDF and terminal
+// windows are separate OS windows, and the wire keeps its aim.
+if (DRIVE || MOBILE_CURATE) (function(){
+  const btn = document.getElementById("backBtn");
+  const key = new URLSearchParams(location.search).get("key");
+  if (!btn) return;
+  btn.hidden = false;
+  btn.title = key ? `back to the graph — ${key} stays on the worklist`
+                  : `back to the graph`;
+  btn.addEventListener("click", () => {
+    const u = new URL("index.html", location.href); u.search = ""; u.hash = "";
+    location.assign(u.href);
+  });
 })();
 // Finishing from the card: the symmetric close of the move that opened it. Entering curation turned
 // the graph window into this card; ✓ finish drops the paper off `[curation] active` (the same POST
@@ -2953,37 +2980,37 @@ function landingKeys(){
   return ORDER.filter(k=>keep.has(k));               // ORDER's ranking, filtered — never resorted
 }
 
-// ── the collapsed landing column ─────────────────────────────────────────────────────────
-// Same argument as the synthesis band: a list of 53 you must scroll is not a view, it's a
-// backlog. So the board lands on claims alone and papers arrive only when something asks for
-// them — a claim you show, or a jump from the library / search box. Browsing is the
-// library view's job now; the board's job is the reasoning.
+// ── the flat landing column ──────────────────────────────────────────────────────────────
+// Every curated paper, always, in ORDER's pass ranking — the same decision as the synthesis band,
+// for the same reason. This column was collapsed for a while: it landed empty and papers arrived
+// only when something asked for them (a claim you showed, a jump by name), on the theory that a
+// list of 54 you must scroll is a backlog rather than a view. It is a backlog only if scrolling is
+// the sole way to reach anything in it. It isn't — showing a claim HOISTS its papers to the top of
+// this column, so the reader's attention is placed by order, and the collapse was buying nothing
+// the hoist did not already deliver while costing everything below:
 //
-// NOT in the single-purpose windows: a DRIVE card window and the mobile curation view are both
-// built around a landing column that is already there, and neither has a library to browse.
-const LANDING_COLLAPSED = !DRIVE && !MOBILE_CURATE;
-// Three sets, and the asymmetry between them is the whole model:
-//   landedStuck   — you asked for this paper BY NAME (search box, library row). Sticky, because
-//                   naming a paper is a standing request that shouldn't evaporate when some
-//                   unrelated claim is put away.
-//   shownBroad    — the claims you have SHOWN, by clicking them (showBroad). Their papers come and
-//                   go with the claim — as do the narrower claims that ladder into it, which is the
-//                   same set doing double duty, because both are "what sits one step below this".
-//   landedDropped — dismissed with ×. Overrides BOTH of the above, which is what makes the ×
-//                   mean what it says: a paper wanted by two sources used to ignore the chip you
-//                   clicked, because the other source still wanted it. Now nothing outranks the ×.
-// A drop lifts only when something explicitly asks for the paper again — a jump by name, or the
-// claim being shown again. That is the one rule to remember for the whole column.
+//   · a card could be *put away*, so what the column held became session history rather than a
+//     fact about the library, and three doors in needed a per-card × and a `clear` to undo;
+//   · a paper's presence had to be EXPLAINED (the `.cprov` strip exists for this), because the
+//     reader could not otherwise know why these 12 and not the other 42;
+//   · the board could not answer "what have I curated?" at all without opening the library.
+//
+// What survives is one door and one set of state:
+//   landedStuck — a paper named by the search box or a library row that the flat list does NOT
+//                 carry, i.e. a STUB. Curated papers are always present, so naming one is a
+//                 scroll-and-flash (gotoPaper) and adding it here is a no-op. Sticky, because
+//                 naming something is a standing request; `clear` is the way back.
+//   shownBroad  — the claims you have SHOWN (showBroad). No longer decides which papers EXIST in
+//                 the column, only which ones are gathered at its top, and which arrows are lit.
+// `landedDropped` and the per-card × went with the collapse: hiding a paper from a flat list is
+// the very thing the flat list is for not doing.
 const landedStuck=new Set();
 const shownBroad=new Set();
-const landedDropped=new Set();
-// key -> {claims:[slug], stuck:bool}: what's wanted, and by whom. One index serves all three
-// consumers — the reconcile below, the per-card provenance strip, and the lens chip's own count —
-// so they can never disagree about why a card is on screen.
+// key -> {claims:[slug], stuck:bool}: WHY a card is here — no longer *whether*. Two consumers, the
+// per-card provenance strip and the stub reconcile below, so they cannot disagree.
 function landedWant(){
   const want=new Map();
   const note=(k,slug)=>{
-    if(landedDropped.has(k)) return;
     const e=want.get(k)||{claims:[],stuck:false};
     if(slug) e.claims.push(slug); else e.stuck=true;
     want.set(k,e);
@@ -2997,17 +3024,12 @@ const broadLabel=slug=>{
   const b=BROAD[slug]||{}, s=b.title||b.text||slug;
   return s.length>36?s.slice(0,35)+"…":s;
 };
-// × on a card. Not "delete from whichever set put it here" — that was the unguessable version,
-// because two sets could want the same paper. A drop is its own fact, and it wins.
-function dropLanded(key){
-  landedStuck.delete(key);
-  landedDropped.add(key);
-  rebuild();
-}
-// The escape hatch the column never had: every source off, every drop forgotten, back to empty.
-// Claim pins go with it, because rebuild derives them from shownBroad — one state, one clear.
+// `clear` no longer empties the column — a flat list has nothing to empty. It RELEASES: every shown
+// claim put away, its arrows dark, every stub summoned by name dismissed. Claim pins go with it,
+// because rebuild derives them from shownBroad — one state, one clear. It deliberately leaves the
+// ORDER the hoists built: releasing a claim is not a reason to re-sort the column under the reader.
 function clearLanding(){
-  landedStuck.clear(); shownBroad.clear(); landedDropped.clear();
+  landedStuck.clear(); shownBroad.clear();
   rebuild();
 }
 // ── showing a claim: ONE gesture ─────────────────────────────────────────────────────────
@@ -3018,22 +3040,20 @@ function clearLanding(){
 // of the three you reached for changed what you got.
 //
 // Now the card is the whole gesture, at every altitude. Click a claim: whatever sits one step below
-// it comes onto the board — papers if it stands at the foot of the ladder, the narrower claims that
-// ladder into it if it stands higher, both if it has both — its arrows go bright and stay bright,
-// and the whole block gathers into one screenful. Click again: it all comes undone. Which kind of
+// it joins it at the top of the board — its papers land in the column, the narrower claims that
+// ladder into it are hoisted up beside it on the band, its arrows go bright and stay bright, and
+// the whole block gathers into one screenful. Click again: it all comes undone. Which kind of
 // evidence a claim has is a fact about the graph; making the reader express it as a different
 // gesture pushed a detail of the schema into the hands. The chips are readouts of that state, not
 // ways to enter part of it.
+//
+// The gesture PLACES; it no longer reveals. The rungs used to appear on this click (see broadTier for
+// why they stopped hiding), so a claim's own subtree could vanish under it and `pruneShown` existed to
+// keep that consistent. With the band flat, showing a claim can only ever move things.
 function showBroad(slug){
   const hide=shownBroad.has(slug);
-  if(hide) shownBroad.delete(slug);
-  else{
-    shownBroad.add(slug);
-    // showing a claim again RESETS it: whatever you dismissed under it comes back. Otherwise a ×
-    // earlier in the session would silently shrink a claim you deliberately asked for later.
-    for(const k of new Set((BROAD_LINKS[slug]||[]).map(l=>l.key))) landedDropped.delete(k);
-  }
-  rebuild();                                   // lands the papers, re-derives the pins, re-hoists
+  if(hide) shownBroad.delete(slug); else shownBroad.add(slug);
+  rebuild();                                   // hoists the papers, re-derives the pins, re-hoists
   // on hide the pointer is still resting on the card we just put away; without this the transient
   // hover re-lights the very edges the click turned off (see `unpinned`). On show, jump to the
   // hoisted block — instantly, because every scroll event redraws the edge overlay and animating
@@ -3041,27 +3061,31 @@ function showBroad(slug){
   if(hide) unpinned={cardId:`card-${broadLevel(slug)}:${slug}`,sid:null};
   else if(board.scrollTop) board.scrollTop=0;
 }
-// Reconcile cols[0] against landedWant(): add what's missing in ORDER's ranking (so the column
-// keeps the curator's pass order however the cards got here), drop what nothing wants any more.
+// Reconcile cols[0]. The curated list is a FIXED population — every key landingKeys() names is
+// present from boot and never leaves, so this only ever adds what a fresh graph brought in (a
+// hot-reloaded DRIVE window) and evicts stub cards nobody names any more. It never re-sorts: a card
+// already in the column stays exactly where the hoists left it.
 function syncLanding(){
-  if(!LANDING_COLLAPSED) return;
   const c=cols[0]; if(!c) return;
   const want=landedWant();
-  for(const k of [...c.keys]){
-    if(want.has(k)||k.endsWith("::srcs")) continue;
+  const perm=new Set(landingKeys());
+  for(const k of [...c.keys]){                       // only summoned stubs are evictable
+    if(perm.has(k)||landedStuck.has(k)||k.endsWith("::srcs")) continue;
     c.keys.delete(k);
     const el=document.getElementById(`card-0:${k}`); if(el) el.remove();
   }
-  for(const k of landingKeys()){                     // ORDER's ranking — never resorted
-    if(!want.has(k)||ACTIVE.has(k)||c.keys.has(k)) continue;
+  for(const k of perm){                              // ORDER's ranking — never resorted
+    if(ACTIVE.has(k)||c.keys.has(k)) continue;        // in-progress papers live in their own windows
     addPaper(0,k);
   }
-  for(const k of want.keys()){                       // a stub jumped to by name isn't in landingKeys()
+  for(const k of landedStuck){                       // a stub named by hand isn't in landingKeys()
     if(ACTIVE.has(k)||c.keys.has(k)||!(PAPERS[k]||STUBS[k])) continue;
     addPaper(0,k);
   }
-  // Say why each card is here. Rewritten every sync, not written once at creation: opening a
-  // second claim that rests on the same paper adds a reason without adding a card.
+  // Say what each card is doing here. Not "why is it on screen" any more — a curated paper needs no
+  // excuse for being in the list of curated papers — but which of the shown claims it answers to,
+  // which is what tells the reader whose block a hoisted card belongs to when two are gathered at
+  // the top. Rewritten every sync: showing a second claim that rests on this paper adds a reason.
   for(const k of c.keys){
     const card=document.getElementById(`card-0:${k}`);   // id-with-a-colon: getElementById, not a selector
     const via=card&&card.querySelector(".cvia");
@@ -3072,24 +3096,28 @@ function syncLanding(){
     for(const slug of e.claims) bits.push("evidence for “"+broadLabel(slug)+"”");
     via.textContent=bits.join(" · ");
     via.title=bits.join("\n");
+    card.classList.toggle("plain",!bits.length);         // no reason to state → no strip at all
   }
   const hd=c.el.querySelector(".colhd");
-  if(hd) hd.innerHTML=c.keys.size
-    ? `papers · ${c.keys.size} shown<span class="hd-clear">clear</span>`
-    : "papers · open a claim, or browse the library";
-  c.el.classList.toggle("vacant",!c.keys.size);
+  // Count the CURATED cards, not c.keys.size: the column's tail carries a card per uncurated paper
+  // that some lateral / answers edge points at (landingKeys), which exist so those arrows have an
+  // anchor and are not part of the list this header names. 69 curated, 49 such stubs today.
+  // `clear` appears only when there is state to release (a shown claim, a summoned stub). On the
+  // resting column it would be a button that does nothing, which is worse than no button.
+  let n=0; for(const k of c.keys) if(PAPERS[k]) n++;
+  if(hd) hd.innerHTML=`curated papers · ${n}`
+    +(shownBroad.size||landedStuck.size?`<span class="hd-clear">clear</span>`:"");
+  c.el.classList.toggle("vacant",!c.keys.size);         // an empty repo, or a preview of one paper
   document.body.classList.toggle("landing-vacant",!c.keys.size);
 }
 function boot(){
   broadTier=computeBroadTiers();     // tiers ready before the very first ensureBroadBand()
-  const c0=ensureCol(0,LANDING_COLLAPSED?"papers · open a claim, or browse the library"
-                                        :"curated papers · search finds the rest");
+  const c0=ensureCol(0,"curated papers");
   // delegated, because syncLanding rewrites the header every time the count changes
-  if(LANDING_COLLAPSED) c0.el.addEventListener("click",e=>{
+  c0.el.addEventListener("click",e=>{
     if(e.target.closest(".hd-clear")){ e.stopPropagation(); clearLanding(); }
   });
-  if(LANDING_COLLAPSED) syncLanding();               // starts empty — papers arrive by drill/search
-  else landingKeys().forEach(k=>{ if(!ACTIVE.has(k)) addPaper(0,k); });  // in-progress papers live in their own windows
+  syncLanding();                                     // the whole curated list, in ORDER's ranking
   ensureBroadBand();                                 // synthesis band present from the landing view
   redraw();
 }
@@ -3230,9 +3258,9 @@ function renderResults(q){
 }
 function gotoPaper(key){
   closeSearch();
-  // Naming a paper is a standing request for it: landedStuck outlives whatever lens is open, so a
-  // rebuild's syncLanding() never sweeps away the card you just jumped to. It also lifts an earlier
-  // × — asking for a paper by name IS the "something asks for it again" a drop waits for.
+  // A curated paper is already in the flat list, so this is a scroll-and-flash and landedStuck is a
+  // no-op. It earns its keep for a STUB, which the list does not carry: naming one is a standing
+  // request for it, so the card is minted and survives every rebuild's syncLanding until `clear`.
   if(!STUBS[key] && !PAPERS[key]) return;
   // …but in the walk, the board is not the view you are looking at: naming a paper there means
   // focus the WALK on it. Reached through window (not the `const WALK` below) so this stays safe
@@ -3242,15 +3270,12 @@ function gotoPaper(key){
     return;
   }
   landedStuck.add(key);
-  // Lifting a drop changes a lens's "showing N of M", which lives on a broad card — so that case
-  // needs the full rebuild, not just the column reconcile, or the band keeps the stale count.
-  if(landedDropped.delete(key)) rebuild();
-  else syncLanding();                        // mints the card if it's new, and refreshes every
+  syncLanding();                             // mints a summoned stub's card, and refreshes every
   let el = document.getElementById(`card-0:${key}`);     // card's provenance + the column header
-  if(!el){                                   // not collapsed (DRIVE / mobile curate): that landing
-    addPaper(0, key);                        // list carries curated papers only, so mint the stub's
-    el = document.getElementById(`card-0:${key}`);       // card here (appended below the ranking —
-    if(!el) return;                                      // it's a search result, not part of ORDER)
+  if(!el){                                   // an in-progress paper (ACTIVE) is held out of the
+    addPaper(0, key);                        // list because it has its own window — but naming it
+    el = document.getElementById(`card-0:${key}`);       // by hand outranks that, so mint the card
+    if(!el) return;                                      // (appended below the ranking)
   }
   redraw();                                              // the column may have grown; edges re-anchor
   el.scrollIntoView({behavior: "smooth", block: "center"});
@@ -3315,17 +3340,115 @@ if(!DRIVE && !PDFWIN && !MOBILE_CURATE) (function(){
     title: {label: "title", cmp: (a, b) => a.title.localeCompare(b.title)},
   };
   const SCOPES = {all: "everything", curated: "curated", stub: "uncited stubs"};
-  let scope = "all", sort = "pass", topic = null, rows = [], view = [];
+  const HEAD = 12, MORE = 60;                          // ranked-facet cap, and what "more" opens it to
+  let scope = "all", sort = "pass", topic = null, author = null, journal = null,
+      moreAuth = false, moreJrnl = false, rows = [], view = [];
 
   const leavesByHead = () => Object.entries(TOPICS).filter(([, t]) => t.root)
     .sort((a, b) => a[1].title.localeCompare(b[1].title))
     .map(([slug, t]) => [t, Object.entries(TOPICS).filter(([, x]) => x.broader.includes(slug))
       .sort((a, b) => a[1].title.localeCompare(b[1].title))]);
 
-  function renderFacets(){
+  // ── the two derived axes ──────────────────────────────────────────────────────────────
+  // Neither authors nor journals are stored in a form you can group on directly, and both fail
+  // the same way: the curated tier and the stub tier write the *same* fact differently, so a
+  // naive tally files one journal (or one person) under two entries and the ranking lies.
+
+  // Journals ride the CITEKEY's venue token, not the display string. A curated paper stores no
+  // `journal` at all (SCHEMA §3: the venue only ever lived in the citekey), while a stub carries
+  // OpenAlex's full name — so "Nature Physics" and "NatPhys" are the same journal seen from the
+  // two tiers. The token is in every citekey on both tiers, which makes it the one key they
+  // share; the stubs then donate a readable name for it (the most-cited spelling wins, since
+  // OpenAlex serves catalogue variants like "Physical review. E" alongside the modern title).
+  let venueName = null;
+  function venueNames(){
+    if(venueName) return venueName;
+    const tally = {};
+    for(const [k, s] of Object.entries(STUBS)){
+      const t = venueFromKey(k);
+      if(!t || !s.journal) continue;
+      (tally[t] || (tally[t] = {}))[s.journal] = (tally[t][s.journal] || 0) + 1;
+    }
+    venueName = {};
+    for(const [t, names] of Object.entries(tally))
+      venueName[t] = Object.entries(names)
+        .sort((a, b) => b[1] - a[1] || a[0].length - b[0].length)[0][0];
+    return venueName;
+  }
+  const venueLabel = tok => venueNames()[tok] || tok;
+
+  // Authors fold to `family|first-initial`. Curated YAML writes "Family, Given" (SCHEMA §4);
+  // stubs carry OpenAlex's "Given M. Family" — one person, two strings, and the same person
+  // also drifts between "Given Family" and "Given M. Family" across publishers. Family plus
+  // first initial is the granularity a bibliography can actually support. The cost is that true
+  // homonyms collide, which the rail says out loud rather than pretending precision it hasn't got.
+  const PARTICLES = new Set(["van", "von", "de", "der", "den", "du", "del", "della", "di", "da",
+                             "dos", "la", "le", "ter", "ten"]);
+  const fold = s => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();  // strip accents
+  function authorId(raw){
+    // U+2010–2015 are the typographic dashes OpenAlex serves in place of ASCII "-"
+    const s = String(raw || "").replace(/[\u2010-\u2015]/g, "-").replace(/\s+/g, " ").trim();
+    if(!s) return null;
+    let family, given;
+    const c = s.indexOf(",");
+    if(c > -1){ family = s.slice(0, c).trim(); given = s.slice(c + 1).trim(); }
+    else {
+      const w = s.split(" ");
+      let i = w.length - 1;                          // absorb a nobiliary particle into the family
+      while(i > 1 && PARTICLES.has(fold(w[i - 1]).replace(/\.$/, ""))) i--;
+      family = w.slice(i).join(" "); given = w.slice(0, i).join(" ");
+    }
+    if(!family) return null;
+    const ini = (given.match(/[A-Za-z\u00c0-\u024f]/) || [""])[0].toUpperCase();
+    return {id: fold(family) + "|" + fold(ini), name: family + (ini ? ", " + ini + "." : "")};
+  }
+
+  // Fold once, onto the shared search index — recompute() runs on every keystroke and would
+  // otherwise re-parse ~30k names each time.
+  function prepare(r){
+    if(r.auth) return r;
+    const seen = new Set();
+    r.auth = [];
+    for(const a of r.authors){
+      const id = authorId(a);
+      if(id && !seen.has(id.id)){ seen.add(id.id); r.auth.push(id); }
+    }
+    r.venue = venueFromKey(r.key);
+    return r;
+  }
+
+  // One ranked facet: rows already tallied, capped at HEAD unless opened, with the current
+  // selection pinned in even when it falls outside the cap (counts are computed with this
+  // facet's own filter lifted, so a narrow pick can rank low in its own list).
+  function rankedFacet(kind, title, tally, sel, more, note){
+    let list = Object.entries(tally)
+      .sort((a, b) => b[1].n - a[1].n || a[1].name.localeCompare(b[1].name));
+    if(!list.length) return "";
+    const cap = more ? MORE : HEAD, total = list.length;
+    let shown = list.slice(0, cap);
+    if(sel && !shown.some(([k]) => k === sel) && tally[sel]) shown = shown.concat([[sel, tally[sel]]]);
+    return `<div class="lf-hd">${esc(title)}</div><div class="lf-list">`
+      + shown.map(([k, v]) =>
+          `<span class="lf-row${sel === k ? " on" : ""}" data-${kind}="${esc(k)}" `
+          + `title="${esc(v.name)}"><span class="nm">${esc(v.name)}</span>`
+          + `<span class="n">${v.n}</span></span>`).join("")
+      + `</div>`
+      + (total > cap
+          ? `<div class="lf-more" data-more="${kind}">${more ? "less" : `${total - cap} more…`}</div>`
+          : "")
+      + (note ? `<div class="lf-note">${note}</div>` : "");
+  }
+
+  function renderFacets(tallies){
     let html = `<div class="lf-hd">show</div><div class="lf-seg">`
       + Object.entries(SCOPES).map(([k, lbl]) =>
           `<span class="lf-opt${scope === k ? " on" : ""}" data-scope="${k}">${esc(lbl)}</span>`).join("")
+      + `</div>`
+      // sort rides up here with scope: both are controls over the whole list, whereas topic,
+      // journal and author are the three filter axes and read better as one block.
+      + `<div class="lf-hd">sort</div><div class="lf-seg">`
+      + Object.entries(SORTS).map(([k, s]) =>
+          `<span class="lf-opt${sort === k ? " on" : ""}" data-sort="${k}">${esc(s.label)}</span>`).join("")
       + `</div>`;
     const heads = leavesByHead().filter(([, leaves]) => leaves.length);
     if(heads.length){
@@ -3340,28 +3463,51 @@ if(!DRIVE && !PDFWIN && !MOBILE_CURATE) (function(){
         + `<div class="lf-note">headings group and can't be filtered; click a container to narrow. `
         + `Topics reach curated papers only — a stub carries no tags.</div>`;
     }
-    html += `<div class="lf-hd">sort</div><div class="lf-seg">`
-      + Object.entries(SORTS).map(([k, s]) =>
-          `<span class="lf-opt${sort === k ? " on" : ""}" data-sort="${k}">${esc(s.label)}</span>`).join("")
-      + `</div>`;
+    html += rankedFacet("jrnl", "journal", tallies.jrnl, journal, moreJrnl,
+                        "grouped by the citekey's venue token, so a curated paper and the stubs "
+                        + "citing the same journal land on one row.")
+          + rankedFacet("auth", "author", tallies.auth, author, moreAuth,
+                        "ranked by how often the name appears across the whole bibliography. "
+                        + "Folded to family name + first initial, so two people who share both "
+                        + "share a row.");
     facets.innerHTML = html;
   }
 
   function recompute(){
     if(!searchIndex) searchIndex = buildSearchIndex();
-    if(!rows.length) rows = searchIndex;              // ORDER's ranking, curated-first
+    if(!rows.length) rows = searchIndex.map(prepare);  // ORDER's ranking, curated-first
     const terms = filterEl.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
     const inTopic = topic ? new Set(TOPICS[topic].papers) : null;
-    view = rows.filter(r => {
+    // `skip` lifts one facet's own filter, so its list keeps showing the alternatives you could
+    // switch to instead of collapsing to the one row you already picked.
+    const passes = (r, skip) => {
       if(scope === "curated" && !r.cur) return false;
       if(scope === "stub" && r.cur) return false;
-      if(inTopic && !inTopic.has(r.key)) return false;
+      if(skip !== "topic" && inTopic && !inTopic.has(r.key)) return false;
+      if(skip !== "jrnl" && journal && r.venue !== journal) return false;
+      if(skip !== "auth" && author && !r.auth.some(a => a.id === author)) return false;
       return terms.every(t => r.blob.includes(t));
-    });
+    };
+    const tallies = {auth: {}, jrnl: {}};
+    for(const r of rows){
+      if(r.venue && passes(r, "jrnl")){
+        const e = tallies.jrnl[r.venue] || (tallies.jrnl[r.venue] = {n: 0, name: venueLabel(r.venue)});
+        e.n++;
+      }
+      if(passes(r, "auth")) for(const a of r.auth){
+        const e = tallies.auth[a.id] || (tallies.auth[a.id] = {n: 0, name: a.name});
+        e.n++;
+      }
+    }
+    view = rows.filter(r => passes(r, null));
     const cmp = SORTS[sort].cmp;
     if(cmp) view = view.slice().sort(cmp);
     countEl.textContent = `${view.length} of ${rows.length}`;
-    clearEl.hidden = !(topic || terms.length || scope !== "all" || sort !== "pass");
+    clearEl.hidden = !(topic || author || journal || terms.length
+                       || scope !== "all" || sort !== "pass");
+    const keepScroll = facets.scrollTop;               // the rail re-renders on every keystroke
+    renderFacets(tallies);
+    facets.scrollTop = keepScroll;
     sizer.style.height = (view.length * ROW_H) + "px";
     paint();
   }
@@ -3369,16 +3515,19 @@ if(!DRIVE && !PDFWIN && !MOBILE_CURATE) (function(){
   function rowHTML(r){
     const who = r.authors.length
       ? esc(r.authors.slice(0, 4).join(" · ")) + (r.authors.length > 4 ? " · …" : "") : "";
-    const bib = esc([r.journal, r.year].filter(Boolean).join(" · "));
-    const badge = r.cur
-      ? (r.pass ? `<span class="lr-pass">pass ${r.pass}</span>` : "")
-      : `<span class="lr-badge">stub</span>`;
+    // the venue token resolved back to a real journal name, same map the facet ranks by
+    const bib = esc([r.venue ? venueLabel(r.venue) : r.journal, r.year].filter(Boolean).join(" · "));
+    const badge = r.cur ? "" : `<span class="lr-badge">stub</span>`;
     const tags = (r.tags || []).slice(0, 8)
       .map(t => `<span class="lr-tag">${esc(t)}</span>`).join("");
+    // the same pie the board's cards carry (pass/4), in a gutter the title can't clip
     return `<div class="lr ${r.cur ? "" : "stub"}" data-key="${esc(r.key)}">`
-         + `<div class="lr-t">${esc(r.title)}${badge}</div>`
-         + `<div class="lr-m">${esc(r.key)}${who || bib ? "  ·  " + [who, bib].filter(Boolean).join("  ·  ") : ""}</div>`
-         + `<div class="lr-tags">${tags}</div></div>`;
+         + `<div class="lr-ind">${passCircle(r.cur ? r.pass : 0)}</div>`
+         + `<div class="lr-body">`
+         + `<div class="lr-t">${esc(r.title)}</div>`
+         + `<div class="lr-m">${badge}${esc(r.key)}${who || bib ? "  ·  " + [who, bib].filter(Boolean).join("  ·  ") : ""}</div>`
+         + `<div class="lr-tags">${tags}</div></div>`
+         + `<button class="lr-go" title="show this paper on the board">board →</button></div>`;
   }
 
   // Windowed paint: only the rows the viewport can see are in the DOM, offset by a transform.
@@ -3400,8 +3549,7 @@ if(!DRIVE && !PDFWIN && !MOBILE_CURATE) (function(){
     document.body.classList.add("library");
     btn.classList.add("on");
     btn.textContent = "← board";
-    renderFacets();
-    recompute();
+    recompute();                                // renders the rail too: the facet counts are of the view
     scroll.scrollTop = 0;
     paint();
   }
@@ -3419,27 +3567,53 @@ if(!DRIVE && !PDFWIN && !MOBILE_CURATE) (function(){
   addEventListener("resize", () => { if(isOpen()) paint(); });
   filterEl.addEventListener("input", () => { scroll.scrollTop = 0; recompute(); });
   clearEl.addEventListener("click", () => {
-    scope = "all"; sort = "pass"; topic = null; filterEl.value = "";
-    scroll.scrollTop = 0; renderFacets(); recompute();
+    scope = "all"; sort = "pass"; topic = null; author = null; journal = null;
+    moreAuth = moreJrnl = false; filterEl.value = "";
+    scroll.scrollTop = 0; recompute();
   });
   facets.addEventListener("click", e => {
     const sc = e.target.closest("[data-scope]"), so = e.target.closest("[data-sort]"),
-          ch = e.target.closest(".tp-chip");
+          ch = e.target.closest(".tp-chip"), rw = e.target.closest("[data-auth],[data-jrnl]"),
+          mo = e.target.closest("[data-more]");
     if(sc) scope = sc.dataset.scope;
     else if(so) sort = so.dataset.sort;
+    else if(mo){                                         // open/close a ranked facet's tail
+      if(mo.dataset.more === "auth") moreAuth = !moreAuth; else moreJrnl = !moreJrnl;
+      recompute(); return;                               // not a filter change — hold the scroll spot
+    }
+    else if(rw){
+      if(rw.dataset.auth !== undefined) author = author === rw.dataset.auth ? null : rw.dataset.auth;
+      else journal = journal === rw.dataset.jrnl ? null : rw.dataset.jrnl;
+    }
     else if(ch){
       topic = topic === ch.dataset.slug ? null : ch.dataset.slug;
       if(topic && scope === "stub") scope = "curated";   // a stub can't carry a topic; say so by moving
     } else return;
-    scroll.scrollTop = 0; renderFacets(); recompute();
+    scroll.scrollTop = 0; recompute();
   });
-  // The seam: browsing found it, the board reasons about it. Leaving first means gotoPaper's
-  // scrollIntoView + flash land on a visible board rather than a hidden one.
+  // Two destinations, two gestures. The ROW means "read this": it opens the paper's PDF in the
+  // dock beside the list and stays in the library, which is what browsing a bibliography is
+  // actually for — you scan, you open one, you scan on. The BOARD button is the seam over to the
+  // reasoning surface, and it is explicit because it costs you the list.
+  //
+  // Falling back matters: a stub has no PDF and a static `lit build` serves none at all, so
+  // where there is nothing to open the row keeps its old meaning rather than doing nothing.
+  // Leaving first means gotoPaper's scrollIntoView + flash land on a visible board.
   scroll.addEventListener("click", e => {
     const row = e.target.closest(".lr");
     if(!row) return;
-    closeLib();
-    gotoPaper(row.dataset.key);
+    const key = row.dataset.key;
+    if(e.target.closest(".lr-go") || !(LIVE && !DRIVE && PDFS && PDFS.has(key))){
+      closeLib();
+      gotoPaper(key);
+      return;
+    }
+    // closeDock() drops the mount but leaves dockShown parked, so clicking the SAME row after
+    // shutting the dock would early-out of loadDock and then open on the wrong paper.
+    if(!pdfActive()) dockShown = null;
+    loadDock(key);
+    if(!pdfActive()) openDock();                 // …which turns the 📄 PDF pill on
+    paint();                                     // the pane just lost width (or height, in portrait)
   });
   addEventListener("keydown", e => { if(e.key === "Escape" && isOpen()) closeLib(); });
   if(new URLSearchParams(location.search).get("view") === "library") openLib();
@@ -3448,13 +3622,14 @@ if(!DRIVE && !PDFWIN && !MOBILE_CURATE) (function(){
 board.addEventListener("scroll",redraw);
 addEventListener("resize",redraw);
 
-// ── the in-progress worklist: launch a paper's three windows (serve only) ────────────────────
+// ── the in-progress worklist: launch a paper's windows (serve only) ──────────────────────────
 // The papers the curator moved in (`[curation] active`). The pill opens a picker; selecting one
-// opens that paper's curation windows — three real OS windows, not panes:
+// opens that paper's curation windows — real OS windows, not panes:
 //
 //   card      /preview.html?key=…&drive=1   the isolated subgraph; quote-clicks aim the wire
 //   paper     /index.html?focus=1           the PDF, polling the wire (`lit focus` steers it too)
 //   terminal  POST /term                    a native emulator running that paper's Claude session
+//                                           — DISABLED, see AUTO_AGENT below
 //
 // Why windows: the window manager already tiles, stacks, moves across monitors, and remembers
 // better than a CSS grid with drag handles ever did, and the terminal is a REAL terminal — full
@@ -3462,9 +3637,8 @@ addEventListener("resize",redraw);
 // graph: it launches and tracks, and you can close it without disturbing a session.
 //
 // A browser gesture can reliably authorize ONE new window, not two. The PDF is that one popup;
-// this graph window then navigates into the card, while the server launches the native terminal.
-// The two POSTs settle before navigation so a failed terminal request is visible and cannot be
-// cancelled by leaving the graph. One click, three real surfaces, only one browser popup.
+// this graph window then navigates into the card. The POSTs settle before navigation so a failed
+// request is visible and cannot be cancelled by leaving the graph.
 // The programme index: a HUD pill listing the aims, each row a link to that aim's card at
 // /preview.html?key=@<slug> — the same isolated view `lit preview` writes, so the served card
 // and the written one cannot drift. Server-only (/aims.json is a `lit serve` route), so a
@@ -3515,6 +3689,11 @@ if (LIVE && !DRIVE && !PDFWIN && !MOBILE_CURATE) (function(){
   pill.hidden = false;
 
   const panel = document.getElementById("wipPanel");
+  // Auto-spawning an agent per worklist click is OFF: entering a paper opens its card and its PDF
+  // and stops there, so an agent you already have running keeps the paper instead of a second one
+  // appearing behind it. Attach one yourself (Switchboard, or a terminal already open on the data
+  // root). Flip to true to restore the original one-click card + PDF + agent launch.
+  const AUTO_AGENT = false;
   const STAGE = ["stub","ingested","skeleton","contextualized","full"];
   const stage = k => { const p = PAPERS[k].pass == null ? 0 : PAPERS[k].pass;
                        return `maturity ${p}/4 · ${STAGE[p] || ""}`; };
@@ -3530,12 +3709,14 @@ if (LIVE && !DRIVE && !PDFWIN && !MOBILE_CURATE) (function(){
   async function enter(k){
     panel.hidden = true;
     if (PHONE_LAUNCH) {
-      if (!COCKPIT) { alert("Switchboard's agent spawn is unavailable"); return; }
-      try {
-        const r = await fetch("term", {method: "POST",
-          body: JSON.stringify({citekey: k, attach: false})});
-        if (!r.ok) throw new Error((await r.text()).trim() || `HTTP ${r.status}`);
-      } catch (e) { alert(`could not spawn the agent for ${k}: ${e.message}`); return; }
+      if (AUTO_AGENT) {
+        if (!COCKPIT) { alert("Switchboard's agent spawn is unavailable"); return; }
+        try {
+          const r = await fetch("term", {method: "POST",
+            body: JSON.stringify({citekey: k, attach: false})});
+          if (!r.ok) throw new Error((await r.text()).trim() || `HTTP ${r.status}`);
+        } catch (e) { alert(`could not spawn the agent for ${k}: ${e.message}`); return; }
+      }
       location.assign(winUrl("preview.html", {key: k, mobile: "1"}));
       return;                                         // agent runs detached; no popup/terminal attachment
     }
@@ -3546,13 +3727,15 @@ if (LIVE && !DRIVE && !PDFWIN && !MOBILE_CURATE) (function(){
     const focusRequest = fetch("focus", {method: "POST", body: JSON.stringify({citekey: k})})
       .catch(() => {});                              // PDF stays at its last aim if the wire is down
     let termRequest = Promise.resolve();
-    if (COCKPIT && COCKPIT.terminal) termRequest = fetch("term", {method: "POST", body: JSON.stringify({citekey: k})})
-      .then(async r => {
-        if (r.ok) return;
-        const detail = (await r.text()).trim() || `HTTP ${r.status}`;
-        throw new Error(detail);
-      });
-    else alert("Switchboard's agent spawn is unavailable — restart lit serve after checking Switchboard");
+    if (AUTO_AGENT) {
+      if (COCKPIT && COCKPIT.terminal) termRequest = fetch("term", {method: "POST", body: JSON.stringify({citekey: k})})
+        .then(async r => {
+          if (r.ok) return;
+          const detail = (await r.text()).trim() || `HTTP ${r.status}`;
+          throw new Error(detail);
+        });
+      else alert("Switchboard's agent spawn is unavailable — restart lit serve after checking Switchboard");
+    }
     const [, termResult] = await Promise.allSettled([focusRequest, termRequest]);
     if (termResult.status === "rejected") alert(`could not open the terminal for ${k}: ${termResult.reason.message}\n\n`
       + `If lit serve was already running when this feature changed, restart it once.`);
@@ -3568,14 +3751,15 @@ if (LIVE && !DRIVE && !PDFWIN && !MOBILE_CURATE) (function(){
   }
 
   panel.innerHTML = `<div class="wp-hd">curation in progress</div>` + inProg.map(k =>
-    `<div class="wp-row" data-k="${k}" title="open ${k}'s card, paper and terminal windows">`
+    `<div class="wp-row" data-k="${k}" title="open ${k}'s card and paper windows">`
     + `${passCircle(PAPERS[k].pass || 0)}<span class="ckey">${k}</span>`
     + `<span class="stage">${stage(k)}</span>`
     + `<button class="wp-done" data-done="${k}" title="finish: return ${k} to the graph">✓</button>`
     + `</div>`).join("")
     + `<div class="wp-note">one click → this window becomes the card · opens PDF`
-    + `${COCKPIT ? ` · opens ${COCKPIT.agent}${COCKPIT.terminal ? ` in ${COCKPIT.terminal}` : ``}`
-                : ` · no Switchboard agent available`}</div>`;
+    + `${AUTO_AGENT ? (COCKPIT ? ` · opens ${COCKPIT.agent}${COCKPIT.terminal ? ` in ${COCKPIT.terminal}` : ``}`
+                              : ` · no Switchboard agent available`)
+                    : ` · no agent is spawned — attach your own`}</div>`;
 
   pill.addEventListener("click", () => {
     const aimPanel = document.getElementById("aimPanel");

@@ -81,11 +81,25 @@ the rate limiter; never flood. A half-finished graph is a normal, valid state.**
   Validation fails the build on a dangling ref or a curated/stub citekey collision (SCHEMA §6).
   The viewer's HUD carries a **paper-finding search box** (title · author · journal · year · tag,
   curated + stubs) — client-side, so it works in the static artifact offline.
-  **Clicking a broad claim hoists it**: the node and every container feeding it jump to the top of
-  their columns and the board scrolls home, so the claim and its papers land in one screenful.
+  **The board is flat — nothing on it is hidden pending a click.** The landing column lists **every
+  curated paper** in `ORDER`'s pass ranking (plus a tail of cards for the uncurated papers a
+  lateral / `answers` edge points at, so those arrows have an anchor), and the **synthesis band**
+  gives every broad claim / question / method a card, in the altitude column its `leads_to` ladder
+  puts it in. **Clicking a broad claim hoists it**: the node, the narrower claims that ladder into
+  it and every paper asserting it jump to the top of their columns and the board scrolls home, so
+  the claim and its evidence land in one screenful. Each hoisted paper says which claim it answers
+  to, which is what keeps two gathered blocks apart. Clicking again releases the isolation but
+  leaves the order — nothing snaps back under you; the column header's **`clear`** (present only
+  when there is something to release) puts every shown claim away at once.
   (Dimming everything else was enough when the library was small; past a few dozen papers the lit
-  cards were scattered down a column and the arrows pointed off-screen.) Clicking again releases
-  the isolation but leaves the order — nothing snaps back under you.
+  cards were scattered down a column and the arrows pointed off-screen. Both halves of the board
+  went further than that for a while and *hid* what you had not clicked — the band showed only its
+  root rungs, the landing column started empty and papers arrived on demand, with a per-card `×`
+  and three sets of bookkeeping to get them out again. Reversed: **hoisting places the reader's
+  attention, so hiding only made the rest of the graph unmentionable.** See
+  `docs/2026-08-03-topics-and-claim-altitudes.md` §6.)
+  Browsing the **other** ~3.8k entries is still the **library** view's job — the board's flat list
+  is the curated set, not the bibliography.
   The HUD's **`walk`** button (or `w`) swaps the board for **the walk** — one focus, one relation,
   an indented tree, **no drawn edges at all** (design: `docs/2026-08-03-the-walk-design.md`). One or
   the other, never both; `Escape` or `← board` returns. The board superimposes five differently
@@ -134,7 +148,10 @@ the rate limiter; never flood. A half-finished graph is a normal, valid state.**
     what it claimed to.
     Finishing runs both ways: the picker row's **✓**, or the card window's own HUD button
     **✓ finish curation**, which drops the paper off the worklist and turns that window back
-    into the graph (the PDF and terminal windows are left open).
+    into the graph (the PDF and terminal windows are left open). Leaving *without* finishing is
+    the card's **← graph** button: it navigates back to the browse view and leaves `[curation]
+    active` alone, so the paper is still on the "in progress" pill and one click re-enters its
+    card — finishing is a statement about the paper, not the only door out of the window.
   Serve-only; a static `lit build` keeps the pill/toggle hidden and stays the shareable artifact.
   A third HUD pill, **"aims · N"**, indexes `programme/aims/` (via `/aims.json`) with each aim's
   assumption and at-risk-test counts; a row opens that aim's card at `/preview.html?key=@<slug>`
