@@ -392,6 +392,104 @@ band's 31 ladder rungs stay quiet until one is hovered or clicked. What it costs
 difference is that shortening it is no longer the only tool available: the reader's attention is
 placed by hoisting, and a long column below the hoisted block is inert rather than lost.
 
+*(That last paragraph turned out to name the bug rather than excuse it — see §6.1.)*
+
+## 6.1 The band becomes containers — drawing the relation instead of a scalar
+
+**Date:** 2026-08-04. The library had grown to 76 curated papers and 45 broad nodes, and the ladder
+had stopped being navigable. The diagnosis is one sentence:
+
+> **The band rendered *altitude*, which is derived, instead of *containment*, which is authored.**
+
+`broadTier` is a scalar computed from `leads_to`. Sorting cards into columns by it takes a family and
+sprays it across the board — tier 0 alone held **34 of 45 cards** — and then leaves the actual
+relation to an arrow. Which the viewer *deliberately does not draw*: `redraw` skips every edge
+touching a broad node unless that node is isolated. The paragraph above states this as a virtue
+("costs nothing in arrow clutter"), and it is the whole defect. **At rest the ladder was not drawn at
+all.** It existed in the data, it was legible in `lit topics`, and on the board it was 45 loose cards
+in four columns whose only relationship was a scalar you had to infer from horizontal position.
+
+Hoisting was the mitigation and it half-worked: `hoistEls` gathered a clicked claim, **one**
+generation of its children and its papers to the tops of their columns. One generation, still in
+separate columns, and the grouping purely positional — nothing drew a boundary around a family. It is
+the same shape of problem the landing column had to invent the `cprov` provenance strip to work
+around: *adjacency is not containment, and readers do not read it as containment.*
+
+### The fix, and why it is not the collapse returning
+
+A family is a **container**, the same way a paper is a container of its slices. CONCEPT already says
+the model is recursively containerized; `renderGraph`'s own comment already says *"the card is the
+board one scale down."* This makes that true in the other direction. One synthesis column now; one
+box per ladder root; the root's card is the box's header exactly as a paper's citekey header names
+the container its slices sit in; everything that ladders into it nests inside, recursively.
+
+**Containment is drawn as containment**, so the rung arrows are *deleted*, not merely dimmed —
+geometry says what the arrow said, and says it without being hovered. Edge count on the landing view
+went 45 → 3, and the 3 that remain are the ones geometry cannot express (below).
+
+This is not the roots-only collapse coming back, and the test is §6's own rule:
+
+> **Order organizes; absence doesn't.** Never make the rest of the graph unmentionable.
+
+Containers land **open**. Every one of the 45 nodes has a card, always, exactly as on the flat band —
+verified in a headless harness rather than asserted: 45 cards, 0 duplicated ids, 0 broad nodes
+without a card. Nothing is revealed by a click and nothing is hidden by one. **Containment adds a
+boundary and subtracts nothing**, which is precisely what the collapse could not say for itself.
+
+What the box does spend a control on is *density*, and that control is the paper card's `.sbar` idiom
+one scale up: `fold to titles` / `show statements`, per family, seeded once so a box you opened stays
+open across rebuilds. **A family lands folded**, because the band is the standing *map* of what the
+library claims and a map shows names — every broad node has an authored `title` for exactly this
+purpose (SCHEMA §4: "the at-a-glance name, with the full statement as its gloss"). The statement is
+demoted, never removed: it is the row's own hover text and one bar-click from being on screen for the
+whole family. That is the same move `.bn.titled .btx` already makes on a titled card.
+
+### The DAG is not a tree — the one thing containment cannot draw
+
+Three of the 45 nodes have two parents, and a box cannot hold a card that belongs in two boxes.
+Duplicating the card is what an outline does and what `localDag` was written to stop doing to the
+paper card, so:
+
+> **A node nests under the first parent its authored `leads_to` names, and every other parent gets a
+> reference row pointing at the real card.**
+
+Authored order, so the curator decides which parent hosts and there is no heuristic to reverse-
+engineer. The reference row (`↗ <title> · nested under "…"`) is a pointer, not a copy; clicking it
+scrolls to and flashes the real card. The hosting card states its other parents in turn (`also under
+"…"`), so a reader who lands on the real card is not the last to know. And the cross-parent
+`leads_to` keeps its **arrow** — those 3 surviving `gen` edges — because it is exactly the relation
+the boxes do not express.
+
+Two of the three (`division-injects-active-stress`, `topological-defects-are-force-sources`) have
+both parents under the same root, so they never leave their box. Only
+`vimentin-effect-is-context-dependent` genuinely straddles two families.
+
+**This is the number to watch.** One crossing in 45 is a rounding error and the reference row absorbs
+it. If cross-root parenting becomes common as the ladder grows, that is not a rendering problem to
+solve again — it is the ladder saying its roots are wrong, and the fix would be in `claims/`.
+
+### What the band looks like now
+
+45 nodes → **16 top-level entries**: 5 family boxes and 11 singletons (a root with nothing under it
+is not a container, just the card it always was — a box around one fact is chrome).
+
+| Family | In the ladder | Nest depth |
+|---|---|---|
+| `tissue-behaviour-is-collective-mechanics` | 15 | 3 |
+| `mechanics-and-signalling-share-one-architecture` | 7 | 2 |
+| `cell-and-tissue-mechanical-measurement` *(method)* | 3 | 1 |
+| `computational-model-of-cell-mechanics` *(method)* | 3 | 1 |
+| `mechanical-response-is-context-dependent` | 1 (+1 ref) | 1 |
+
+plus `go-or-grow-dichotomy`, 3 broad questions and 7 loose broad methods standing alone. Families
+sort before singletons, biggest first — structure ahead of orphans.
+
+Hoisting survives with a **narrower job**: the *family* is what travels, not the rung. Pulling a rung
+to the column top would tear it out of the containment that is the entire point, and there is nothing
+left to gather anyway — a claim's narrower claims are already nested directly under it. So showing a
+claim places its box at the top of the synthesis column, its papers at the top of the curated list,
+and scrolls to the rung itself when the rung is not the box's head.
+
 ## 7. Deliberately not decided
 
 - **Whether claims should carry topics.** They should not, for now. A topic on a broad claim
@@ -407,9 +505,20 @@ placed by hoisting, and a long column below the hoisted block is inert rather th
   derived pin means exclusivity would be a rule about `shownBroad` alone. It would also have to
   say what exclusivity means *up the ladder*: showing a claim inside the block you are already
   reading should surely not put the parent away.
-- **Whether the band should separate kinds.** All 14 broad *methods* now stand on the flat band
-  beside the 26 claims, interleaved with them by altitude rather than by kind, so the eye meets
-  instrumentation and reasoning in one column. Splitting claims from methods into their own bands
-  would fix that and would also change what the board's horizontal axis means. Not done
-  unilaterally — and note the flat band makes it more pressing, not less, since the collapse used
-  to keep 6 of the methods off the landing view.
+- **Whether the band should separate kinds.** Containers made this much less pressing without
+  deciding it, which is why they did not decide it. The two broad-*method* ladders
+  (`cell-and-tissue-mechanical-measurement`, `computational-model-of-cell-mechanics`) are now their
+  own boxes, so 6 of the 15 methods self-segregate for free — instrumentation gathers because it
+  ladders, not because a rule sorted it. What is left interleaved is the **singletons**: 7 loose
+  methods and 3 broad questions standing beside `go-or-grow-dichotomy` at the bottom of one column.
+  Sorting the top level by kind would separate them, and it is a one-line change to `broadOrder`'s
+  comparator — deliberately not taken, because it would make *kind* outrank *structure* in the
+  standing order, and a reader looking for what the library claims should meet the biggest ladder
+  first, not the first claim alphabetically after all the methods.
+- **Whether a family should be able to hold a paper.** A claim's papers are still hoisted into the
+  *curated list*, a column away, while its narrower claims are now inside its box. Both are "the
+  thing one step down that this claim rests on" — the generalization §6 made when it merged the two
+  chips into one gesture — and containment now draws one of them and not the other. Landing the
+  papers inside the box too would finish that thought. Not done: a paper is a container in its own
+  right, with its own slice graph, and nesting containers of one kind inside containers of another
+  is a much larger claim about the view than this change was making.

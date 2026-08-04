@@ -81,23 +81,32 @@ the rate limiter; never flood. A half-finished graph is a normal, valid state.**
   Validation fails the build on a dangling ref or a curated/stub citekey collision (SCHEMA §6).
   The viewer's HUD carries a **paper-finding search box** (title · author · journal · year · tag,
   curated + stubs) — client-side, so it works in the static artifact offline.
-  **The board is flat — nothing on it is hidden pending a click.** The landing column lists **every
-  curated paper** in `ORDER`'s pass ranking (plus a tail of cards for the uncurated papers a
-  lateral / `answers` edge points at, so those arrows have an anchor), and the **synthesis band**
-  gives every broad claim / question / method a card, in the altitude column its `leads_to` ladder
-  puts it in. **Clicking a broad claim hoists it**: the node, the narrower claims that ladder into
-  it and every paper asserting it jump to the top of their columns and the board scrolls home, so
-  the claim and its evidence land in one screenful. Each hoisted paper says which claim it answers
-  to, which is what keeps two gathered blocks apart. Clicking again releases the isolation but
-  leaves the order — nothing snaps back under you; the column header's **`clear`** (present only
-  when there is something to release) puts every shown claim away at once.
-  (Dimming everything else was enough when the library was small; past a few dozen papers the lit
-  cards were scattered down a column and the arrows pointed off-screen. Both halves of the board
-  went further than that for a while and *hid* what you had not clicked — the band showed only its
-  root rungs, the landing column started empty and papers arrived on demand, with a per-card `×`
-  and three sets of bookkeeping to get them out again. Reversed: **hoisting places the reader's
-  attention, so hiding only made the rest of the graph unmentionable.** See
-  `docs/2026-08-03-topics-and-claim-altitudes.md` §6.)
+  **The board hides nothing pending a click.** The landing column lists **every curated paper** in
+  `ORDER`'s pass ranking (plus a tail of cards for the uncurated papers a lateral / `answers` edge
+  points at, so those arrows have an anchor), and the **synthesis band** gives every broad claim /
+  question / method a card, always.
+  **The band is containerized: one box per ladder root.** A broad claim's `leads_to` ladder is drawn
+  as *containment* — the root's card heads the box and everything laddering into it nests inside,
+  recursively — because a family is a container of narrower claims exactly as a paper is a container
+  of slices. So the ladder is visible standing still: the rung **arrows are gone**, since geometry
+  now says what they said (they were suppressed at rest anyway, which is why the ladder used to read
+  as invisible). 45 broad nodes → 5 family boxes + 11 singletons today. Each box carries a
+  `fold to titles` / `show statements` bar (the paper card's `.sbar` idiom one scale up) and **lands
+  folded**: the band is a map, and a map shows names — the statement is the row's hover text, never
+  removed. A claim with **two parents** nests under the first its `leads_to` names and leaves a
+  `↗ reference row` under the others (never a duplicate card), with the crossing kept as one drawn
+  edge. **Clicking a broad claim shows it**: its *box* goes to the top of the synthesis column and
+  every paper asserting it to the top of the curated list. Each hoisted paper says which claim it
+  answers to, which is what keeps two gathered blocks apart. Clicking again releases but leaves the
+  order — nothing snaps back under you; the column header's **`clear`** (present only when there is
+  something to release) puts every shown claim away at once.
+  (Two reversals worth knowing, both in `docs/2026-08-03-topics-and-claim-altitudes.md`. §6: the band
+  and the landing column once *hid* what you had not clicked — reversed, because **hoisting places
+  the reader's attention, so hiding only made the rest of the graph unmentionable.** §6.1: what
+  replaced it sorted the band into **altitude columns**, which rendered a derived scalar instead of
+  the authored relation and sprayed each family across the board — reversed by containment, which
+  **adds a boundary and subtracts nothing**. Do not re-introduce either by treating a long column as
+  the problem: length is not the defect, unstructured length is.)
   Browsing the **other** ~3.8k entries is still the **library** view's job — the board's flat list
   is the curated set, not the bibliography.
   The HUD's **`walk`** button (or `w`) swaps the board for **the walk** — one focus, one relation,

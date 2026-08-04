@@ -446,6 +446,54 @@
   .src .skey{font-weight:700}
   .src .sy{margin-left:auto;color:var(--faint);font-size:8px}
 
+  /* ── the family container ──────────────────────────────────────────────────────────────
+     One box per ladder root: its own card at the head, its whole descent nested below. The box
+     IS the `leads_to` edge — containment drawn as containment, which is why the band no longer
+     draws rungs as arrows. Deliberately quiet chrome: a hairline and a wash, because the thing
+     that must read at a glance is the nesting, not the boxes' own borders. */
+  .bfam{position:relative;border:1px solid #ddd2ee;border-radius:16px;padding:7px;
+    background:linear-gradient(180deg,#f7f4fc,#fbfaff)}
+  .bfam > .bn{border-width:1.6px}
+  /* the fold bar, the paper card's `.sbar` idiom one scale up: a density control, never a reveal */
+  .bfbar{display:flex;align-items:center;gap:8px;padding:6px 6px 4px 8px;font-size:8px;
+    letter-spacing:1.1px;text-transform:uppercase;color:#8a72b4}
+  .bfbar .bfn{flex:1}
+  .bfbar .bffold{cursor:pointer;border:1px solid #ddd0ee;border-radius:999px;padding:2px 9px;
+    background:#f2ecfa;letter-spacing:.7px}
+  .bfbar .bffold:hover{background:#6b3fae;border-color:#6b3fae;color:#fff}
+  /* the nest: an indented well with a rule down its left edge, so depth reads without counting */
+  .bnest{margin:2px 0 0 9px;padding-left:9px;border-left:1.5px solid #e2d8f2;
+    display:flex;flex-direction:column;gap:5px}
+  .bbranch{display:flex;flex-direction:column;gap:5px}
+  /* a rung: the same card, written small. Folded (the default) it is its title and its readouts —
+     the full statement is the element's own hover title, and one bar-click puts every statement in
+     the family on screen at once. */
+  .bn.rung{border-radius:9px;padding:5px 9px;border-width:1.2px}
+  .bn.rung .bkd{display:none}
+  .bn.rung .btl{font-size:10px;margin-bottom:2px}
+  .bn.rung .btx{font-size:9px;color:var(--dim)}
+  .bn.rung .meter{margin-top:4px}
+  .bn.rung .bdrills,.bn.rung .blens{margin-top:4px}
+  .bfam.folded .bn.rung .btx{display:none}
+  .bfam.folded .bn.rung .btl{margin-bottom:0}
+  .bfam.folded .bn.rung{display:flex;align-items:baseline;flex-wrap:wrap;gap:4px 8px;padding:4px 9px}
+  .bfam.folded .bn.rung .btl{flex:1;min-width:120px}
+  .bfam.folded .bn.rung .meter,.bfam.folded .bn.rung .bdrills,
+  .bfam.folded .bn.rung .blens{margin-top:0}
+  /* a claim that ladders into more than one broader claim, said on the card that hosts it */
+  .balso{margin-top:5px;font-size:8px;letter-spacing:.4px;color:#8a72b4;font-style:italic}
+  .bfam.folded .bn.rung .balso{display:none}
+  /* …and the pointer left under every OTHER parent. A row, not a card: copying the card is what an
+     outline does, and the paper card's DAG exists because that duplication was not worth paying. */
+  .bref{display:flex;align-items:baseline;gap:6px;padding:3px 9px;border-radius:8px;cursor:pointer;
+    border:1px dashed #ddd0ee;background:#fbf9fe;font-size:9px;color:var(--dim)}
+  .bref:hover{background:#f2ecfa;border-color:#c3a9e6}
+  .bref .brefa{color:#8a72b4;font-size:8px}
+  .bref .breft{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .bref .brefn{font-size:7px;letter-spacing:.5px;text-transform:uppercase;color:var(--faint)}
+  /* naming a claim (a ref row, a second parent) scrolls to it — same flash the paper list uses */
+  .bn.found{animation:foundflash 1.7s ease-out}
+
   /* broad / synthesis nodes */
   .bn{position:relative;border:1.6px solid var(--broad);border-radius:14px;padding:9px 12px;
     background:linear-gradient(160deg,#f4f0fa,#ece3f6);cursor:pointer}
@@ -581,6 +629,10 @@
        claim is a control — the whole claim card is the target. */
     .card .cprov{padding:5px 8px 6px 11px}
     .bn .lens,.bn .bdrill{padding:4px 10px}
+    /* the nest costs width per level, and a 340px column cannot pay the desktop rate three deep:
+       halve the indent and keep the rule, which is what actually carries the depth */
+    .bnest{margin-left:5px;padding-left:5px}
+    .bfbar .bffold{padding:4px 10px}
     .card:active{border-color:#b8c3cc}            /* tap feedback (replaces the lost :hover cue) */
     .slice.drillable:active{background:#e9eef2}
     .card.open .cabs{display:block}               /* abstract inline (no hover tip on touch) */
@@ -941,31 +993,30 @@ let hover=null;          // {cardId,sid} — hovered slice row/broad node: redra
 let pin=[];              // [{cardId,sid}] — clicked isolations that persist after the pointer
                          // leaves and ACCUMULATE: each click hardens another target. Bright set
                          // = every pinned target ∪ the current hover; everything else stays dim.
-const SYNTH=1e6;         // synthesis band: broad nodes always sit at/after this column
+const SYNTH=1e6;         // synthesis band: the one column every broad node lives in
                          // (papers occupy small levels; builds-on growth stays left of it)
-// The band is not one flat column: a broad node's OWN leads_to (SCHEMA §4) can ladder it into
-// a broader broad node, so the band is really a rightward ladder of tiers, SYNTH+0, SYNTH+1, ….
+// A broad node's OWN leads_to (SCHEMA §4) can ladder it into a broader broad node, and the band is
+// laid out as that nesting (see broadFamilies) rather than as columns of it.
 // broadTier[slug] = the length of the longest chain of broad-to-broad leads_to edges ENDING at
 // that slug, i.e. its altitude: 0 for a node only ever fed by papers (a plain head — nearest
-// the papers), 1+max(tier of everything that ladders into it) otherwise. Recomputed once per
-// rebuild() (cheap — tens of nodes), so a DRIVE window's hot-reloaded BROAD is picked up too.
+// the papers), 1+max(tier of everything that ladders into it) otherwise. It no longer picks a
+// column — it is what `broadKids` falls out of, and what orders a family's standing position.
+// Recomputed once per rebuild() (cheap — tens of nodes), so a DRIVE window's hot-reloaded BROAD
+// is picked up too.
 let broadTier={};
 let broadKids={};        // slug -> the broad nodes that ladder INTO it (one rung below), set by
                          // computeBroadTiers since it walks exactly that relation already
-// The band is FLAT: every rung of every ladder has a card, always, at its own altitude.
+// The band is FLAT: every rung of every ladder has a card, always. It was not always — the band
+// used to land on its ROOTS only, and a rung appeared when the human showed the node above it, on
+// the theory that 42 nodes at once is a backlog and 14 is a view. Hiding was the wrong tool for
+// that job. Once ORDER does the organizing, hiding only subtracts: you cannot see that a claim you
+// have not clicked exists, cannot read the shape of the ladder without walking it, and a claim
+// reachable through two parents flickers in and out depending on which one you have open.
 //
-// It was not always. The band used to land on its ROOTS only — the nodes nothing ladders out of —
-// and a rung appeared when the human showed the node above it, on the theory that 42 nodes at once
-// is a backlog and 14 is a view. Hiding was the wrong tool for that job, and hoisting is the right
-// one: `hoistShown` gathers a shown claim, its narrower claims and its papers into one screenful at
-// the top of their columns, so the reader's attention is placed by ORDER rather than by absence.
-// Once order does the organizing, hiding only subtracts — you cannot see that a claim you have not
-// clicked exists, cannot read the shape of the ladder without walking it, and a claim reachable
-// through two parents flickered in and out depending on which one you had open. A long band you can
-// scroll past is strictly better than a short one that lies about how much graph there is.
-//
-// So `shownBroad` now means one thing only: whose block is gathered at the top (and whose papers are
-// in the column). Nothing about it decides what exists on screen.
+// So `shownBroad` means one thing only: whose block is gathered at the top (and whose papers are in
+// the column). Nothing about it decides what exists on screen. That still holds — the band is now
+// CONTAINERIZED rather than flat (see broadFamilies), and containment reveals nothing and hides
+// nothing; it only puts a family in one box instead of spraying it across four columns.
 function computeBroadTiers(){
   const kids={};                                    // slug -> broad nodes that ladder INTO it
   for(const s in BROAD) kids[s]=[];
@@ -985,10 +1036,73 @@ function computeBroadTiers(){
   broadKids=kids;
   return tier;
 }
-const broadLevel=slug=>SYNTH+(broadTier[slug]||0);
-// tier 0 keeps the original wording (a landing-view reader needs no ladder vocabulary yet);
-// altitude echoes the design doc's own term for this axis once the band actually has rungs.
-const synthLabel=tier=>tier===0?"synthesis · now →":`synthesis · altitude ${tier} →`;
+// ── the band as containers ───────────────────────────────────────────────────────────────
+// The band used to be four COLUMNS keyed by altitude — `broadLevel` returned SYNTH+tier and each
+// rung stood in the column its tier put it in. Altitude is a derived scalar; `leads_to` between two
+// broad nodes is the relation actually authored, and rendering the scalar instead of the relation
+// sprayed every family across the board: tier 0 alone held 34 of 45 cards, and the only thing
+// tying a parent to its children was an arrow `redraw` deliberately suppresses until the node is
+// hovered or clicked. At rest the ladder was not drawn at all.
+//
+// So a family is a CONTAINER, the same way a paper is a container of its slices (CONCEPT: the model
+// is recursively containerized). Containment is drawn as containment — a box inside a box — which
+// is why the rung arrows are gone rather than merely dimmed: geometry says what the arrow said, and
+// says it without being hovered. One synthesis column now, one card per ladder root, everything
+// under that root nested inside it.
+//
+// There is therefore no `broadLevel` any more: every broad card's id is `card-<SYNTH>:<slug>`
+// whatever its altitude, so every id-building call site (expandCard, hoistEls, showBroad, the pin
+// derivation) is unchanged — the card moved in the DOM, not in the addressing scheme.
+const synthLabel=()=>"synthesis →";
+
+// A node with two parents cannot nest under both without being duplicated, and duplication is
+// precisely what `localDag` was written to stop doing to the paper card. So: a node NESTS under the
+// first parent its authored `leads_to` names, and every other parent gets a REFERENCE row pointing
+// at the real card. Authored order means the curator decides which parent hosts, with no magic to
+// reverse-engineer. Three nodes today, one of which (vimentin-effect-is-context-dependent) is the
+// only one whose parents sit under different roots.
+let broadHost={};      // slug -> the parent that nests it ("" for a root)
+let broadNest={};      // slug -> children nested inside it, in ladder order
+let broadRefs={};      // slug -> children that live elsewhere and are only referenced here
+let broadRoot={};      // slug -> the root of its hosting chain (its family)
+let broadOrder=[];     // roots, in the standing order the band lays them out
+function broadFamilies(){
+  broadHost={}; broadNest={}; broadRefs={}; broadRoot={};
+  for(const s in BROAD){ broadNest[s]=[]; broadRefs[s]=[]; }
+  for(const s in BROAD){
+    const par=(BROAD[s].leads_to||[]).filter(r=>BROAD[r]);
+    broadHost[s]=par[0]||"";
+    if(par[0]) broadNest[par[0]].push(s);
+    for(const r of par.slice(1)) broadRefs[r].push(s);
+  }
+  // the root of the hosting chain; the guard is for a cycle the build should already have rejected
+  const rootOf=(s,seen)=>{
+    const h=broadHost[s];
+    if(!h||seen.has(s)) return s;
+    seen.add(s); return rootOf(h,seen);
+  };
+  for(const s in BROAD) broadRoot[s]=rootOf(s,new Set());
+  // Standing order: families before leaves, biggest family first, then kind, then slug. Structure
+  // ahead of orphans is the useful reading — and note this deliberately does NOT sort by kind
+  // first. Separating the broad methods from the broad claims is still the open question of
+  // 2026-08-03 §7; containers make it far less pressing (the two method ladders become their own
+  // boxes and self-segregate) without deciding it here.
+  const size=(s,seen)=>seen.has(s)?0:(seen.add(s),broadNest[s].reduce((n,c)=>n+size(c,seen),1));
+  broadOrder=Object.keys(BROAD).filter(s=>!broadHost[s])
+    .sort((a,b)=>size(b,new Set())-size(a,new Set())
+                ||BROAD[a].kind.localeCompare(BROAD[b].kind)||a.localeCompare(b));
+}
+// Everything the band derives from BROAD, in one call — because there are two entry points that
+// need it (boot, which never calls rebuild, and rebuild itself) and two of them computing half of
+// it each is exactly how the band's altitudes and its nesting would drift out of step.
+function broadRefresh(){
+  broadTier=computeBroadTiers();
+  broadFamilies();
+  // A family lands folded to its rungs' titles: the band is the standing MAP of what the library
+  // claims, and a map shows names. Seeded once, so a box the reader opened stays open across every
+  // rebuild — the fold is a reading position, and a click elsewhere must not reset it.
+  if(!famSeeded){ famSeeded=true; for(const r of broadOrder) famFolded.add(r); }
+}
 
 // curation maturity (SCHEMA §4) as a pie-filled circle: pass/4. Empty ring = stub (0),
 // full disk = fully curated (4). Stubs have no `pass` → treated as 0.
@@ -1598,12 +1712,14 @@ function hoistAll(els){
   }
 }
 function hoistEls(slug){
-  const els=[document.getElementById(`card-${broadLevel(slug)}:${slug}`)];
-  // the rung below, if this claim has one: the narrower claims are this claim's evidence exactly as
-  // papers are a tier-0 claim's, so they travel in the same block. One generation only — a shown
-  // grandchild brings its own block up under its own entry in `shownBroad`.
-  for(const kid of (broadKids[slug]||[]))
-    els.push(document.getElementById(`card-${broadLevel(kid)}:${kid}`));
+  // The FAMILY is what travels, not the rung. A rung's card lives inside its root's box, so moving
+  // it to the top of the column would tear it out of the containment that makes the band readable —
+  // and there is nothing left to gather anyway: the narrower claims a hoist used to fetch up beside
+  // this one are already nested directly under it. So the hoist has one job now, placing the box
+  // that holds the claim at the top of the synthesis column, and the papers in the curated list.
+  const root=broadRoot[slug]||slug;
+  const els=[document.getElementById("fam-"+root)
+            ||document.getElementById(`card-${SYNTH}:${root}`)];
   const seen=new Set();
   for(const lk of (BROAD_LINKS[slug]||[])){          // once per paper, however many slices feed the node
     if(seen.has(lk.key)) continue;
@@ -1637,11 +1753,18 @@ function hoistShown(){
       if(!seen.has(el)){ seen.add(el); els.push(el); }
   hoistAll(els);
 }
-function broadCard(slug,level){
+const broadPapers=slug=>[...new Set((BROAD_LINKS[slug]||[]).map(l=>l.key))];
+const broadTitle=slug=>(BROAD[slug]&&(BROAD[slug].title||BROAD[slug].text))||slug;
+// `rung` = this card stands INSIDE a family box rather than at the head of one. A rung is written
+// compact (see the fold bar): its authored `title` is the at-a-glance name SCHEMA §4 says it is,
+// and the full statement is one hover away and one bar-click from being on screen for the whole
+// family at once. Nothing is removed — demoted, which is the same move `.bn.titled .btx` already
+// makes on a titled card.
+function broadCard(slug,level,rung){
   const b=BROAD[slug], id=`${level}:${slug}`;
   const el=document.createElement("div");
-  el.className="bn"+(b.kind.includes("question")?" q":"")+(b.title?" titled":"");
-  el.id="card-"+id; el.dataset.id=id;
+  el.className="bn"+(b.kind.includes("question")?" q":"")+(b.title?" titled":"")+(rung?" rung":"");
+  el.id="card-"+id; el.dataset.id=id; el.dataset.slug=slug;
   let m = b.meter?`<div class="meter"><span class="s">▲ ${b.meter.s} support</span><span class="c">▼ ${b.meter.c} contradict</span></div>`:'';
   // optional `title` (SCHEMA §4): the at-a-glance name, with the full statement as its gloss
   let t = b.title?`<div class="btl">${b.title}</div>`:'';
@@ -1650,29 +1773,119 @@ function broadCard(slug,level){
   // it). A claim can have either, both, or neither; a leaf carries no affordance it cannot honour.
   const on=shownBroad.has(slug);
   const kids=(broadKids[slug]||[]).length;
-  // no caret: ▸/▾ was left over from the collapsed band, where the click revealed these claims.
-  // They are always on the band now (see broadTier), so the count is a constant fact about the
-  // ladder and the pill's FILL is the whole state readout — gathered with this claim, or not.
+  // The rung pill reads differently now that the narrower claims are literally inside this card's
+  // box: it names what you are already looking at rather than pointing off across the band. Kept
+  // because the count is still the fact that matters — how much of the library this claim gathers.
   const dn=kids?`<div class="bdrill${on?" on":""}"`
-          +` title="the narrower claims that ladder into this one — they stand on the band at their`
-          +` own altitude; click the card to gather them up here with it">`
+          +` title="the narrower claims that ladder into this one — they are nested inside this`
+          +` box; click the card to gather its papers in the curated list">`
           +`${kids} narrower</div>`:"";
   // the paper readout — same shape as the rung pill, and for the same reason. It used to read
   // "showing 3 of 4", because a × could dismiss one of the papers the claim had just landed; with
   // the column flat there is nothing to dismiss and nothing to land, so the count is again a
   // constant fact about the graph and the fill says whether the block is gathered.
-  const keys=[...new Set((BROAD_LINKS[slug]||[]).map(l=>l.key))];
+  const keys=broadPapers(slug);
   const dp=keys.length?`<div class="blens"><span class="lens${on?" on":""}"`
           +` title="the papers that assert this — they stand in the curated list; click the card to`
           +` gather them at the top of it">`
           +`◂ ${keys.length} paper${keys.length===1?"":"s"}</span></div>`:"";
-  el.innerHTML=`<div class="bkd">${b.kind}</div>${t}<div class="btx">${b.text}</div>${m}`
+  // Multi-parenting, stated on the card that hosts it. Without this the reference rows elsewhere
+  // are the only trace, and a reader who lands on the real card has no way to know the claim also
+  // answers to a second, possibly quite distant, parent.
+  const alt=(BROAD[slug].leads_to||[]).filter(r=>BROAD[r]&&r!==broadHost[slug]);
+  const av=alt.length?`<div class="balso" title="this claim ladders into more than one broader`
+          +` claim; it is nested under the first its leads_to names and referenced under the rest">`
+          +`also under ${alt.map(r=>"“"+esc(broadTitle(r))+"”").join(" · ")}</div>`:"";
+  el.innerHTML=`<div class="bkd">${b.kind}</div>${t}<div class="btx">${b.text}</div>${m}${av}`
               +(dn?`<div class="bdrills">${dn}</div>`:"")+dp;
+  // the statement a folded rung trades away is one hover from coming back
+  if(rung) el.title=b.text;
   // No per-chip handlers left: the card is the only thing on it that takes a click.
   // hovering a broad node isolates its edges and lights up the papers linked into it
-  el.addEventListener("mousemove",()=>setHover({cardId:el.id,sid:null}));
+  el.addEventListener("mousemove",e=>{ e.stopPropagation(); setHover({cardId:el.id,sid:null}); });
   el.addEventListener("mouseleave",()=>setHover(null));
-  el.addEventListener("click",()=>showBroad(slug));
+  el.addEventListener("click",e=>{ e.stopPropagation(); showBroad(slug); });
+  return el;
+}
+
+// ── the family container ─────────────────────────────────────────────────────────────────
+// One box per ladder root, holding its whole descent. The root's own card is the box's header —
+// exactly as a paper's citekey/title header names the container its slices sit in — and everything
+// that ladders into it nests below, recursively. A root with nothing under it is not a container at
+// all, just the card it always was; a box with one member in it would be chrome around a fact.
+const famFolded=new Set();   // roots whose rungs are folded to their titles (default: all of them)
+let famSeeded=false;         // …seeded once, so a fold the reader opened survives every rebuild
+function scrollToBroad(slug){
+  const el=document.getElementById(`card-${SYNTH}:${slug}`);
+  if(!el) return;
+  el.scrollIntoView({behavior:"smooth",block:"center"});
+  el.classList.remove("found"); void el.offsetWidth;      // restart a flash still running
+  el.classList.add("found");
+  setTimeout(()=>el.classList.remove("found"),1800);
+}
+// `seen` is the cycle guard the rest of this file carries for the same reason (see computeBroadTiers):
+// a hot-reloaded DRIVE window can hold YAML the build would have rejected, and a `leads_to` cycle
+// would otherwise recurse until the tab dies. Nesting stops at the repeat; the node keeps its card
+// wherever it was first reached.
+function famNest(slug,root,depth,seen){
+  const box=document.createElement("div");
+  box.className="bnest";
+  for(const kid of broadNest[slug]) box.appendChild(famBranch(kid,root,depth+1,seen));
+  // A claim hosted by another parent still has to be VISIBLE here, or this box quietly lies about
+  // what ladders into it. It is a pointer, not a copy: one row, the real card's name, and a click
+  // that goes and finds it. Copying the card is what an outline does and what the paper card's DAG
+  // was written to stop.
+  for(const kid of broadRefs[slug]){
+    const r=document.createElement("div");
+    r.className="bref";
+    r.innerHTML=`<span class="brefa">↗</span><span class="breft">${esc(broadTitle(kid))}</span>`
+      +`<span class="brefn">nested under “${esc(broadTitle(broadHost[kid]))}”</span>`;
+    r.title="also ladders into this claim — the card lives under its first parent; click to go to it";
+    r.addEventListener("click",e=>{ e.stopPropagation(); scrollToBroad(kid); });
+    box.appendChild(r);
+  }
+  return box;
+}
+function famBranch(slug,root,depth,seen){
+  const wrap=document.createElement("div");
+  wrap.className="bbranch";
+  wrap.appendChild(broadCard(slug,SYNTH,true));
+  if(seen.has(slug)) return wrap;                          // cycle: card yes, descent no
+  seen.add(slug);
+  if(broadNest[slug].length||broadRefs[slug].length) wrap.appendChild(famNest(slug,root,depth,seen));
+  return wrap;
+}
+// The whole family, as it stands in the synthesis column. `fam-<root>` is what hoisting moves: the
+// family is the unit that travels, because pulling one rung out of its box to the column top would
+// undo the containment that is the entire point.
+function familyEl(root){
+  const has=broadNest[root].length||broadRefs[root].length;
+  const head=broadCard(root,SYNTH,false);
+  if(!has){ head.id="card-"+SYNTH+":"+root; head.dataset.fam=root; return head; }
+  const el=document.createElement("div");
+  el.className="bfam"; el.id="fam-"+root; el.dataset.fam=root;
+  const n=(function size(s,seen){
+    if(seen.has(s)) return 0;
+    seen.add(s);
+    return broadNest[s].reduce((a,c)=>a+size(c,seen),0)+1;
+  })(root,new Set())-1;
+  const folded=famFolded.has(root);
+  const bar=document.createElement("div");
+  bar.className="bfbar";
+  // "in this ladder", not "narrower": the head card's own pill already says how many claims are ONE
+  // rung down, and two adjacent counts both labelled "narrower" would be read as a contradiction.
+  // This one is the whole descent — every claim inside the box, at any depth.
+  bar.innerHTML=`<span class="bfn">${n} in this ladder</span>`
+    +`<span class="bffold">${folded?"show statements":"fold to titles"}</span>`;
+  bar.addEventListener("click",e=>{
+    e.stopPropagation();
+    if(famFolded.has(root)) famFolded.delete(root); else famFolded.add(root);
+    rebuild();
+  });
+  el.appendChild(head);
+  el.appendChild(bar);
+  el.appendChild(famNest(root,root,0,new Set([root])));
+  el.classList.toggle("folded",folded);
   return el;
 }
 
@@ -1704,7 +1917,7 @@ const cardGrp=el=>{ const g=+el.dataset.grp; return Number.isFinite(g)?g:BACKFIL
 function placeInCol(c,el,grp,within){
   el.dataset.grp=grp;
   let before=null;
-  for(const ch of c.el.querySelectorAll(":scope > .card, :scope > .bn")){
+  for(const ch of c.el.querySelectorAll(":scope > .card, :scope > .bn, :scope > .bfam")){
     const g=cardGrp(ch);
     if(g>grp||(g===grp&&within(ch))){ before=ch; break; }
   }
@@ -1719,13 +1932,18 @@ function addPaper(level,key,label,grp){
   const yr=+card.dataset.year||0;      // within a group, chronology falls out of the grounding walk
   placeInCol(c,card,grp==null?BACKFILL:grp,ch=>(+ch.dataset.year||0)<yr);
 }
+// A broad node is never placed alone: naming any rung places its whole FAMILY, because a rung's
+// card only exists inside its root's box. So the column's key — and the dedup — is the root, and
+// every member is registered under it so a second call naming a sibling is a no-op.
 function addBroad(level,slug,label,grp){
   const c=ensureCol(level,label);
   if(c.keys.has(slug)) return;
-  c.keys.add(slug);
+  const root=broadRoot[slug]||slug;
+  if(c.keys.has(root)) { c.keys.add(slug); return; }
+  for(const s in BROAD) if((broadRoot[s]||s)===root) c.keys.add(s);
   // no second key inside a group: claims arrive in the order the open paper cites them, and the
-  // backfill in the ladder's own walk order, both of which are already the order to show them in
-  placeInCol(c,broadCard(slug,level),grp==null?BACKFILL:grp,()=>false);
+  // backfill in the ladder's own standing order, both of which are already the order to show them in
+  placeInCol(c,familyEl(root),grp==null?BACKFILL:grp,()=>false);
 }
 // The synthesis band always shows every broad claim / question, expanded state or not —
 // they're the standing right-hand column. expandCard still adds the ones linked from an
@@ -1733,22 +1951,24 @@ function addBroad(level,slug,label,grp){
 // on the landing view and survives every rebuild. Unlinked-yet nodes stay hover-active
 // (broadExtraEdges lights their papers) like any other broad node.
 function ensureBroadBand(){
-  // Every rung, every rebuild — the band is flat (see broadTier). addBroad de-dups, so the ones
-  // expandCard already materialized for an open paper's real edges are left where they stand.
-  for(const slug in BROAD)
-    addBroad(broadLevel(slug),slug,synthLabel(broadTier[slug]||0));
-  // The broad-to-broad half of `leads-to` (SCHEMA §4): a node's own generalization into a
-  // broader one, one rung up the same ladder its slices climb into it from below. Drawn like
-  // that in-paper ladder (kind:"gen", the --broad idiom), not a lateral or stance edge — and
-  // added here, not in expandCard, so it stands whether or not any paper is open: the whole
-  // point is that the band reads as one rightward structure, not four unrelated columns.
-  // Every rung is on screen now, so every rung's arrow has both anchors — the on-screen guard this
-  // loop used to carry was there for the collapsed band and has nothing left to exclude.
+  // Every family, every rebuild, in the standing order broadFamilies settled. addBroad de-dups on
+  // the root, so a family expandCard already materialized for an open paper's real edges is left
+  // where that click put it.
+  for(const root of broadOrder) addBroad(SYNTH,root,synthLabel());
+  // The broad-to-broad half of `leads-to` (SCHEMA §4) is now drawn as CONTAINMENT — a rung inside
+  // its parent's box — so the arrows that used to carry it are gone. They were suppressed at rest
+  // anyway (redraw hides every broad edge until the node is hovered or clicked), which is exactly
+  // why the ladder read as invisible: the relation was only ever drawn on demand.
+  //
+  // What containment cannot draw is the SECOND parent of a multi-parented claim. That one keeps its
+  // arrow, and it is worth an arrow precisely because it is the edge the boxes do not express —
+  // together with the reference row famNest leaves in the other parent, it is how a claim that
+  // ladders into two places stays honest without being duplicated.
   for(const [slug,b] of Object.entries(BROAD))
     for(const r of (b.leads_to||[]))
-      if(BROAD[r])
-        addEdge({cardId:`card-${broadLevel(slug)}:${slug}`,sid:null},
-                {cardId:`card-${broadLevel(r)}:${r}`,sid:null},"gen");
+      if(BROAD[r]&&r!==broadHost[slug])
+        addEdge({cardId:`card-${SYNTH}:${slug}`,sid:null},
+                {cardId:`card-${SYNTH}:${r}`,sid:null},"gen");
 }
 // Citation-wall collapse: a focused paper's UNCURATED sources never spawn cards — they fold
 // into one "▸ N sources" stack per focused card, expandable on demand and ONLY on demand
@@ -1824,7 +2044,7 @@ function rebuild(hold){
     }
   });
   edges=[]; edgeSeen.clear(); hover=null; unpinned=null;   // rows re-render; next mousemove re-isolates (docked viewer rests)
-  broadTier=computeBroadTiers();     // fresh before anything below places a broad card by it
+  broadRefresh();                    // tiers + nesting, fresh before anything places a broad card
   syncLanding();                     // before the expansion sweep below reads cols[0].keys
   document.querySelectorAll(".card.open,.card.focus").forEach(c=>c.classList.remove("open","focus"));
   ctxOpen=new Set(); ctxDrill=new Map();
@@ -1860,7 +2080,7 @@ function rebuild(hold){
   // arrows and the papers column to disagree about which claims you are looking at.
   pin=pin.filter(p=>cardIdLevel(p.cardId)<SYNTH);
   for(const slug of shownBroad){
-    const cardId=`card-${broadLevel(slug)}:${slug}`;
+    const cardId=`card-${SYNTH}:${slug}`;
     if(document.getElementById(cardId)) pin.push({cardId,sid:null});
   }
   hoistShown();                                       // blocks in the order they were shown
@@ -1910,8 +2130,8 @@ function expandCard(level,key,p,grp){
   (p.lateral||[]).forEach(l=>{
     const from={cardId:cid,sid:l.via};
     if(l.slug){                                      // stance toward a broad claim → synthesis band
-      addBroad(broadLevel(l.slug),l.slug,synthLabel(broadTier[l.slug]||0),grp);
-      addEdge(from,{cardId:`card-${broadLevel(l.slug)}:${l.slug}`,sid:null},l.sign);
+      addBroad(SYNTH,l.slug,synthLabel(),grp);
+      addEdge(from,{cardId:`card-${SYNTH}:${l.slug}`,sid:null},l.sign);
       return;
     }
     const tl=findCardLevel(l.key,level);
@@ -1924,8 +2144,8 @@ function expandCard(level,key,p,grp){
   (p.ans||[]).forEach(a=>{
     const from={cardId:cid,sid:a.via};
     if(a.slug){
-      addBroad(broadLevel(a.slug),a.slug,synthLabel(broadTier[a.slug]||0),grp);
-      addEdge(from,{cardId:`card-${broadLevel(a.slug)}:${a.slug}`,sid:null},"answers");
+      addBroad(SYNTH,a.slug,synthLabel(),grp);
+      addEdge(from,{cardId:`card-${SYNTH}:${a.slug}`,sid:null},"answers");
       return;
     }
     const tl=findCardLevel(a.key,level);
@@ -1941,8 +2161,8 @@ function expandCard(level,key,p,grp){
   });
   // RIGHTMOST — synthesis band; the edge sharpens to the generalizing claim once it's drilled
   (p.cons||[]).forEach(c=>{
-    addBroad(broadLevel(c.slug),c.slug,synthLabel(broadTier[c.slug]||0),grp);
-    addEdge({cardId:cid,sid:c.via},{cardId:`card-${broadLevel(c.slug)}:${c.slug}`,sid:null},"leads");
+    addBroad(SYNTH,c.slug,synthLabel(),grp);
+    addEdge({cardId:cid,sid:c.via},{cardId:`card-${SYNTH}:${c.slug}`,sid:null},"leads");
   });
 }
 
@@ -3070,8 +3290,17 @@ function showBroad(slug){
   // hover re-lights the very edges the click turned off (see `unpinned`). On show, jump to the
   // hoisted block — instantly, because every scroll event redraws the edge overlay and animating
   // up from deep in a tall column would repaint every arrow the whole way.
-  if(hide) unpinned={cardId:`card-${broadLevel(slug)}:${slug}`,sid:null};
-  else if(board.scrollTop) board.scrollTop=0;
+  if(hide){ unpinned={cardId:`card-${SYNTH}:${slug}`,sid:null}; return; }
+  // The hoist put this claim's FAMILY at the top of the column; scrolling home lands on the family
+  // head, which is the right place only when the head is what you clicked. A rung deep inside a tall
+  // box needs the board brought to the rung. Instantly, never smoothly: every scroll event redraws
+  // the whole edge overlay, and animating down a long column repaints every arrow the whole way.
+  const el=document.getElementById(`card-${SYNTH}:${slug}`);
+  if(!broadHost[slug]||!el){ if(board.scrollTop) board.scrollTop=0; return; }
+  el.scrollIntoView({block:"center"});
+  el.classList.remove("found"); void el.offsetWidth;
+  el.classList.add("found");
+  setTimeout(()=>el.classList.remove("found"),1800);
 }
 // Reconcile cols[0]. The curated list is a FIXED population — every key landingKeys() names is
 // present from boot and never leaves, so this only ever adds what a fresh graph brought in (a
@@ -3123,7 +3352,7 @@ function syncLanding(){
   document.body.classList.toggle("landing-vacant",!c.keys.size);
 }
 function boot(){
-  broadTier=computeBroadTiers();     // tiers ready before the very first ensureBroadBand()
+  broadRefresh();                    // tiers + nesting ready before the very first ensureBroadBand()
   const c0=ensureCol(0,"curated papers");
   // delegated, because syncLanding rewrites the header every time the count changes
   c0.el.addEventListener("click",e=>{
@@ -3797,7 +4026,10 @@ if (LIVE && !DRIVE && !PDFWIN && !MOBILE_CURATE) (function(){
 // brightness while its papers stayed in the column would put back exactly the half-state the merge
 // removed. A claim goes away by clicking it again, or with `clear` in the papers-column header.
 board.addEventListener("click",e=>{
-  if(!pin.length||!e.target.isConnected||e.target.closest(".card,.bn")) return;
+  // .bfam counts as "not empty space": the box's own padding and its nest gutter are part of a
+  // family, and thawing the board because the click landed on 7px of container chrome would be
+  // indistinguishable from a misfire.
+  if(!pin.length||!e.target.isConnected||e.target.closest(".card,.bn,.bfam")) return;
   const keep=pin.filter(p=>cardIdLevel(p.cardId)>=SYNTH);
   if(keep.length===pin.length) return;
   pin=keep; redraw();
