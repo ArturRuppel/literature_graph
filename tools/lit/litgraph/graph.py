@@ -14,6 +14,32 @@ from .topics import Topic, load_topics, validate_topics
 
 _yaml = YAML(typ="safe")
 
+# The one specific trap worth naming on parse failure: a sharpened cross-paper ref
+# (`Key2026Journal:c4`) left unquoted inside a flow sequence. store.py's round-trip writer
+# now quotes these itself (see store._quote_sharpened_refs), but a hand-edited file can still
+# hit this — and when it does, ruamel's own message ("could not find expected ':'" or similar,
+# at the *next* token) points nowhere near the fix. The lookbehind/lookahead require the ref
+# to sit directly between `[`/`,`/whitespace and `,`/`]` with nothing else adjacent, which is
+# exactly what an unquoted flow-sequence element looks like; a quoted ref has a `"` in that
+# position instead and never matches, and a bare local id (no `:`) never matches either.
+_UNQUOTED_SHARPENED_REF = re.compile(
+    r"(?<=[\[,\s])([A-Z][A-Za-z]*\d{4}[A-Za-z][A-Za-z0-9]*:[cqmtk]\d+)(?=[,\]])"
+)
+
+
+def _unquoted_sharpened_ref_hint(path: Path, text: str) -> str | None:
+    """If `text` contains the specific trap above, name every offending line; else None so
+    the caller falls back to ruamel's own (generic, but still file-named) message."""
+    hits = [(n, m.group(1)) for n, line in enumerate(text.splitlines(), start=1)
+            for m in _UNQUOTED_SHARPENED_REF.finditer(line)]
+    if not hits:
+        return None
+    detail = "; ".join(
+        f'line {n}: unquoted cross-paper ref in a flow sequence — write ["{ref}"], not [{ref}]'
+        for n, ref in hits
+    )
+    return f"{path}: {detail}"
+
 
 def load_yaml(path: Path) -> dict:
     """Parse one YAML file, or fail with a BuildError that says *which* file.
@@ -26,11 +52,16 @@ def load_yaml(path: Path) -> dict:
     than the round-trip parser `store.py` writes with. In particular a sharpened cross-paper
     ref inside a flow sequence — `corroborates: [Key2026Journal:c4]` — round-trips fine but
     is rejected here, because in flow context a plain scalar may not carry a `:`. Quote it
-    (`["Key2026Journal:c4"]`) and both agree. The mismatch is why this message matters."""
+    (`["Key2026Journal:c4"]`) and both agree. The mismatch is why this message matters —
+    and why, on failure, we scan for that exact shape before falling back to ruamel's message:
+    a curator staring at "could not find expected ':'" has no idea what to fix; a curator
+    staring at the offending ref and line does."""
+    text = path.read_text()
     try:
-        return _yaml.load(path.read_text()) or {}
+        return _yaml.load(text) or {}
     except YAMLError as e:
-        raise BuildError(f"{path}: {e}") from e
+        hint = _unquoted_sharpened_ref_hint(path, text)
+        raise BuildError(hint if hint else f"{path}: {e}") from e
 
 
 _LOCAL = re.compile(r"^[cqmtk]\d+$")    # c claim · q question · m method · t test · k capability

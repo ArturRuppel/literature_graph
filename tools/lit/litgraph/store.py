@@ -12,6 +12,7 @@ from pathlib import Path
 
 from ruamel.yaml import YAML
 
+from .graph import classify_ref
 from .model import CuratedPaper, Stub
 
 _yaml_rt = YAML()  # round-trip (preserves comments)
@@ -19,6 +20,42 @@ _yaml_rt.preserve_quotes = True
 _yaml_rt.width = 4096                       # never re-wrap long scalars (titles, notes)
 _yaml_rt.indent(mapping=2, sequence=4, offset=2)   # match the "  - {…}" sequence style on disk
 _yaml_safe = YAML(typ="safe")
+
+# Every slice-level field that carries refs (SCHEMA §6 / programme design §5), and every
+# top-level group that holds slices — paper groups plus the aim-only tests/capabilities.
+# Shared by _quote_sharpened_refs so a new edge or slice kind only needs adding here.
+_REF_FIELDS = ("grounded_in", "leads_to", "corroborates", "contradicts", "answers",
+               "discriminates", "enabled_by")
+_SLICE_GROUPS_ALL = ("claims", "questions", "methods", "tests", "capabilities")
+
+
+def _quote_sharpened_refs(doc) -> None:
+    """Force every sharpened cross-container ref (`Key2026Journal:c4`, `@aim:c1`) sitting in a
+    ref-list field to a quoted scalar, in place, before dump.
+
+    graph.py's safe loader (libyaml, fast) is stricter than this module's round-trip parser
+    (pure Python, preserves comments): in a flow sequence a plain scalar may not carry a `:`,
+    so `corroborates: [Key2026Journal:c4]` round-trips fine here but aborts the whole build
+    over there (graph.load_yaml's docstring has the full story). A curated file's refs aren't
+    only set by this module — a curator hand-edits YAML directly — so any write that
+    round-trips the *whole* document (even one only meaning to set `quote_loc` or a tag)
+    re-serializes every slice's refs as-is. Quoting the sharpened ones here means the first
+    store.py write to touch a file after a bad hand-edit heals it, instead of carrying the
+    landmine forward untouched. Scoped to the known ref-list fields, not every string in the
+    document, so a coincidental `:` in `text`/`quote`/`note` is never touched.
+    """
+    from ruamel.yaml.scalarstring import DoubleQuotedScalarString as DQ
+    from ruamel.yaml.scalarstring import ScalarString
+
+    for group in _SLICE_GROUPS_ALL:
+        for slice_map in doc.get(group, []) or []:
+            for field_name in _REF_FIELDS:
+                seq = slice_map.get(field_name)
+                if not seq:
+                    continue
+                for i, r in enumerate(seq):
+                    if isinstance(r, str) and not isinstance(r, ScalarString) and classify_ref(r) == "sharpened":
+                        seq[i] = DQ(r)
 
 
 def curated_dir(root: Path) -> Path:
@@ -259,6 +296,7 @@ def write_quote_loc(root: Path, citekey: str, slice_id: str, page: int,
         raise KeyError(f"no slice {slice_id} in {citekey}")
 
     _place_quote_loc(target, _loc_cm(page, rects))
+    _quote_sharpened_refs(doc)
     with path.open("w") as fh:
         _yaml_rt.dump(doc, fh)
     return path
@@ -284,6 +322,7 @@ def write_quote_locs(root: Path, citekey: str, locs: dict[str, dict]) -> int:
         _place_quote_loc(s, _loc_cm(loc["page"], loc["rects"]))
         n += 1
     if n:
+        _quote_sharpened_refs(doc)
         with path.open("w") as fh:
             _yaml_rt.dump(doc, fh)
     return n
@@ -323,6 +362,7 @@ def edit_tags(root: Path, citekey: str, tags: list[str], remove: bool = False) -
             doc.insert(list(doc).index("authors"), "tags", seq)
         else:
             doc["tags"] = seq
+    _quote_sharpened_refs(doc)
     with path.open("w") as fh:
         _yaml_rt.dump(doc, fh)
     return result
@@ -349,6 +389,7 @@ def write_abstract(root: Path, citekey: str, abstract: str, dry_run: bool = Fals
     else:
         doc.insert(list(doc).index(anchor), "abstract", value)
     if not dry_run:
+        _quote_sharpened_refs(doc)
         with path.open("w") as fh:
             _yaml_rt.dump(doc, fh)
     return True
