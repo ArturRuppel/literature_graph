@@ -32,14 +32,14 @@ from pathlib import Path
 from eln.plugins import Plugin
 
 # litgraph's own building blocks — reused verbatim so this viewer can never drift from what
-# `lit build` / `lit serve` ship.
-from litgraph import store
-from litgraph.build import render_html, to_json_dict
+# `lit build` / `lit serve` ship. The payload and the PDF guard come from `endpoints`, which
+# `lit serve` calls too: they used to be a copy here, and the copy had already fallen behind.
+from litgraph import endpoints, store
+from litgraph.build import render_html
 from litgraph.config import load_config
-from litgraph.graph import BuildError, build_graph
+from litgraph.graph import BuildError
 from litgraph.pdfview import PAGE_WIDTH, page_sizes, page_words, preview, render_page, search
 from litgraph.preview import isolate
-from litgraph.quotes import polish_graph
 from litgraph.serve import _CITEKEY, _PDF_NAME, _PNG_NAME, _SLICE_ID, _valid_rects, locate_quote
 
 _DEFAULT_ROOT = "~/Projects/literature_graph_database"
@@ -60,13 +60,13 @@ def _resolve_paths():
 
 
 def _payload_dict(root: Path, pdf_dir: Path) -> dict:
-    """graph.json as a dict, rebuilt from the repo's YAML, quotes polished against the ``.md``
-    full text. Mirrors ``litgraph.serve._Handler._payload_dict``; may raise ``BuildError``. The
-    manual in-progress list (``[curation] active`` in config.toml) is re-read per request too, so
-    editing it is live — the same edit-then-refresh rhythm as the YAML rebuild."""
-    graph = build_graph(root)
-    polish_graph(graph, pdf_dir)
-    return to_json_dict(graph, active=load_config(root).active)
+    """graph.json as a dict — the shared builder, with every serve-only extra left off.
+
+    This used to be a hand-copy of ``lit serve``'s version and had already fallen a version
+    behind it. The labbook mounts the viewer read-only: no cockpit (it cannot spawn an agent
+    or attach a terminal) and no ``/views/`` renderings, so the defaults are exactly right
+    here and there is nothing left to keep in step by hand."""
+    return endpoints.payload_dict(root, pdf_dir)
 
 
 def register_litgraph_routes(app, root) -> None:
@@ -84,6 +84,28 @@ def register_litgraph_routes(app, root) -> None:
     def _pdf_for(key: str) -> Path:
         _, pdf_dir = _resolve_paths()
         return pdf_dir / (key + ".pdf")
+
+    def _served(fn, *args, fail: str, ctype: str = "application/json; charset=utf-8"):
+        """Run a shared endpoint helper and turn its `HttpError` into a Flask response.
+
+        The six PDF routes below all had the same guard written out by hand — validate the
+        citekey, find the file, run one `pdfview` function, call any failure a 404. This is
+        that shape once; `endpoints` owns the policy and Flask only carries it."""
+        try:
+            body = fn(*args)
+        except endpoints.HttpError as e:
+            return _err(e.message, status=e.status)
+        if isinstance(body, bytes):
+            return Response(body, mimetype=ctype)
+        return Response(json.dumps(body), mimetype=ctype)
+
+    def _pdf_op(key: str, fn, *args, fail: str, ctype: str, status: int = 404):
+        """`_served`, for the routes keyed by a citekey: resolve the PDF, then run `fn`."""
+        def run():
+            _, pdf_dir = _resolve_paths()
+            pdf = endpoints.pdf_path(pdf_dir, key, _CITEKEY)
+            return endpoints.pdf_result(pdf, fn, *args, fail=fail, status=status)
+        return _served(run, fail=fail, ctype=ctype)
 
     # ── the viewer page + its data ──────────────────────────────────────────────────────────
     # Flask canonicalises the trailing slash: a request to `/litgraph` 308-redirects here, so
@@ -159,48 +181,25 @@ def register_litgraph_routes(app, root) -> None:
     # ── the floating quote window: full-page renders, page manifest, text overlay ───────────
     @app.route("/litgraph/page/<key>/<int:n>.png")
     def litgraph_page(key, n):  # noqa: ANN202
-        pdf = _pdf_for(key)
-        if not _CITEKEY.match(key) or not pdf.is_file():
-            return _err(f"no PDF: {key}", status=404)
-        try:
-            png = render_page(pdf, n, PAGE_WIDTH)
-        except Exception:  # noqa: BLE001 — out-of-range page etc.
-            return _err("no such page", status=404)
-        return Response(png, mimetype="image/png")
+        return _pdf_op(key, render_page, n, PAGE_WIDTH,
+                       fail="no such page", ctype="image/png")
 
     @app.route("/litgraph/pages/<key>.json")
     def litgraph_pages(key):  # noqa: ANN202
-        pdf = _pdf_for(key)
-        if not _CITEKEY.match(key) or not pdf.is_file():
-            return _err(f"no PDF: {key}", status=404)
-        try:
-            sizes = page_sizes(pdf)
-        except Exception:  # noqa: BLE001
-            return _err(f"page manifest failed: {key}")
-        return Response(json.dumps(sizes), mimetype="application/json; charset=utf-8")
+        return _pdf_op(key, page_sizes, fail=f"page manifest failed: {key}",
+                       ctype="application/json; charset=utf-8", status=500)
 
     @app.route("/litgraph/words/<key>/<int:n>.json")
     def litgraph_words(key, n):  # noqa: ANN202
-        pdf = _pdf_for(key)
-        if not _CITEKEY.match(key) or not pdf.is_file():
-            return _err(f"no PDF: {key}", status=404)
-        try:
-            words = page_words(pdf, n)
-        except Exception:  # noqa: BLE001
-            return _err("no such page", status=404)
-        return Response(json.dumps(words), mimetype="application/json; charset=utf-8")
+        return _pdf_op(key, page_words, n, fail="no such page",
+                       ctype="application/json; charset=utf-8")
 
     @app.route("/litgraph/search/<key>.json")
     def litgraph_search(key):  # noqa: ANN202
         """The viewer's find bar: every occurrence of `?q=` in the whole document."""
-        pdf = _pdf_for(key)
-        if not _CITEKEY.match(key) or not pdf.is_file():
-            return _err(f"no PDF: {key}", status=404)
-        try:
-            hits = search(pdf, request.args.get("q", ""))
-        except Exception:  # noqa: BLE001
-            return _err(f"search failed: {key}")
-        return Response(json.dumps(hits), mimetype="application/json; charset=utf-8")
+        return _pdf_op(key, search, request.args.get("q", ""),
+                       fail=f"search failed: {key}",
+                       ctype="application/json; charset=utf-8", status=500)
 
     # ── quote location: resolve live, persist an anchor back to the YAML ─────────────────────
     @app.route("/litgraph/resolve", methods=["POST"])

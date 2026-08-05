@@ -17,42 +17,49 @@ import argparse
 import http.server
 import os
 from functools import partial
+from urllib.parse import urlparse
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 
 class Handler(http.server.SimpleHTTPRequestHandler):
+    """This directory's files, with /graph.json mapped onto the --graph path.
+
+    Mapping the *path* rather than overriding do_GET keeps the stdlib's
+    content-type, Last-Modified, HEAD and 304 handling, and streams the file
+    instead of buffering a multi-megabyte payload per request. All three
+    prototypes share this shape on purpose — reading one teaches all three —
+    while each stays standalone: stdlib only, copy the folder and it runs."""
+
     def __init__(self, *a, graph_path=None, **kw):
         self.graph_path = graph_path
-        super().__init__(*a, **kw)
+        super().__init__(*a, directory=HERE, **kw)
 
-    def do_GET(self):
-        if self.path == "/graph.json":
-            try:
-                with open(self.graph_path, "rb") as f:
-                    body = f.read()
-            except OSError as e:
-                self.send_error(500, f"could not read --graph file: {e}")
-                return
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
-            return
-        super().do_GET()
+    def translate_path(self, path):
+        if urlparse(path).path == "/graph.json":
+            return self.graph_path
+        return super().translate_path(path)
+
+    def log_message(self, fmt, *args):
+        pass  # keep stdout quiet; errors still raise
 
 
 def main():
-    ap = argparse.ArgumentParser()
+    ap = argparse.ArgumentParser(description="Serve the claim-sphere prototype.")
     ap.add_argument("--graph", required=True, help="path to dist/graph.json")
     ap.add_argument("--port", type=int, default=8003)
-    ap.add_argument("--host", default="127.0.0.1")
+    ap.add_argument("--host", default="127.0.0.1",
+                    help="bind address; use the tailnet IP to view from another device")
     args = ap.parse_args()
 
-    handler = partial(Handler, directory=HERE, graph_path=os.path.abspath(args.graph))
+    graph_path = os.path.abspath(args.graph)
+    if not os.path.isfile(graph_path):
+        raise SystemExit(f"--graph not found: {graph_path}")
+
+    handler = partial(Handler, graph_path=graph_path)
+    http.server.ThreadingHTTPServer.allow_reuse_address = True  # survive restarts (TIME_WAIT)
     httpd = http.server.ThreadingHTTPServer((args.host, args.port), handler)
-    print(f"claim-sphere serving on http://{args.host}:{args.port}  (graph: {args.graph})")
+    print(f"claim-sphere serving on http://{args.host}:{args.port}  (graph: {graph_path})")
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:

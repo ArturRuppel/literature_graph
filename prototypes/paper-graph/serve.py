@@ -8,26 +8,32 @@ wherever --graph points (the private data repo — never hardcoded here).
 import argparse
 import http.server
 import os
-import socketserver
+from functools import partial
 from urllib.parse import urlparse
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 
-def make_handler(graph_path):
-    class Handler(http.server.SimpleHTTPRequestHandler):
-        def __init__(self, *args, **kwargs):
-            super().__init__(*args, directory=HERE, **kwargs)
+class Handler(http.server.SimpleHTTPRequestHandler):
+    """This directory's files, with /graph.json mapped onto the --graph path.
 
-        def translate_path(self, path):
-            if urlparse(path).path == "/graph.json":
-                return graph_path
-            return super().translate_path(path)
+    Mapping the *path* rather than overriding do_GET keeps the stdlib's
+    content-type, Last-Modified, HEAD and 304 handling, and streams the file
+    instead of buffering a multi-megabyte payload per request. All three
+    prototypes share this shape on purpose — reading one teaches all three —
+    while each stays standalone: stdlib only, copy the folder and it runs."""
 
-        def log_message(self, fmt, *args):
-            pass  # keep stdout quiet; errors still raise
+    def __init__(self, *a, graph_path=None, **kw):
+        self.graph_path = graph_path
+        super().__init__(*a, directory=HERE, **kw)
 
-    return Handler
+    def translate_path(self, path):
+        if urlparse(path).path == "/graph.json":
+            return self.graph_path
+        return super().translate_path(path)
+
+    def log_message(self, fmt, *args):
+        pass  # keep stdout quiet; errors still raise
 
 
 def main():
@@ -42,11 +48,16 @@ def main():
     if not os.path.isfile(graph_path):
         raise SystemExit(f"--graph not found: {graph_path}")
 
-    handler = make_handler(graph_path)
-    socketserver.TCPServer.allow_reuse_address = True  # survive quick restarts (TIME_WAIT)
-    with socketserver.TCPServer((args.host, args.port), handler) as httpd:
-        print(f"paper-graph serving on http://{args.host}:{args.port}  (graph={graph_path})")
+    handler = partial(Handler, graph_path=graph_path)
+    # Threading, not plain TCPServer: a single-threaded server stalls the whole page
+    # behind one slow request, which a 3.6 MB graph.json over the tailnet reliably is.
+    http.server.ThreadingHTTPServer.allow_reuse_address = True  # survive restarts (TIME_WAIT)
+    httpd = http.server.ThreadingHTTPServer((args.host, args.port), handler)
+    print(f"paper-graph serving on http://{args.host}:{args.port}  (graph={graph_path})")
+    try:
         httpd.serve_forever()
+    except KeyboardInterrupt:
+        pass
 
 
 if __name__ == "__main__":

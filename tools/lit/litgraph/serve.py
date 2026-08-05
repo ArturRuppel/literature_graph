@@ -36,12 +36,11 @@ from urllib.parse import parse_qs, unquote, urlparse
 
 import fitz  # pymupdf — already a hard dependency (litgraph.pdf)
 
-from litgraph import config, pdfview, store
-from litgraph.build import render_html, to_json_dict
+from litgraph import config, endpoints, pdfview, store
+from litgraph.build import render_html
 from litgraph.config import load_config
 from litgraph.graph import BuildError, build_graph
 from litgraph.preview import isolate
-from litgraph.quotes import polish_graph
 from litgraph.sources.openalex import OpenAlex
 
 # strictly <citekey>.<ext> — one flat name, no separators, so /pdf/ can't traverse out
@@ -256,28 +255,19 @@ class _Handler(BaseHTTPRequestHandler):
 
     def _payload_dict(self, include_aims: bool = False) -> dict:
         """graph.json as a dict, rebuilt from the repo's YAML on every request (may raise
-        BuildError). Quotes are polished against the `.md` full text in pdf_dir (falls back to
-        the raw anchor when a paper's `.md` is absent). The manual in-progress list
-        (`[curation] active` in config.toml) is re-read per request too, so editing it is live —
-        no restart — like every other refresh-after-edit in the curation loop."""
-        graph = build_graph(self.server.root)
-        polish_graph(graph, self.server.pdf_dir)
-        # Agent creation and terminal attachment are separate capabilities: phone curation needs
-        # the former but deliberately skips the latter; desktop uses both.
+        BuildError) — the shared `endpoints.payload_dict`, which the labbook plugin calls too.
+
+        The extras are assembled here because only this server has them. Agent creation and
+        terminal attachment are separate capabilities: phone curation needs the former but
+        deliberately skips the latter; desktop uses both. The alternative renderings live at
+        /views/ and need a server to answer for them. Aims ride along only for the preview
+        routes, so `/graph.json` stays paper-only and the landing board is untouched by the
+        programme layer."""
         cockpit = ({"agent": "Switchboard agent",
                     "terminal": Path(self.server.term_cmd[0]).name if self.server.term_cmd else None}
                    if self.server.agent_cmd else None)
-        # Aims ride along only for the preview routes: `/graph.json` stays paper-only so the
-        # landing board is untouched by the programme layer.
-        out = to_json_dict(graph, active=load_config(self.server.root).active, cockpit=cockpit,
-                           include_aims=include_aims)
-        # Serve-only, like `active` and `cockpit`: the alternative renderings live at /views/ and
-        # a static artifact has no server to answer that, so a `lit build` page never sees the key
-        # and never grows the dropdown.
-        views = _available_views()
-        if views:
-            out["views"] = views
-        return out
+        return endpoints.payload_dict(self.server.root, self.server.pdf_dir, cockpit=cockpit,
+                                      include_aims=include_aims, views=_available_views())
 
     def _payload(self) -> str:
         """`_payload_dict` serialized — the graph.json body served at `/` and `/graph.json`."""
