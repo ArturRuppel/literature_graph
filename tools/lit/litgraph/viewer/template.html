@@ -362,7 +362,10 @@
     overflow:hidden;cursor:pointer;transition:border-color .15s,box-shadow .15s}
   .card:hover{border-color:#b8c3cc}
   .card.curated{border-style:solid}
-  .card.stub{border-style:dashed;opacity:.92;cursor:default}
+  /* a stub expands too — to the bib record, not to slices it doesn't have — so it keeps the
+     card's pointer cursor in both states (.card.open would otherwise make it read as inert) */
+  .card.stub{border-style:dashed;opacity:.92}
+  .card.stub.open{cursor:pointer;opacity:1}
   .card.focus{border-color:var(--grounded);box-shadow:0 0 0 1px var(--grounded),0 6px 20px rgba(38,54,70,.14)}
   /* hover counterpart: the paper(s) an edge of the hovered claim touches */
   .card.hl{border-color:var(--borrowed);box-shadow:0 0 0 1px var(--borrowed)}
@@ -388,8 +391,12 @@
   /* the abstract: on desktop it lives in the hover tip; on touch (no hover) it shows inline in
      the open card instead (revealed by the coarse-pointer media query below) */
   .cabs{display:none;padding:0 11px 8px;font-size:10px;color:var(--dim);line-height:1.4}
+  /* the venue line, expanded stubs only: a curated paper has no `journal` field at all
+     (SCHEMA §3 — the venue lives in the citekey), so this has nothing to say on one */
+  .cbib{display:none;padding:0 11px 8px;font-size:9px;color:var(--faint);font-style:italic}
   .card.open .cyr{display:inline-block}
   .card.open .ctitle,.card.open .cauth{display:block}
+  .card.open .cbib{display:block}
   /* the aim card's punchline. A paper's card is a bibliography record — its citekey identifies it
      and the title can wait for the open state. An aim has no such handle: `@fluid-solid-switch`
      collapsed told a reader nothing at all. So an aim's title and its one-line thesis (the first
@@ -495,11 +502,21 @@
   .stack .ckey{color:var(--dim);font-weight:600}
   .srcs{display:none;border-top:1px solid var(--line);padding:5px 9px 8px;background:#f9fbfc}
   .card.stack.open .srcs{display:block}
-  .src{display:flex;gap:6px;align-items:baseline;padding:2px 5px;margin:1px 0;border-radius:4px;
-    background:#f3f6f8;font-size:9px}
+  /* wrap, so the bib record an expanded row reveals gets a line of its own rather than
+     squeezing the citekey — the row is a flex line first and a record second */
+  .src{display:flex;flex-wrap:wrap;gap:6px;align-items:baseline;padding:2px 5px;margin:1px 0;
+    border-radius:4px;background:#f3f6f8;font-size:9px;cursor:pointer}
   .src:hover{background:#e9eef2}
   .src .skey{font-weight:700}
   .src .sy{margin-left:auto;color:var(--faint);font-size:8px}
+  /* the same expansion as a stub CARD, in the one place most stubs actually stand: the wall.
+     Keyed off the same stubOpen set, so one uncited paper reads the same everywhere it appears. */
+  .sdet{display:none;flex-basis:100%;padding:2px 0 3px;line-height:1.35}
+  .src.open{background:#e9eef2}
+  .src.open .sdet{display:block}
+  .sdet .st{color:var(--dim)}
+  .sdet .sa{color:var(--faint);padding-top:2px}
+  .sdet .sj{color:var(--faint);font-style:italic;padding-top:2px}
 
   /* ── the family container ──────────────────────────────────────────────────────────────
      One box per ladder root: its own card at the head, its whole descent nested below. The box
@@ -1078,6 +1095,12 @@ let edges=[];            // {from:{cardId,sid},to:{cardId,sid},kind} — an endp
                          // aggregate paper→paper edges sharpen to slice edges as the human drills
 const cols={};           // level -> {el, keys:Set, label}
 const open=new Set();    // "level:key" of focused cards — a set, so expansion is non-exclusive
+const stubOpen=new Set();// citekeys of uncited stubs expanded to their bib record. Keyed by KEY and
+                         // not by "level:key" like `open`, because a stub has no slices, no drill
+                         // and no per-column role: the same uncited paper standing in two columns
+                         // is one bibliography record, and there is nothing instance-specific for
+                         // the two instances to disagree about. An expanded stub is an OPEN end as
+                         // far as edgeVis is concerned — see toggleStub.
 const drill=new Map();   // "level:key" -> Set of expanded row paths ("c3", "c3/c1", …); AIM cards
                          // only — a paper's slices are a graph now, and a graph has no paths
 const sFold=new Map();   // "level:key" -> Set of slice ids folded down to their badge. A paper's
@@ -1290,8 +1313,23 @@ function paperCard(key, level){
     if (p.tags && p.tags.length) body += `<div class="ctags">`
       + p.tags.map(t => `<span class="ctag" data-tag="${esc(t)}">${esc(t)}</span>`).join("") + `</div>`;
     if (!aim) body += `<span class="cyr">${p.year}</span>`;
+  } else if (p.year) {
+    body += `<span class="cyr">${p.year}</span>`;      // right-pushed, revealed by .card.open
   }
   body += `</div>`;
+  if (!cur) {
+    // A stub expands to the bib record `stubs.yaml` actually stores — title, byline, venue, year
+    // — reusing the curated card's own classes so the two kinds cannot drift apart visually and
+    // the existing `.card.open` reveal rules cover both. The byline is the SHORT form for the
+    // same reason a cited source uses it: an uncited stub is on screen as a reference, not as a
+    // bibliography entry to be read end to end. `p.journal || venueFromKey` is the tip's rule
+    // verbatim (showTip) — two renderings of one fact disagreeing is worse than the mild
+    // redundancy of naming a venue the citekey above already spells.
+    const venue = p.journal || venueFromKey(key);
+    body += `<div class="ctitle">${p.title || ""}</div>`;
+    if (p.authors && p.authors.length) body += `<div class="cauth">${shortAuthLine(p.authors)}</div>`;
+    if (venue) body += `<div class="cbib">${esc(venue)}</div>`;
+  }
   if (cur) {
     body += `<div class="ctitle">${p.title}</div>`;
     if (aim) {
@@ -1314,6 +1352,7 @@ function paperCard(key, level){
     body += `<div class="cprov"><span class="cvia"></span></div>`;
   el.innerHTML = body;
   if (level === 0) el.classList.add("plain");
+  if (!cur && stubOpen.has(key)) el.classList.add("open");   // a card minted while its stub is expanded
   // a tag chip runs a search for that tag (the whole filter-by-tag story — no separate panel);
   // stopPropagation keeps the click off cardClick's fold/drill routing
   if (cur) el.querySelectorAll(".ctag").forEach(chip =>
@@ -1327,13 +1366,43 @@ function paperCard(key, level){
   el.addEventListener("mouseleave", () => { dropTip(); hoverRow(null); });
   // right-click a curated card (browse view) → "Curate this paper" → move it onto the worklist
   if (cur && LIVE && !DRIVE) el.addEventListener("contextmenu", e => showCurateMenu(e, key));
-  // touch has no hover: a curated card opens on tap; a stub (no open action) pins its tip instead,
-  // so its bib metadata stays reachable on a phone (dismissed by the next outside tap).
+  // Both kinds of card open on a click; what they open to differs. A curated card routes through
+  // cardClick (fold / drill / isolate); a stub has none of that and simply reveals its bib record.
+  // The citekey stays the tip's handle in both: on desktop the mousemove above pops it on hover,
+  // and on touch — where there is no hover at all — a tap on the key is the only route to the
+  // live-fetched abstract, which is the one thing the expanded card does NOT carry. Hence the
+  // early return: tapping the key reads the abstract, tapping anywhere else expands.
   el.addEventListener("click", e => {
-    if (cur) cardClick(e, el, level, key);
-    else if (!HOVER) showTip(e, key, el, true);
+    if (cur) return cardClick(e, el, level, key);
+    if (!HOVER && e.target.closest(".ckey")) { showTip(e, key, el, true); return; }
+    toggleStub(key);
   });
   return el;
+}
+
+// Expand/collapse an uncited stub, every instance of it at once (see stubOpen). The redraw is not
+// cosmetic: `.open` is exactly what endOpen tests, so expanding a stub promotes every edge landing
+// on it from a ghost to scaffolding — which is the honest reading, since an arrow into a stub can
+// only ever anchor on the card border, and the border now names the paper it lands on.
+function toggleStub(key){
+  if (!STUBS[key]) return;                          // curated papers open through cardClick
+  if (stubOpen.has(key)) stubOpen.delete(key); else stubOpen.add(key);
+  const on = stubOpen.has(key);
+  const k = CSS.escape(key);
+  document.querySelectorAll(`.card.stub[data-key="${k}"], .card.stack .src[data-sid="${k}"]`)
+    .forEach(c => c.classList.toggle("open", on));
+  redraw();
+}
+// The three facts a citekey and a year don't already carry, for a source-stack row. Same
+// selection as the expanded stub card and the hover tip — one uncited paper reads the same
+// wherever it stands, which is the whole point of keying the state by citekey.
+function stubDetail(key, p){
+  const venue = p.journal || venueFromKey(key);
+  return `<div class="sdet">`
+       + (p.title ? `<div class="st">${p.title}</div>` : "")
+       + (p.authors && p.authors.length ? `<div class="sa">${shortAuthLine(p.authors)}</div>` : "")
+       + (venue ? `<div class="sj">${esc(venue)}</div>` : "")
+       + `</div>`;
 }
 
 const samePin=(a,b)=>!!a&&!!b&&a.cardId===b.cardId&&a.sid===b.sid;
@@ -2102,8 +2171,9 @@ function addStack(level,owner,wall,label,grp){
   el.innerHTML=`<div class="chd"><span class="car">${stacks.has(id)?"▾":"▸"}</span>`
     +`<span class="ckey">${srcs.length} source${srcs.length===1?"":"s"}</span></div>`
     +`<div class="srcs">`+srcs.map(s=>
-      `<div class="src" data-sid="${s.k}"><span class="skey">${s.k}</span>`
-      +`<span class="sy">${s.p.year||""}</span></div>`).join("")+`</div>`;
+      `<div class="src${stubOpen.has(s.k)?" open":""}" data-sid="${s.k}">`
+      +`<span class="skey">${s.k}</span>`
+      +`<span class="sy">${s.p.year||""}</span>`+stubDetail(s.k,s.p)+`</div>`).join("")+`</div>`;
   el.addEventListener("click",()=>{
     if(stacks.has(id)) stacks.delete(id); else stacks.add(id);
     el.classList.toggle("open",stacks.has(id));
@@ -2113,6 +2183,9 @@ function addStack(level,owner,wall,label,grp){
   for(const row of el.querySelectorAll(".src")){
     row.addEventListener("mousemove",e=>showTip(e,row.dataset.sid,row));
     row.addEventListener("mouseleave",dropTip);
+    // stopPropagation or the stack's own handler folds the whole wall shut under the reader:
+    // reading one source is the opposite of putting all of them away.
+    row.addEventListener("click",e=>{ e.stopPropagation(); dropTip(); toggleStub(row.dataset.sid); });
   }
   const yr=+el.dataset.year||0;                        // grouped then year-sorted, same rule as cards
   placeInCol(c,el,grp==null?BACKFILL:grp,ch=>(+ch.dataset.year||0)<yr);
@@ -2187,6 +2260,16 @@ function rebuild(hold){
     if(open.has(id)) el.classList.add("focus");      // ctx-only cards: revealed, not focused
     renderSlices(id);
   }
+  // Stubs re-open from their own state: the blanket strip above takes `.open` off every card, and
+  // a stub carries none of the open/ctxOpen machinery that puts it back. Run after every minting
+  // site (syncLanding, the expansion sweep, ensureBroadBand), so a stub materialized by this very
+  // rebuild lands expanded rather than snapping shut under the reader. Wall rows are re-minted
+  // with the class already on (addStack reads stubOpen); they are swept here too so the two
+  // renderings of one citekey cannot come out of a rebuild disagreeing.
+  if(stubOpen.size) document.querySelectorAll(".card.stub,.card.stack .src").forEach(c=>{
+    const k=c.dataset.key||c.dataset.sid;
+    if(stubOpen.has(k)) c.classList.add("open");
+  });
   // A claim's brightness is DERIVED from whether it is shown, never pinned independently: that is
   // the merge (see showBroad). Deriving rather than toggling is what makes it impossible for the
   // arrows and the papers column to disagree about which claims you are looking at.
@@ -3795,6 +3878,9 @@ function syncLanding(){
   for(const k of [...c.keys]){                       // only summoned stubs are evictable
     if(perm.has(k)||landedStuck.has(k)||k.endsWith("::srcs")) continue;
     c.keys.delete(k);
+    // stubOpen is deliberately NOT pruned here. It is keyed by citekey, not by card, and the same
+    // uncited paper can also be standing as a row in some open paper's source wall — evicting the
+    // summoned card would then fold a row on the other side of the board that nobody dismissed.
     const el=document.getElementById(`card-0:${k}`); if(el) el.remove();
   }
   for(const k of perm){                              // ORDER's ranking — never resorted

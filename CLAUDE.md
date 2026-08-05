@@ -139,6 +139,22 @@ the rate limiter; never flood. A half-finished graph is a normal, valid state.**
   disagree. Clicking empty board space still thaws row pins; it is the quick one, no longer the only one.
   Deliberately **not** on `Escape`, which already dismisses the library, the walk, the views menu and
   the search box.
+  **A stub expands too — to its bib record, not to slices it hasn't got.** Click one and it reveals
+  the four things `stubs.yaml` actually stores: title, byline (short form — an uncited paper is on
+  screen as a reference, not as an entry to read end to end), venue and year. It uses the curated
+  card's own classes, so the two card kinds cannot drift apart visually, and the same expansion runs
+  on a **source-stack row**, which is where most stubs really stand: `Oswald2017JPhysDApplPhys` folds
+  55 uncurated sources into one `▸ 55 sources` wall, and before this a wall was 55 bare citekeys.
+  The state (`stubOpen`) is keyed by **citekey, not by card id** like `open` — a stub has no slices,
+  no drill and no per-column role, so the same uncited paper standing in two places is one
+  bibliography record and there is nothing instance-specific for its renderings to disagree about
+  (which is also why eviction does *not* prune it: dismissing a summoned card must not fold a wall
+  row on the other side of the board). One thing an expanded stub does *not* carry is its abstract,
+  which is fetched live and belongs to the hover tip — so the **citekey stays the tip's handle** in
+  both card and row, and on touch, where there is no hover, tapping the key reads the abstract while
+  tapping anywhere else expands. An expanded stub is an **open end** for `edgeVis`: an arrow into a
+  stub can only ever anchor on the card border, and once the border names the paper it lands on, that
+  arrow says something, so it stops being a ghost.
   **The board hides nothing pending a click.** The landing column lists **every curated paper** in
   `ORDER`'s pass ranking (plus a tail of cards for the uncurated papers a lateral / `answers` edge
   points at, so those arrows have an anchor), and the **synthesis band** gives every broad claim /
