@@ -231,6 +231,20 @@
   #hud .libbtn.on{background:rgba(90,159,208,.34);border-color:rgba(170,205,230,.85);color:#fff}
   #hud .libbtn[hidden]{display:none}
 
+  /* The alternative renderings (docs/2026-08-05-additive-graph-views.md). Serve-only: the wrap
+     stays hidden unless GRAPH.views arrived, so a static `lit build` page never grows a menu
+     whose links have no server to answer them. */
+  #viewsWrap{position:relative;display:inline-flex}
+  #viewsWrap[hidden]{display:none}
+  #viewsMenu{position:absolute;top:calc(100% + 6px);left:0;z-index:40;min-width:260px;
+    background:#1b2733;border:1px solid rgba(120,170,210,.42);border-radius:8px;padding:4px;
+    box-shadow:0 8px 24px rgba(0,0,0,.45)}
+  #viewsMenu[hidden]{display:none}
+  #viewsMenu a{display:block;padding:7px 10px;border-radius:5px;text-decoration:none;color:#eaf1f6;
+    font-size:12px;letter-spacing:0;text-transform:none}
+  #viewsMenu a:hover{background:rgba(90,159,208,.26)}
+  #viewsMenu a .vn{display:block;color:#93a4b3;font-size:10.5px;margin-top:1px}
+
   @media (max-width:760px){
     #libFacets{flex-basis:170px}
     #libScroll .lr{padding:0 12px}
@@ -964,6 +978,8 @@
          placeholder="find a paper — title, author, journal, tag…">
   <button id="libBtn" class="libbtn" hidden>library</button>
   <button id="walkBtn" class="libbtn" hidden title="one focus, one relation, no drawn edges (w)">walk</button>
+  <span id="viewsWrap" hidden><button id="viewsBtn" class="libbtn"
+       title="alternative renderings of the same graph">show graph ▾</button><div id="viewsMenu" hidden></div></span>
   <span id="wip" class="wip" hidden></span>
   <span id="aims" class="wip" hidden></span>
   <button id="pdfToggle" class="pdfbtn" hidden>📄 PDF</button>
@@ -5009,6 +5025,29 @@ const WALK = (!PDFWIN && !MOBILE_CURATE) ? (function(){
           get keys(){return KEYS}, get broadIds(){return BROAD_IDS}};
 })() : null;
 window.litWalk = WALK;      // the seam gotoPaper reaches through (see its TDZ note)
+
+// ── the alternative renderings ────────────────────────────────────────────────────────────────
+// A dropdown of the same graph drawn other ways (docs/2026-08-05-additive-graph-views.md). These
+// are separate pages under /views/<slug>/, not board modes, so the menu holds plain links and
+// opens each in a new tab — the board keeps its scroll position and whatever the reader had open.
+// `GRAPH.views` is set only by `lit serve`; a static build has no key, so the button never shows.
+(() => {
+  const wrap = document.getElementById("viewsWrap");
+  const btn  = document.getElementById("viewsBtn");
+  const menu = document.getElementById("viewsMenu");
+  const views = Array.isArray(GRAPH.views) ? GRAPH.views : [];
+  if (!wrap || !btn || !menu || !views.length) return;
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+  menu.innerHTML = views.map(v =>
+    `<a href="/views/${encodeURIComponent(v.slug)}/" target="_blank" rel="noopener">` +
+    `${esc(v.label)}<span class="vn">${esc(v.note || "")}</span></a>`).join("");
+  wrap.hidden = false;
+  const open = on => { menu.hidden = !on; btn.classList.toggle("on", on); };
+  btn.addEventListener("click", e => { e.stopPropagation(); open(menu.hidden); });
+  menu.addEventListener("click", () => open(false));       // a chosen link closes the menu behind it
+  addEventListener("click", e => { if (!wrap.contains(e.target)) open(false); });
+  addEventListener("keydown", e => { if (e.key === "Escape" && !menu.hidden) open(false); });
+})();
 
 // read-only introspection for headless tests; not used by the UI
 window.litDebug={get edges(){return edges},get cols(){return cols},open,drill,stacks,

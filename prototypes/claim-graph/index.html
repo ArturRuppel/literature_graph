@@ -1,0 +1,36 @@
+<title>Claim graph — support skeleton</title>
+<link rel="stylesheet" href="style.css">
+<div id="app">
+  <header>
+    <h1>Claim graph</h1>
+    <div class="sub">the support skeleton — 822 slices + 45 broad nodes, layered by distance-to-floor</div>
+    <div id="stats">loading…</div>
+    <div id="controls">
+      <label><input type="checkbox" id="tgl-up" checked> grounding (up)</label>
+      <label><input type="checkbox" id="tgl-gen" checked> generalization (gen)</label>
+      <label><input type="checkbox" id="tgl-cons" checked> → broad (cons)</label>
+      <label><input type="checkbox" id="tgl-ladder" checked> broad ladder</label>
+      <label><input type="checkbox" id="tgl-cite" checked> sharpened citation</label>
+      <label><input type="checkbox" id="tgl-lateral" checked> corroborate / contradict</label>
+      <button id="btn-reset">reset view</button>
+    </div>
+  </header>
+  <div id="legend"></div>
+  <main>
+    <div class="axis-hint">← evidence / floors&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;synthesis / broad →</div>
+    <div id="canvasWrap">
+      <svg id="graph" xmlns="http://www.w3.org/2000/svg"></svg>
+    </div>
+    <div class="zoombar">
+      <button id="zoom-out">−</button>
+      <button id="zoom-fit">⤢</button>
+      <button id="zoom-in">+</button>
+    </div>
+    <div id="panel">
+      <button class="p-close" id="panel-close">×</button>
+      <div id="panel-body"></div>
+    </div>
+    <div id="tooltip"></div>
+  </main>
+</div>
+<script src="app.js"></script>

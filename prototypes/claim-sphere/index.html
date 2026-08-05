@@ -1,0 +1,60 @@
+<title>Claim sphere — generality as radius</title>
+<link rel="stylesheet" href="style.css">
+<div id="app">
+  <header>
+    <h1>Claim sphere</h1>
+    <div class="sub">radius = generality (floor → apex) · direction = family (16 top-level branches) · within-shell position is force-packed and <b>MEANINGLESS</b></div>
+    <div id="stats">loading…</div>
+  </header>
+
+  <div id="controls-bar">
+    <div class="ctl-grp">
+      <label>camera
+        <select id="camera-mode">
+          <option value="orbit">orbit</option>
+          <option value="fly">fly (WASD + mouse, R/F up-down)</option>
+        </select>
+      </label>
+      <button id="btn-reset-cam">reset view</button>
+      <span id="lod-readout" class="lod-readout">— level —</span>
+    </div>
+    <div class="ctl-grp">
+      <label title="radial peel: only nodes with r in [a,b] are drawn">shell window
+        <input type="range" id="shell-min" min="0" max="100" value="0">
+        <input type="range" id="shell-max" min="0" max="100" value="100">
+      </label>
+      <span id="shell-readout"></span>
+      <button id="btn-shell-reset">full range</button>
+    </div>
+    <div class="ctl-grp edge-toggles">
+      <label><input type="checkbox" id="tgl-up" checked> grounding (up)</label>
+      <label><input type="checkbox" id="tgl-gen" checked> generalization (gen)</label>
+      <label><input type="checkbox" id="tgl-cons" checked> → broad (cons)</label>
+      <label><input type="checkbox" id="tgl-ladder" checked> broad ladder</label>
+      <label><input type="checkbox" id="tgl-cite" checked> sharpened citation</label>
+      <label><input type="checkbox" id="tgl-lateral" checked> corroborate / contradict</label>
+      <label><input type="checkbox" id="tgl-halo" checked> halo (unfloored / unfamilied)</label>
+    </div>
+  </div>
+
+  <div id="halo-banner">
+    <b>The halo is the finding.</b> Every point out here has no authored path either to a
+    top-level family (a <code>leads_to</code> chain via <code>cons</code>, or inherited through
+    the local generalization ladder) or to a floor (no <code>leads_to</code> chain reaches a
+    measurement/axiom) — usually both. Nothing here was placed by a majority vote or an
+    embedding; it is diffuse because the library genuinely doesn't say where it goes.
+    <button id="halo-banner-close">×</button>
+  </div>
+
+  <main>
+    <div id="canvasWrap">
+      <canvas id="gl"></canvas>
+    </div>
+    <div id="panel">
+      <button class="p-close" id="panel-close">×</button>
+      <div id="panel-body"></div>
+    </div>
+    <div id="crosshair"></div>
+  </main>
+</div>
+<script type="module" src="app.js"></script>

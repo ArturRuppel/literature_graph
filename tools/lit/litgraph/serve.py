@@ -68,6 +68,26 @@ _PWA_CACHE = "public, max-age=86400"
 _TEXTISH = re.compile(r"^(text/|application/(json|manifest\+json|javascript))")
 _VIEWER_ASSETS = Path(__file__).parent / "viewer"
 
+# The alternative renderings (docs/2026-08-05-additive-graph-views.md), served from the repo's
+# `prototypes/` tree at /views/<name>/. They are **serve-only**: a static `lit build` artifact is
+# one self-contained file and could not carry them, so the HUD's dropdown is gated on the `views`
+# payload key below, which only this server ever sets. Missing tree → no key → no dropdown, which
+# is also what happens when litgraph is installed away from a checkout.
+_PROTOTYPES = Path(__file__).resolve().parents[3] / "prototypes"
+_VIEWS = (("paper-graph", "paper graph", "papers as circles — grounding and co-support"),
+          ("claim-graph", "claim graph (flat)", "the support skeleton, layered by distance to floor"),
+          ("claim-sphere", "claim sphere (3D)", "generality as radius, family as direction"))
+_VIEW_TYPES = {".html": "text/html; charset=utf-8", ".js": "application/javascript",
+               ".css": "text/css; charset=utf-8", ".json": "application/json; charset=utf-8"}
+
+
+def _available_views() -> list[dict]:
+    """The prototype views actually present on disk, for the HUD dropdown."""
+    if not _PROTOTYPES.is_dir():
+        return []
+    return [{"slug": s, "label": lab, "note": note} for s, lab, note in _VIEWS
+            if (_PROTOTYPES / s / "index.html").is_file()]
+
 
 def _needles(anchor: str) -> list[str]:
     """Search strings for an anchor, longest → shortest, so a precise full-phrase match is
@@ -248,8 +268,15 @@ class _Handler(BaseHTTPRequestHandler):
                    if self.server.agent_cmd else None)
         # Aims ride along only for the preview routes: `/graph.json` stays paper-only so the
         # landing board is untouched by the programme layer.
-        return to_json_dict(graph, active=load_config(self.server.root).active, cockpit=cockpit,
-                            include_aims=include_aims)
+        out = to_json_dict(graph, active=load_config(self.server.root).active, cockpit=cockpit,
+                           include_aims=include_aims)
+        # Serve-only, like `active` and `cockpit`: the alternative renderings live at /views/ and
+        # a static artifact has no server to answer that, so a `lit build` page never sees the key
+        # and never grows the dropdown.
+        views = _available_views()
+        if views:
+            out["views"] = views
+        return out
 
     def _payload(self) -> str:
         """`_payload_dict` serialized — the graph.json body served at `/` and `/graph.json`."""
@@ -270,6 +297,27 @@ class _Handler(BaseHTTPRequestHandler):
             if path == "/graph.json":
                 return self._send(HTTPStatus.OK, "application/json; charset=utf-8",
                                   self._payload().encode())
+            if path.startswith("/views/"):
+                # An alternative rendering from `prototypes/`. Each one fetches a *relative*
+                # `graph.json`, which lands here as /views/<name>/graph.json — so it is answered
+                # with this server's live payload rather than a file, and the views read the same
+                # rebuilt-from-YAML graph as the board instead of a stale dist artifact.
+                parts = path[len("/views/"):].split("/", 1)
+                name, rest = parts[0], (parts[1] if len(parts) > 1 else "")
+                if name not in {v["slug"] for v in _available_views()}:
+                    return self._send(HTTPStatus.NOT_FOUND, "text/plain; charset=utf-8",
+                                      f"no such view: {name}\n".encode())
+                if rest == "graph.json":
+                    return self._send(HTTPStatus.OK, "application/json; charset=utf-8",
+                                      self._payload().encode())
+                base = (_PROTOTYPES / name).resolve()
+                target = (base / (rest or "index.html")).resolve()
+                # containment check: a crafted `rest` must not escape the view's own directory
+                if not target.is_file() or base not in target.parents:
+                    return self._send(HTTPStatus.NOT_FOUND, "text/plain; charset=utf-8",
+                                      b"not found\n")
+                ctype = _VIEW_TYPES.get(target.suffix, "application/octet-stream")
+                return self._send(HTTPStatus.OK, ctype, target.read_bytes())
             if path == "/focus":
                 # the focus wire — what the viewer's PDF pane should aim at right now. Set by
                 # POST /focus (the `lit focus` CLI or a card click); the viewer polls this.

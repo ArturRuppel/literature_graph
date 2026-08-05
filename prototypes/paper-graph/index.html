@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Litgraph · paper graph (View A)</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header id="topbar">
+  <h1>paper graph <span class="sub">— View A, projections of authored edges</span></h1>
+
+  <div class="control-group" id="mode-group">
+    <label class="mode-label">
+      <input type="radio" name="mode" value="A1" checked>
+      <span>A1 · grounding</span>
+    </label>
+    <label class="mode-label">
+      <input type="radio" name="mode" value="A2">
+      <span>A2 · co-support</span>
+    </label>
+  </div>
+
+  <div class="control-group" id="threshold-group">
+    <label for="threshold-slider" id="threshold-label">in-degree ≥ 2</label>
+    <input type="range" id="threshold-slider" min="1" max="9" step="1" value="2">
+  </div>
+
+  <div class="control-group">
+    <label class="mode-label">
+      <input type="checkbox" id="lateral-toggle">
+      <span>lateral overlay (corr / contra)</span>
+    </label>
+  </div>
+
+  <div class="control-group" id="status-group">
+    <span id="status-text">loading…</span>
+  </div>
+</header>
+
+<main>
+  <svg id="canvas" preserveAspectRatio="xMidYMid meet"></svg>
+
+  <aside id="tray" class="hidden">
+    <h2>off-graph <span class="sub">— curated, no <code>cons</code></span></h2>
+    <div id="tray-list"></div>
+  </aside>
+
+  <div id="tooltip" class="hidden"></div>
+
+  <div id="pin-panel" class="hidden">
+    <div id="pin-title"></div>
+    <div id="pin-meta"></div>
+    <div id="pin-citekey-row">
+      citekey:
+      <input id="pin-citekey" type="text" readonly>
+    </div>
+    <button id="pin-close">unpin</button>
+  </div>
+
+  <div id="legend">
+    <div class="legend-row">
+      <span class="legend-title">fill = pass</span>
+      <svg width="112" height="16"><g id="legend-pies"></g></svg>
+    </div>
+    <div class="legend-row"><span class="dot stub"></span> stub (dashed = never curated)</div>
+    <div class="legend-row"><span class="legend-title">size = degree in current view</span></div>
+    <div class="legend-row" id="legend-lateral">
+      <span class="lat-line corr"></span> corroborate &nbsp;
+      <span class="lat-line contra"></span> contradict
+    </div>
+  </div>
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>

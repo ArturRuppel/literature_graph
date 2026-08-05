@@ -1,0 +1,215 @@
+/* Claim graph — support-skeleton diagnostic. Standalone prototype, no framework.
+   Palette lifted from dist/index.html's own CSS variables so the accent hues
+   mean the same thing here as they already do on the board — not invented. */
+
+:root {
+  --bg: #eef1f4;
+  --ink: #27313a;
+  --dim: #53616d;
+  --faint: #6a7884;
+  --line: #d7dde2;
+  --panel: #ffffff;
+
+  --floor: #b5822f;
+  --model: #8a6db1;
+  --grounded: #27735f;
+  --borrowed: #286b9f;
+  --question: #a15c1e;
+  --plausible: #8a97a4;
+  --broad: #7a4fb0;
+  --cross: #9a3b3b;
+
+  --stranded-hatch: #b23b3b;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--ink);
+  font: 13px/1.4 -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+header {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 14px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+}
+
+header h1 {
+  font-size: 14px;
+  margin: 0;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+header .sub {
+  font-size: 11px;
+  color: var(--dim);
+}
+
+#stats {
+  font-size: 11px;
+  color: var(--dim);
+  white-space: nowrap;
+}
+#stats b { color: var(--ink); }
+#stats .warn { color: var(--cross); font-weight: 700; }
+
+#controls {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  font-size: 11px;
+  margin-left: auto;
+}
+#controls label { display: flex; align-items: center; gap: 4px; cursor: pointer; white-space: nowrap; }
+#controls button {
+  font: inherit;
+  font-size: 11px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  border-radius: 5px;
+  padding: 3px 8px;
+  cursor: pointer;
+}
+#controls button:hover { border-color: var(--dim); }
+
+#legend {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  padding: 6px 14px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  font-size: 10.5px;
+  color: var(--dim);
+}
+#legend .grp { display: flex; align-items: center; gap: 8px; }
+#legend .sw { display: inline-flex; align-items: center; gap: 3px; }
+#legend .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+#legend .diamond { width: 9px; height: 9px; display: inline-block; transform: rotate(45deg); }
+#legend .tri {
+  width: 0; height: 0; display: inline-block;
+  border-left: 5px solid transparent; border-right: 5px solid transparent; border-bottom: 8px solid;
+}
+#legend .rect { width: 13px; height: 8px; border-radius: 2px; display: inline-block; }
+#legend .ln { width: 18px; height: 0; border-top: 2px solid; display: inline-block; }
+#legend .ln.dashed { border-top-style: dashed; }
+#legend .hatched {
+  background-image: repeating-linear-gradient(45deg, var(--stranded-hatch) 0 2px, transparent 2px 6px);
+  opacity: .6;
+}
+
+main {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+#canvasWrap {
+  width: 100%;
+  height: 100%;
+  overflow: auto;
+  cursor: grab;
+}
+#canvasWrap.panning { cursor: grabbing; }
+
+svg#graph { display: block; }
+
+.node-slice { cursor: pointer; }
+.node-slice.dim, .edge.dim, .node-broad.dim { opacity: .08; }
+.node-broad { cursor: pointer; }
+
+.edge { fill: none; stroke-width: 1; pointer-events: none; }
+.edge.hl { stroke-width: 2; }
+
+.badge-answers { pointer-events: none; }
+
+#tooltip {
+  position: fixed;
+  max-width: 340px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 11.5px;
+  box-shadow: 0 6px 20px rgba(30,40,50,.18);
+  pointer-events: none;
+  z-index: 40;
+  display: none;
+}
+#tooltip .tt-kind {
+  font-size: 9px; text-transform: uppercase; letter-spacing: .6px; color: var(--dim);
+  margin-bottom: 3px;
+}
+#tooltip .tt-text { color: var(--ink); margin-bottom: 4px; }
+#tooltip .tt-quote {
+  font-style: italic; color: var(--dim); border-left: 2px solid var(--line);
+  padding-left: 6px; margin: 4px 0;
+}
+#tooltip .tt-meta { color: var(--faint); font-size: 10.5px; }
+#tooltip .tt-flag { display: inline-block; margin-right: 6px; font-size: 10px; font-weight: 700; }
+
+#panel {
+  position: absolute;
+  top: 0; right: 0; bottom: 0;
+  width: 340px;
+  background: var(--panel);
+  border-left: 1px solid var(--line);
+  transform: translateX(100%);
+  transition: transform .15s ease;
+  overflow-y: auto;
+  padding: 14px 16px;
+  z-index: 30;
+}
+#panel.open { transform: translateX(0); }
+#panel h2 { font-size: 13px; margin: 0 0 4px; }
+#panel .p-kind { font-size: 10px; text-transform: uppercase; color: var(--dim); letter-spacing: .6px; }
+#panel .p-quote { font-style: italic; border-left: 2px solid var(--line); padding-left: 8px; margin: 8px 0; color: var(--dim); }
+#panel .p-row { margin: 6px 0; font-size: 11.5px; }
+#panel .p-row b { color: var(--dim); font-weight: 600; }
+#panel code {
+  background: var(--bg); border: 1px solid var(--line); border-radius: 4px;
+  padding: 1px 5px; font-size: 11px; user-select: all;
+}
+#panel .p-close {
+  position: absolute; top: 10px; right: 12px; cursor: pointer; border: none; background: none;
+  font-size: 16px; color: var(--dim);
+}
+#panel ul { margin: 4px 0; padding-left: 16px; }
+#panel li { margin: 2px 0; font-size: 11px; }
+
+.zoombar {
+  position: absolute; bottom: 14px; right: 14px; z-index: 20;
+  display: flex; gap: 4px; background: var(--panel); border: 1px solid var(--line);
+  border-radius: 8px; padding: 4px; box-shadow: 0 3px 10px rgba(30,40,50,.12);
+}
+.zoombar button {
+  width: 26px; height: 26px; border: 1px solid var(--line); background: var(--bg);
+  border-radius: 5px; cursor: pointer; font-size: 13px; line-height: 1;
+}
+.zoombar button:hover { border-color: var(--dim); }
+
+.axis-hint {
+  position: absolute; top: 8px; left: 14px; z-index: 15;
+  font-size: 10px; color: var(--faint); letter-spacing: .3px;
+  background: rgba(255,255,255,.85); padding: 2px 8px; border-radius: 4px;
+  pointer-events: none;
+}
