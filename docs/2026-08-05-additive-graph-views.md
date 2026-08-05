@@ -331,6 +331,54 @@ reach a canvas fill, a CSS background and Node under the headless check; a colou
 fails to parse in one of the three leaves the previous `fillStyle` standing, which presents as a
 drawing bug.
 
+### 3.4 Three things missing from a view you can actually work in
+
+**Date:** 2026-08-05. Orbit and dolly turned out not to be the whole gesture set after all (§3.2),
+and two of the three additions here are not gestures at all.
+
+**Pan moves the pivot, not the image.** The camera grew a target `tx/ty/tz` that `project()`
+subtracts before it rotates, so an orbit *after* a pan turns about what you panned to rather than
+about the origin — panning to a limb and then walking around it is one continuous act. The
+alternative, a screen-space offset added after projection, is three lines shorter and wrong: the
+figure would swing away the moment you dragged. The screen→world basis is read off the same
+yaw/pitch the projection uses (`right = (cos y, 0, −sin y)`, `up = (−sin p sin y, cos p,
+−sin p cos y)`), so a point at the pivot depth tracks the cursor exactly; nearer and further marks
+lag and lead by parallax, which is the depth cue doing its job. Right-drag, middle-drag and
+shift-drag all pan, so no existing mouse gesture changed meaning; on touch the two-finger gesture
+now dollies on the spread *and* pans on the centroid at once, that being the only pan a
+touchscreen has to spare.
+
+**One expansion knob, on whichever axis the layout gives the radius.** `spread` scales the radial
+coordinate: every shell gap is multiplied, marks keep their pixel size, and the knot of broad
+nodes at the centre opens far enough to count. It is deliberately *not* a dolly — flying in scales
+the marks too, which is why the middle stays unreadable however close you get. In the stack the
+radial axis is height, so the same attribute scales plate spacing instead; the slab stretches with
+it. The dolly ceiling now follows the knob (`11 × spread`), because a figure you can expand past
+the far plane is a figure you cannot get back.
+
+**Focus: the neighbourhood, hiding everything else.** Clicking a mark names it; ticking *focus*
+makes that click hide every node the selection does not reach within `n` hops. Three decisions
+worth keeping:
+
+- **Adjacency is built from the edge kinds currently ticked**, so "connected" means what the
+  reader has chosen to draw — ask the question of `up` alone and you get the grounding chain, not
+  the citation web. It is undirected: *what is this claim attached to* is not a question about
+  which way an arrow points.
+- **Focus overrides every other filter**, in both directions. Inside the neighbourhood the shell
+  window, the branch isolate and the haze switch all step aside; outside it nothing is drawn. A
+  peel that could still swallow a neighbour would make "everything connected to this claim" a lie,
+  and the one thing this view must not do is quietly drop a node.
+- **The text is a target too.** Every label the renderer draws — the family names on the
+  perimeter, the broad titles at close range, and the per-node labels the focus mode adds — is
+  recorded as a hit box resolving to its node, so clicking a family's name and clicking its apex
+  are the same act. Marks are tested first, since a label is a far larger target than the 5px dot
+  it names. A family label resolves to its own top-level broad node, which is what the strip's
+  isolate button has always meant.
+
+The count under the control is emitted by the renderer (`sv-shown`), not recomputed by the chrome:
+it is the only place that knows what survived, and a focus that legitimately shows three nodes
+should not be indistinguishable from a bug.
+
 ## 4. How they get built and looked at
 
 Standalone, side by side, nothing welded:

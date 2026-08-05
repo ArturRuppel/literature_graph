@@ -133,6 +133,13 @@ input[type="checkbox"] { accent-color: var(--accent); width: 13px; height: 13px;
   margin-top: var(--space-2);
 }
 
+/* the focus block's second half — only meaningful once the mode is on, so it
+   is absent rather than greyed out when it is off */
+#focus-extra { display: flex; flex-direction: column; gap: var(--space-2); margin-top: var(--space-3); }
+#focus-extra[hidden] { display: none; }
+#focus-extra .readout { margin-top: 0; line-height: 1.35; }
+#focus-extra .btn { align-self: flex-start; }
+
 .check-list { display: flex; flex-direction: column; gap: 6px; font-size: 12px; }
 .check { display: flex; align-items: center; gap: var(--space-2); cursor: pointer; }
 .check .count { margin-left: auto; color: var(--muted); font-variant-numeric: tabular-nums; }

@@ -63,6 +63,18 @@
 
       <div class="divider"></div>
 
+      <!-- one knob over the radial axis, whichever axis the layout draws it on -->
+      <div>
+        <div class="ctl-label">Expansion</div>
+        <div class="ctl-note" data-f="spreadNote"></div>
+        <div class="range-stack">
+          <label class="range-row">spread<input type="range" min="40" max="320" value="100" id="spread"></label>
+        </div>
+        <div class="readout" data-f="spreadOut">×1.00</div>
+      </div>
+
+      <div class="divider"></div>
+
       <!-- radial peel: the ball and the sectors only; the stack has no radius axis -->
       <div data-when="sphere sectors">
         <div class="ctl-label">Shell window</div>
@@ -97,6 +109,24 @@
           <label class="check"><input type="checkbox" data-edge="gen" checked><span>generalization · gen</span><span class="count" data-f="eGen"></span></label>
           <label class="check"><input type="checkbox" data-edge="cite" checked><span>sharpened citation</span><span class="count" data-f="eCite"></span></label>
           <label class="check"><input type="checkbox" data-edge="lat" checked><span>corr / contra</span><span class="count" data-f="eLat"></span></label>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <!-- follows the edge ticks above: what counts as connected is what you
+           have chosen to draw -->
+      <div>
+        <div class="ctl-label">Focus</div>
+        <label class="check"><input type="checkbox" id="focus"><span>hide all but the selection’s neighbourhood</span></label>
+        <div class="ctl-note">Click a mark or its label. Only that node and what reaches it along the
+          edges ticked above stay on screen — the peel, the branch and the haze switch all step aside.</div>
+        <div id="focus-extra" hidden>
+          <div class="range-stack">
+            <label class="range-row">hops<input type="range" min="1" max="4" value="1" id="hops"></label>
+          </div>
+          <div class="readout" data-f="focusLine"></div>
+          <button class="btn btn-secondary sm" id="unfocus">show the whole graph</button>
         </div>
       </div>
 

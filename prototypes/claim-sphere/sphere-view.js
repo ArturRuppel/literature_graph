@@ -16,8 +16,12 @@
  *                src="graph.json" …>
  *
  * Attributes: layout, colour, src, shell-min, shell-max, edges, halo, isolate,
- * explode, halo-alpha, mark-scale, labels, view-id.
- * Events: sv-select, sv-hover, sv-cam, sv-model.  Method: resetView().
+ * explode, spread, focus, focus-depth, halo-alpha, mark-scale, labels, view-id.
+ * Events: sv-select, sv-hover, sv-cam, sv-model, sv-shown.  Method: resetView().
+ *
+ * Camera: orbit (drag), dolly (wheel / pinch), pan (right- or middle-drag,
+ * shift-drag, two-finger drag). Pan moves the pivot, so an orbit after a pan
+ * turns about what you panned to rather than about the origin.
  */
 import { deriveModel } from './derive-model.js';
 import { INK, RED, BOARD, colourOf, familyColours } from './colour.js';
@@ -33,14 +37,18 @@ const loadModel = (src) => (modelPromise ||= fetch(src)
 class SphereView extends HTMLElement {
   static get observedAttributes() {
     return ['layout', 'colour', 'shell-min', 'shell-max', 'edges', 'halo', 'isolate',
-      'explode', 'halo-alpha', 'mark-scale', 'labels', 'src', 'view-id'];
+      'explode', 'spread', 'focus', 'focus-depth', 'halo-alpha', 'mark-scale', 'labels',
+      'src', 'view-id'];
   }
   attr(name) { return this.getAttribute(name); }
   constructor() {
     super();
-    this.cam = { yaw: 0.6, pitch: 0.25, dist: 3.4 };
+    /* tx/ty/tz is the pivot — the world point the camera orbits and looks at.
+       Panning moves it; yaw/pitch/dist are polar coordinates around it. */
+    this.cam = { yaw: 0.6, pitch: 0.25, dist: 3.4, tx: 0, ty: 0, tz: 0 };
     this.home = { ...this.cam };
     this.proj = [];
+    this.labelHits = [];
     this.hover = null;
     this.sel = null;
     this._raf = null;
@@ -72,6 +80,7 @@ class SphereView extends HTMLElement {
     loadModel(this.attr('src') || 'graph.json').then(m => {
       this.model = m;
       this.fams = familyColours(m.families.length);
+      this.byKey = new Map(m.nodes.map((n, i) => [n.k, i]));
       this.dispatchEvent(new CustomEvent('sv-model', {
         bubbles: true, detail: { model: m, fams: this.fams }
       }));
@@ -87,9 +96,18 @@ class SphereView extends HTMLElement {
      viewport; they are not portable to a different aspect ratio. */
   homeCam() {
     const l = this.attr('layout') || 'sphere';
-    if (l === 'shells') return { yaw: 0.42, pitch: 0.34, dist: 7.0 };
-    if (l === 'sectors') return { yaw: 0.6, pitch: 0.22, dist: 4.8 };
-    return { yaw: 0.6, pitch: 0.22, dist: 4.3 };
+    const t = { tx: 0, ty: 0, tz: 0 };
+    if (l === 'shells') return { yaw: 0.42, pitch: 0.34, dist: 7.0, ...t };
+    if (l === 'sectors') return { yaw: 0.6, pitch: 0.22, dist: 4.8, ...t };
+    return { yaw: 0.6, pitch: 0.22, dist: 4.3, ...t };
+  }
+  /* the expansion knob: one factor over the radial axis. In the ball and the
+     sectors it scales the radius, so shells move apart while a mark keeps its
+     size; in the stack the radial axis is height, so it scales plate spacing.
+     Same quantity, drawn on whichever axis the layout gives it. */
+  spreadFactor() {
+    const v = parseFloat(this.attr('spread') || '1');
+    return Number.isFinite(v) && v > 0.05 ? v : 1;
   }
   attributeChangedCallback(n, old, val) {
     /* Only a change of layout moves the camera — recentring on a colour change
@@ -113,26 +131,46 @@ class SphereView extends HTMLElement {
       const [a, b] = [...live.values()];
       return Math.hypot(a.x - b.x, a.y - b.y) || 1;
     };
+    const centroid = () => {
+      const p = [...live.values()];
+      return { x: p.reduce((a, q) => a + q.x, 0) / p.length, y: p.reduce((a, q) => a + q.y, 0) / p.length };
+    };
     const dolly = (d) => {
-      this.cam.dist = Math.max(0.35, Math.min(11, d));
+      /* the ceiling follows the expansion knob: spread the figure out and you
+         must still be able to back off far enough to see all of it */
+      const far = 11 * Math.max(1, this.spreadFactor());
+      this.cam.dist = Math.max(0.35, Math.min(far, d));
       this.emit('sv-cam', { dist: this.cam.dist });
       this.draw();
     };
     const orbitFrom = (p, moved) =>
-      ({ x: p.x, y: p.y, yaw: this.cam.yaw, pitch: this.cam.pitch, moved });
+      ({ mode: 'orbit', x: p.x, y: p.y, yaw: this.cam.yaw, pitch: this.cam.pitch, moved });
+    /* a pan is incremental, not anchored like the orbit: the pixels-per-world
+       scale depends on the distance, which a pinch can change mid-gesture */
+    const panFrom = (p, moved) => ({ mode: 'pan', x: p.x, y: p.y, moved });
+
+    this.addEventListener('contextmenu', e => e.preventDefault());
 
     this.addEventListener('pointerdown', e => {
       live.set(e.pointerId, { x: e.clientX, y: e.clientY });
       try { this.setPointerCapture(e.pointerId); } catch (_) { }
       if (live.size === 2) {
         /* the second finger converts the gesture: the orbit stops where it is
-           rather than being rewound, so a pinch mid-drag does not snap back */
-        pinch = { d0: spread(), dist: this.cam.dist };
+           rather than being rewound, so a pinch mid-drag does not snap back.
+           Two fingers do both jobs at once — the spread dollies, the centroid
+           pans — which is the only pan gesture a touchscreen has to spare. */
+        pinch = { d0: spread(), dist: this.cam.dist, c: centroid() };
         drag = null;
         this.tip.style.display = 'none';
       } else if (live.size === 1) {
-        drag = orbitFrom({ x: e.clientX, y: e.clientY }, 0);
-        this.style.cursor = 'grabbing';
+        /* middle, right or shift+left is the pan; plain left still orbits, so
+           nothing a mouse used to do has changed meaning */
+        const pan = e.button === 1 || e.button === 2 || e.shiftKey;
+        /* middle-down otherwise arms the browser's autoscroll, which hijacks
+           the very gesture we are reading */
+        if (e.button === 1) e.preventDefault();
+        drag = (pan ? panFrom : orbitFrom)({ x: e.clientX, y: e.clientY }, 0);
+        this.style.cursor = pan ? 'move' : 'grabbing';
       }
     });
 
@@ -144,7 +182,19 @@ class SphereView extends HTMLElement {
         if (drag) drag.moved += Math.abs(e.clientX - prev.x) + Math.abs(e.clientY - prev.y);
         prev.x = e.clientX; prev.y = e.clientY;
       }
-      if (pinch && live.size === 2) { dolly(pinch.dist * pinch.d0 / spread()); return; }
+      if (pinch && live.size === 2) {
+        const c = centroid();
+        this.panBy(c.x - pinch.c.x, c.y - pinch.c.y);
+        pinch.c = c;
+        dolly(pinch.dist * pinch.d0 / spread());
+        return;
+      }
+      if (drag && drag.mode === 'pan') {
+        this.panBy(e.clientX - drag.x, e.clientY - drag.y);
+        drag.x = e.clientX; drag.y = e.clientY;
+        this.draw();
+        return;
+      }
       if (drag) {
         this.cam.yaw = drag.yaw + (e.clientX - drag.x) * 0.006;
         this.cam.pitch = Math.max(-1.45, Math.min(1.45, drag.pitch + (e.clientY - drag.y) * 0.006));
@@ -160,7 +210,7 @@ class SphereView extends HTMLElement {
     });
 
     const end = e => {
-      const tap = drag && drag.moved <= 6 && !pinch && e.type === 'pointerup';
+      const tap = drag && drag.mode === 'orbit' && drag.moved <= 6 && !pinch && e.type === 'pointerup';
       live.delete(e.pointerId);
       try { this.releasePointerCapture(e.pointerId); } catch (_) { }
       if (live.size < 2) pinch = null;
@@ -201,12 +251,35 @@ class SphereView extends HTMLElement {
       detail: { view: this.attr('view-id'), node: node && node.n ? node.n : node }
     }));
   }
+  /* Screen delta → pivot delta. The camera basis is read straight off the same
+     yaw/pitch the projection uses, so the point under the cursor stays under it;
+     the scale is taken at the pivot plane, which is where the figure is. */
+  panBy(dx, dy) {
+    const { yaw, pitch, dist } = this.cam;
+    const cy = Math.cos(yaw), sy = Math.sin(yaw), cp = Math.cos(pitch), sp = Math.sin(pitch);
+    const f = Math.min(this.w, this.h) * 1.012;
+    const k = f / Math.max(0.12, dist);          /* pixels per world unit */
+    const right = [cy, 0, -sy], up = [-sp * sy, cp, -sp * cy];
+    const clamp = v => Math.max(-14, Math.min(14, v));
+    this.cam.tx = clamp(this.cam.tx + (-dx * right[0] + dy * up[0]) / k);
+    this.cam.ty = clamp(this.cam.ty + (-dx * right[1] + dy * up[1]) / k);
+    this.cam.tz = clamp(this.cam.tz + (-dx * right[2] + dy * up[2]) / k);
+  }
   resetView() { this.cam = { ...this.home }; this.emit('sv-cam', { dist: this.cam.dist }); this.draw(); }
+  /* Marks first, then the text: a label is a much larger target than the 5px
+     mark it names, so testing it first would make the marks unclickable. Both
+     resolve to the same node, so clicking a family's name and clicking its
+     apex are the same act. */
   pick(mx, my) {
     let best = null, bd = 144;   /* 12px, squared */
     for (const p of this.proj) {
       const d = (p.sx - mx) ** 2 + (p.sy - my) ** 2;
       if (d < bd) { bd = d; best = p; }
+    }
+    if (!best) {
+      for (const h of this.labelHits) {
+        if (mx >= h.x && mx <= h.x + h.w && my >= h.y && my <= h.y + h.h) { best = h; break; }
+      }
     }
     if (best !== this.hover) {
       this.hover = best;
@@ -239,15 +312,16 @@ class SphereView extends HTMLElement {
      fifth slice rank or a fourth broad tier does not collide. */
   plateCount(m) { return (m.stats.maxSlice + 1) + (m.stats.maxTier + 1); }
   plateOf(m, n) { return n.t === 'b' ? (m.stats.maxSlice + 1) + (m.stats.maxTier - n.lvl) : n.lvl; }
-  plateY(m, k) { return (k - (this.plateCount(m) - 1) / 2) * PLATE_DY; }
+  plateY(m, k) { return (k - (this.plateCount(m) - 1) / 2) * PLATE_DY * this.spreadFactor(); }
   pos(n) {
     const layout = this.attr('layout') || 'sphere';
+    const sf = this.spreadFactor();
     if (layout === 'shells') {
       const m = this.model;
       const nf = m.families.length;
       if (n.lvl == null) {   /* the slab: rank-less claims, standing beside the stack */
         const s = Math.sin(n.x * 31.7) * 0.5 + 0.5, s2 = Math.sin(n.z * 17.3) * 0.5 + 0.5, s3 = Math.sin(n.y * 23.1) * 0.5 + 0.5;
-        return [1.75 + s * 0.85, (s3 - 0.5) * 4.4, (s2 - 0.5) * 1.7];
+        return [1.75 + s * 0.85, (s3 - 0.5) * 4.4 * sf, (s2 - 0.5) * 1.7];
       }
       const k = this.plateOf(m, n);
       const fi = n.fam && n.fam.length ? n.fam[0] : null;
@@ -263,7 +337,9 @@ class SphereView extends HTMLElement {
       const R = 1.1 + h * 0.95;
       const m = Math.hypot(n.x, n.y, n.z) || 1;
       const w = Math.sin((n.x - n.z) * 53.1) * 0.06;
-      return [(n.x / m) * R + w, (n.y / m) * R - w, (n.z / m) * R + w * 0.5];
+      /* the wobble expands with the haze, not against it — the cloud stays the
+         same cloud, further out */
+      return [((n.x / m) * R + w) * sf, ((n.y / m) * R - w) * sf, ((n.z / m) * R + w * 0.5) * sf];
     }
     if (layout === 'sectors' && n.fam && n.fam.length) {
       const ex = parseFloat(this.attr('explode') || '0.4');
@@ -272,19 +348,55 @@ class SphereView extends HTMLElement {
         return [acc[0] + a[0], acc[1] + a[1], acc[2] + a[2]];
       }, [0, 0, 0]);
       const mag = Math.hypot(...ax) || 1;
-      return [n.x + ax[0] / mag * ex, n.y + ax[1] / mag * ex, n.z + ax[2] / mag * ex];
+      return [n.x * sf + ax[0] / mag * ex, n.y * sf + ax[1] / mag * ex, n.z * sf + ax[2] / mag * ex];
     }
-    return [n.x, n.y, n.z];
+    return [n.x * sf, n.y * sf, n.z * sf];
   }
   project(p) {
-    const { yaw, pitch, dist } = this.cam;
+    const { yaw, pitch, dist, tx, ty, tz } = this.cam;
     const cy = Math.cos(yaw), sy = Math.sin(yaw), cp = Math.cos(pitch), sp = Math.sin(pitch);
-    let x = p[0] * cy - p[2] * sy, z = p[0] * sy + p[2] * cy, y = p[1];
+    const p0 = p[0] - tx, p1 = p[1] - ty, p2 = p[2] - tz;
+    let x = p0 * cy - p2 * sy, z = p0 * sy + p2 * cy, y = p1;
     const y2 = y * cp - z * sp, z2 = y * sp + z * cp;
     const zc = z2 + dist;
     const f = Math.min(this.w, this.h) * 1.012;
     const k = f / Math.max(0.12, zc);
     return [this.w / 2 + x * k, this.h / 2 - y2 * k, zc, k / f];
+  }
+  /* ---------- focus ---------- */
+  /* Adjacency over the edge kinds that are currently drawn, undirected and
+     rebuilt only when that set changes. Undirected on purpose: "what is this
+     claim connected to" is not a question about which way an arrow points, and
+     obeying the edge filter means you can ask it of grounding alone. */
+  adjacency(m, kinds) {
+    const sig = [...kinds].sort().join(',');
+    if (this._adjSig === sig && this._adj) return this._adj;
+    const adj = m.nodes.map(() => []);
+    for (const e of m.edges) {
+      if (!kinds.has(e.k)) continue;
+      adj[e.a].push(e.b); adj[e.b].push(e.a);
+    }
+    this._adjSig = sig; this._adj = adj;
+    return adj;
+  }
+  /* The neighbourhood of the focused node, out to `focus-depth` hops. Returns
+     null when nothing is focused — the caller reads null as "no restriction",
+     never as "empty". */
+  focusSet(m, kinds) {
+    const key = this.attr('focus');
+    if (!key || !this.byKey) return null;
+    const start = this.byKey.get(key);
+    if (start == null) return null;
+    const adj = this.adjacency(m, kinds);
+    const depth = Math.max(1, Math.min(6, parseInt(this.attr('focus-depth') || '1', 10) || 1));
+    const seen = new Set([start]);
+    let frontier = [start];
+    for (let d = 0; d < depth && frontier.length; d++) {
+      const next = [];
+      for (const i of frontier) for (const j of adj[i]) if (!seen.has(j)) { seen.add(j); next.push(j); }
+      frontier = next;
+    }
+    return seen;
   }
   /* ---------- draw ---------- */
   draw() {
@@ -314,6 +426,8 @@ class SphereView extends HTMLElement {
     const smin = parseFloat(this.attr('shell-min') || '0') / 100 * 1.7;
     const smax = parseFloat(this.attr('shell-max') || '100') / 100 * 1.7;
 
+    const focus = this.focusSet(m, kinds);
+
     const vis = new Array(m.nodes.length).fill(false);
     const pts = new Array(m.nodes.length);
     const stack = layout === 'shells';
@@ -321,6 +435,17 @@ class SphereView extends HTMLElement {
        the ball and the sectors split on both coordinates. Intentional. */
     const off = n => stack ? n.lvl == null : n.halo;
     m.nodes.forEach((n, i) => {
+      /* Focus overrides every other filter, in both directions: outside the
+         neighbourhood nothing is drawn, inside it everything is — a peel or a
+         halo toggle that could still swallow a neighbour would make "everything
+         connected to this claim" a lie. */
+      if (focus) {
+        if (!focus.has(i)) return;
+        vis[i] = true;
+        if (n.j === undefined) n.j = i;
+        pts[i] = this.project(this.pos(n));
+        return;
+      }
       if (off(n) && !showHalo) return;
       /* the haze is exempt from the shell window, so peeling never hides the finding */
       if (!stack && !n.halo && (n.r < smin - 1e-6 || n.r > smax + 1e-6)) return;
@@ -339,8 +464,10 @@ class SphereView extends HTMLElement {
        skeleton the view is about reads as one structure. */
     const ladderInk = mode === 'ink' ? INK : BOARD.broad;
     ctx.lineWidth = 1;
+    let nEdges = 0;
     for (const e of m.edges) {
       if (!kinds.has(e.k) || !vis[e.a] || !vis[e.b]) continue;
+      nEdges++;
       const A = pts[e.a], Bp = pts[e.b];
       if (A[2] <= 0.12 || Bp[2] <= 0.12) continue;
       const contra = e.k === 'lat' && e.sign === 'contra';
@@ -401,7 +528,24 @@ class SphereView extends HTMLElement {
     }
     ctx.globalAlpha = 1;
 
-    if (this.attr('labels') !== '0') this.drawLabels(ctx, m, pts, vis, mode, fams, isoI);
+    this.labelHits = [];
+    if (this.attr('labels') !== '0') this.drawLabels(ctx, m, pts, vis, mode, fams, isoI, focus);
+
+    /* what actually survived the filters, for the readout under the view.
+       Emitted only on a change, because _draw runs on every orbit frame. */
+    const shown = {
+      nodes: vis.reduce((a, v) => a + (v ? 1 : 0), 0), edges: nEdges,
+      focused: !!focus, key: focus ? this.attr('focus') : null
+    };
+    /* the key is part of the signature: two different claims can easily have
+       neighbourhoods of the same size, and the readout names the claim */
+    if (!this._shown || this._shown.nodes !== shown.nodes || this._shown.edges !== shown.edges
+      || this._shown.focused !== shown.focused || this._shown.key !== shown.key) {
+      this._shown = shown;
+      this.dispatchEvent(new CustomEvent('sv-shown', {
+        bubbles: true, composed: true, detail: { view: this.attr('view-id'), ...shown, total: m.nodes.length }
+      }));
+    }
   }
   drawPlates(ctx, m) {
     const nP = this.plateCount(m), nS = m.stats.maxSlice;
@@ -438,15 +582,42 @@ class SphereView extends HTMLElement {
     }
     ctx.restore(); ctx.globalAlpha = 1;
   }
-  drawLabels(ctx, m, pts, vis, mode, fams, isoI) {
+  drawLabels(ctx, m, pts, vis, mode, fams, isoI, focus) {
     const layout = this.attr('layout') || 'sphere';
-    if (layout === 'shells') return;
-    const ex = layout === 'sectors' ? parseFloat(this.attr('explode') || '0.4') : 0;
+    const sf = this.spreadFactor();
     const placed = [];
     const fits = (x, y, w, h) => {
       for (const b of placed) if (x < b[2] && x + w > b[0] && y < b[3] && y + h > b[1]) return false;
       placed.push([x, y, x + w, y + h]); return true;
     };
+    /* every drawn label is clickable, and clicking it is clicking its node */
+    const hit = (n, x, y, w, h) => this.labelHits.push({ n, x, y: y - 2, w, h: h + 4, sx: x + w / 2, sy: y + h });
+
+    /* Focused: the neighbourhood is small enough to name every member, which is
+       the point of having isolated it. Near labels are placed first so they win
+       the collision test against the ones behind them. */
+    if (focus) {
+      ctx.font = '600 10px Archivo, system-ui, sans-serif';
+      const near = [];
+      m.nodes.forEach((n, i) => { if (vis[i] && pts[i] && pts[i][2] > 0.12) near.push(i); });
+      near.sort((a, b) => pts[a][2] - pts[b][2]);
+      for (const i of near) {
+        const n = m.nodes[i], p = pts[i];
+        const sel = this.sel && this.sel.k === n.k;
+        const txt = n.t === 'b' ? n.title : (n.text || '').slice(0, 46) + ((n.text || '').length > 46 ? '…' : '');
+        const w = ctx.measureText(txt).width;
+        if (!fits(p[0] + 9, p[1] - 12, w, 13)) continue;
+        ctx.globalAlpha = sel ? 1 : 0.8;
+        ctx.fillStyle = sel ? RED : n.t === 'b' ? (mode === 'ink' ? INK : BOARD.broad) : INK;
+        ctx.fillText(txt, p[0] + 9, p[1] - 3);
+        hit(n, p[0] + 9, p[1] - 12, w, 13);
+      }
+      ctx.globalAlpha = 1;
+      return;
+    }
+
+    if (layout === 'shells') return;
+    const ex = layout === 'sectors' ? parseFloat(this.attr('explode') || '0.4') : 0;
     /* the top-level entries, labelled on the perimeter with a hairline leader.
        In `family` mode the leader and the label carry the family's own colour,
        which is what makes the strip under the viewport a legend. */
@@ -454,8 +625,11 @@ class SphereView extends HTMLElement {
     m.families.forEach((f, i) => {
       if (isoI != null && isoI !== i) return;
       const a = f.axis;
-      const inner = this.project([a[0] * (0.13 + ex), a[1] * (0.13 + ex), a[2] * (0.13 + ex)]);
-      const outer = this.project([a[0] * (1.72 + ex), a[1] * (1.72 + ex), a[2] * (1.72 + ex)]);
+      /* the leader has to breathe with the expansion knob, or it detaches from
+         the apex it points at */
+      const ri = 0.13 * sf + ex, ro = 1.72 * sf + ex;
+      const inner = this.project([a[0] * ri, a[1] * ri, a[2] * ri]);
+      const outer = this.project([a[0] * ro, a[1] * ro, a[2] * ro]);
       if (outer[2] <= 0.12) return;
       const behind = outer[2] > inner[2];
       const txt = f.title.toUpperCase();
@@ -473,6 +647,10 @@ class SphereView extends HTMLElement {
       ctx.globalAlpha = behind ? 0.4 : 1;
       ctx.fillStyle = isoI === i ? RED : famCol;
       ctx.fillText(txt, x, y);
+      /* the family's name is its top-level broad node — clicking one is
+         clicking the other */
+      const top = this.byKey && this.byKey.get('@' + f.slug);
+      if (top != null) hit(m.nodes[top], x, y - 11, w, 14);
     });
     /* the LOD merge: individual broad titles only once you have flown close */
     if (this.cam.dist < 2.9) {
@@ -485,6 +663,7 @@ class SphereView extends HTMLElement {
         if (!fits(p[0] + 9, p[1] - 12, w, 13)) return;
         ctx.globalAlpha = 0.75; ctx.fillStyle = mode === 'ink' ? INK : BOARD.broad;
         ctx.fillText(txt, p[0] + 9, p[1] - 3);
+        hit(n, p[0] + 9, p[1] - 12, w, 13);
       });
     }
     ctx.globalAlpha = 1;

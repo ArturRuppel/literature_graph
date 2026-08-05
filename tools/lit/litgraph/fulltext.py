@@ -160,6 +160,9 @@ _FUSED_RUN = re.compile(r"\b[a-z]{14,}\b")
 _FUSED_JOIN = re.compile(r"that|this|with|from|which|were|have|been|their|these|when|while|such")
 _FUSED_SENTENCE = re.compile(r"\w{4}[.,][A-Z]\w{3}")
 _LABEL_LEAD = re.compile(r"^(abstract|summary)\b[:.—\s-]*", re.IGNORECASE)
+# Markdown italics, the `**` case's quieter twin. Both delimiters must sit on a word boundary so
+# that an identifier or a gene name written `Shh_a_` style is left alone.
+_EMPHASIS = re.compile(r"(?<![\w_])_([^_\n]+?)_(?![\w_])")
 
 _ABS_MIN_LABELLED = 150   # a labelled section is authoritative; only reject the obviously empty
 _ABS_MIN_BYLINE = 400     # unlabelled: long enough that an affiliation block can't pass for one
@@ -186,8 +189,11 @@ def _clean_abstract(s: str) -> str:
 
     Reference superscripts go too: the abstracts OpenAlex hands us carry none, and a stray
     `[1–3]` in half the corpus would make the field inconsistent to read and to search.
+    Italics go for the same reason: a paper that emphasises `Xenopus` or a term of art should
+    not read differently in this field from one whose abstract we fetched.
     """
     s = s.replace("**", "")
+    s = _EMPHASIS.sub(r"\1", s)
     s = _HEADING.sub("", s)
     s = _LABEL_LEAD.sub("", s)
     s = _REF_MARK.sub("", s)

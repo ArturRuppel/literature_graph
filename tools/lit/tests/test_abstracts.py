@@ -164,6 +164,16 @@ def test_reference_superscripts_and_bold_are_stripped():
     assert text.startswith("Cells divide, and they also move. ")
 
 
+def test_italics_are_stripped_but_underscores_inside_words_survive():
+    # Real case: Atia2021CellDev italicises `jammed`, Ruppel2026NatPhys italicises `Xenopus`.
+    # No fetched abstract in the library carries markdown, so an extracted one must not either.
+    md = f"## Abstract\n\nCells are _jammed_ , then _unjammed_ . A gene_name_here stays whole. {ABS}\n"
+    text = extract_abstract(md).text
+    assert "_jammed_" not in text and "jammed" in text
+    assert "_unjammed_" not in text and "unjammed" in text
+    assert "gene_name_here" in text
+
+
 def test_flags_fused_words_and_sentences():
     md = ("## Abstract\n\nIt is unknown how cell death might "
           "relieveovercrowdingduetoproliferation.Whenwetrigger apoptosis the cells go. "

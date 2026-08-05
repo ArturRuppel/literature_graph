@@ -33,9 +33,13 @@ const state = {
   colour: 'status',
   min: 0, max: 100,
   explode: 45,
+  spread: 100,
   iso: null,
   halo: true,
   edges: new Set(EDGE_KINDS),
+  /* the focus is two things on purpose: a mode you switch on, and the node the
+     last click landed on. Clicking with the mode off still just reads a claim. */
+  focus: false, focusKey: null, focusNode: null, hops: 1,
 };
 
 const view = $('v');
@@ -53,9 +57,12 @@ const COPY = {
       `coordinates; ${m.stats.halo} slices have neither and sit in the haze outside the sphere. ` +
       `Nothing out there was placed by a vote or a similarity — it is diffuse because the library ` +
       `does not say where it goes.`,
-    help: 'Drag to orbit · wheel or pinch to fly in toward the apexes · click a mark to read it. ' +
-      'Position within a shell is packing, not meaning.',
+    help: 'Drag to orbit · right-drag, middle-drag or shift-drag to pan · wheel or pinch to fly in ' +
+      'toward the apexes · click a mark or a label to read it. Position within a shell is packing, ' +
+      'not meaning.',
     halo: m => `show the haze (${m.stats.halo})`,
+    spread: 'Scales the radius. The shells move apart, the marks do not grow — which is the ' +
+      'difference between this and flying in.',
   },
   sectors: {
     kicker: 'Reading two · where the mass sits',
@@ -70,9 +77,11 @@ const COPY = {
         `${m.families.filter(f => f.kind === 'broad method').length} of the ${m.families.length} are ` +
         `broad methods, and a method branch counts instruments, not conclusions.`;
     },
-    help: 'Drag to orbit · wheel or pinch to fly down a limb · click a branch in the strip to isolate it. ' +
-      'The haze has no family by construction, so it belongs to no limb — turn it off to read this one.',
+    help: 'Drag to orbit · right-drag, middle-drag or shift-drag to pan · wheel or pinch to fly down a ' +
+      'limb · click a branch in the strip to isolate it. The haze has no family by construction, so it ' +
+      'belongs to no limb — turn it off to read this one.',
     halo: m => `show the haze (${m.stats.halo})`,
+    spread: 'Scales the radius, so the limbs lengthen. Explode moves them sideways; this moves them out.',
   },
   shells: {
     kicker: 'Reading three · the ladder, unrolled',
@@ -87,8 +96,10 @@ const COPY = {
     },
     help: 'Height is authored: distance to a measurement floor for a slice, ladder tier for a broad ' +
       'node. Position on a plate is packing — the ring only groups a claim with its family, and a ' +
-      'claim with no authored family sits at the plate’s centre.',
+      'claim with no authored family sits at the plate’s centre. Right-drag or shift-drag pans.',
     halo: m => `show the slab (${m.stats.unfloored})`,
+    spread: 'Here the radial axis is height, so this is the gap between plates. Open it up to read a ' +
+      'crowded rank edge-on.',
   },
 };
 
@@ -112,10 +123,16 @@ function sync() {
   view.setAttribute('shell-min', state.min);
   view.setAttribute('shell-max', state.max);
   view.setAttribute('explode', String(state.explode / 100));
+  view.setAttribute('spread', String(state.spread / 100));
   view.setAttribute('edges', edgeAttr(state.edges));
   view.setAttribute('halo', state.halo ? '1' : '0');
   if (state.iso == null) view.removeAttribute('isolate');
   else view.setAttribute('isolate', String(state.iso));
+  if (state.focus && state.focusKey) view.setAttribute('focus', state.focusKey);
+  else view.removeAttribute('focus');
+  view.setAttribute('focus-depth', String(state.hops));
+  $('focus-extra').hidden = !state.focus;
+  if (state.focus && !state.focusKey) fields('focusLine', 'Nothing selected yet — click a mark or a label.');
 
   /* controls that only mean something in some renderings */
   for (const el of document.querySelectorAll('[data-when]')) {
@@ -131,6 +148,7 @@ function sync() {
     btn.setAttribute('aria-pressed', String(+btn.dataset.i === state.iso));
   }
   fields('shell', `r ∈ [${(state.min / 100 * 1.7).toFixed(2)}, ${(state.max / 100 * 1.7).toFixed(2)}]`);
+  fields('spreadOut', '×' + (state.spread / 100).toFixed(2));
   fields('colourNote', COLOUR_NOTE[state.colour]);
 
   if (!MODEL) return;
@@ -139,6 +157,7 @@ function sync() {
   fields('title', c.title);
   fields('lede', c.lede(MODEL));
   fields('help', c.help);
+  fields('spreadNote', c.spread);
   fields('haloLabel', c.halo(MODEL));
   buildKey();
   const f = state.iso == null ? null : MODEL.families[state.iso];
@@ -165,9 +184,25 @@ $('s-max').addEventListener('input', e => {
   state.max = Math.max(+e.target.value, state.min); e.target.value = state.max; sync();
 });
 $('explode').addEventListener('input', e => { state.explode = +e.target.value; sync(); });
+$('spread').addEventListener('input', e => { state.spread = +e.target.value; sync(); });
 $('halo').addEventListener('change', e => { state.halo = e.target.checked; sync(); });
-$('all').addEventListener('click', () => { state.iso = null; sync(); });
+$('focus').addEventListener('change', e => { state.focus = e.target.checked; sync(); });
+$('hops').addEventListener('input', e => { state.hops = +e.target.value; sync(); });
 $('reset').addEventListener('click', () => view.resetView());
+
+/* one way out, wherever you are: the strip's button, the focus block's button
+   and Escape all mean "stop hiding things" */
+const showAll = () => {
+  state.iso = null;
+  state.focus = false;
+  $('focus').checked = false;
+  sync();
+};
+$('all').addEventListener('click', showAll);
+$('unfocus').addEventListener('click', showAll);
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && (state.focus || state.iso != null)) showAll();
+});
 for (const box of $('edges').querySelectorAll('input[data-edge]')) {
   box.addEventListener('change', () => {
     box.checked ? state.edges.add(box.dataset.edge) : state.edges.delete(box.dataset.edge);
@@ -203,8 +238,27 @@ function selVals(n) {
 }
 
 document.addEventListener('sv-select', e => {
-  const v = selVals((e.detail || {}).node);
+  const n = (e.detail || {}).node;
+  const v = selVals(n);
   for (const [k, text] of Object.entries(v)) fields('sel' + k, text);
+  /* the click always names a focus target; whether that hides anything is the
+     checkbox's business, so reading a claim stays a free action */
+  state.focusKey = n ? n.k : null;
+  state.focusNode = n || null;
+  if (state.focus) sync();
+});
+
+/* the renderer counts what survived every filter — it is the only place that
+   knows, and a focus that quietly shows nothing would otherwise look like a
+   drawing bug */
+document.addEventListener('sv-shown', e => {
+  const d = e.detail || {};
+  if (!d.focused) return;
+  const n = state.focusNode;
+  const what = n ? (n.t === 'b' ? n.title : (n.text || '').slice(0, 60) + '…') : 'the selection';
+  fields('focusLine',
+    `${d.nodes} of ${d.total} nodes · ${d.edges} edges — within ${state.hops} hop` +
+    `${state.hops > 1 ? 's' : ''} of ${what}`);
 });
 
 /* ── the chrome ───────────────────────────────────────────────────────────── */
