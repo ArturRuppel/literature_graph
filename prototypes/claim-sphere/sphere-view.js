@@ -1,26 +1,30 @@
-/* sphere-view — canvas renderer for the claim sphere (Modernist ink/red).
+/* sphere-view — canvas renderer for the claim sphere.
  *
  * Three layouts over one authored model: sphere, sectors (exploded families),
- * shells (radius unrolled into a stack of plates). No inference, no embedding:
- * every coordinate comes from derive-model.js, which reads dist/graph.json.
+ * shells (radius unrolled into a stack of plates), plus four colour readings
+ * (colour.js). Layout and colour are attributes, not separate pages — one
+ * element, so the readings cannot drift apart and a selection survives a
+ * change of either. No inference, no embedding: every coordinate comes from
+ * derive-model.js, which reads dist/graph.json.
  *
  * 2D canvas with a hand-rolled perspective projection and a painter's-algorithm
  * depth sort — not WebGL. ~1000 nodes and ~1000 edges do not need a GPU, and 2D
  * canvas buys exact control of hairline weight, dash patterns and label
- * placement, which is what makes the ink-and-red treatment legible.
+ * placement, which is what makes the treatment legible.
  *
- *   <sphere-view layout="sphere|sectors|shells" src="graph.json" …>
+ *   <sphere-view layout="sphere|sectors|shells" colour="status|family|generality|ink"
+ *                src="graph.json" …>
  *
- * Attributes: layout, src, shell-min, shell-max, edges, halo, isolate, explode,
- * accent, halo-alpha, mark-scale, labels, view-id.
- * Events: sv-select, sv-hover, sv-cam.  Method: resetView().
+ * Attributes: layout, colour, src, shell-min, shell-max, edges, halo, isolate,
+ * explode, halo-alpha, mark-scale, labels, view-id.
+ * Events: sv-select, sv-hover, sv-cam, sv-model.  Method: resetView().
  */
 import { deriveModel } from './derive-model.js';
+import { INK, RED, BOARD, colourOf, familyColours } from './colour.js';
 
-const INK = '#201e1d', RED = '#ec3013';
 const PLATE_DY = 0.55, PLATE_X = -0.85;
 
-/* One GET, cached at module level and shared by all three views. */
+/* One GET, cached at module level. */
 let modelPromise = null;
 const loadModel = (src) => (modelPromise ||= fetch(src)
   .then(r => { if (!r.ok) throw new Error('HTTP ' + r.status + ' for ' + src); return r.json(); })
@@ -28,8 +32,8 @@ const loadModel = (src) => (modelPromise ||= fetch(src)
 
 class SphereView extends HTMLElement {
   static get observedAttributes() {
-    return ['layout', 'shell-min', 'shell-max', 'edges', 'halo', 'isolate',
-      'explode', 'accent', 'halo-alpha', 'mark-scale', 'labels', 'src', 'view-id'];
+    return ['layout', 'colour', 'shell-min', 'shell-max', 'edges', 'halo', 'isolate',
+      'explode', 'halo-alpha', 'mark-scale', 'labels', 'src', 'view-id'];
   }
   attr(name) { return this.getAttribute(name); }
   constructor() {
@@ -67,7 +71,10 @@ class SphereView extends HTMLElement {
     this.cam = this.homeCam(); this.home = { ...this.cam };
     loadModel(this.attr('src') || 'graph.json').then(m => {
       this.model = m;
-      this.dispatchEvent(new CustomEvent('sv-model', { bubbles: true, detail: { model: m } }));
+      this.fams = familyColours(m.families.length);
+      this.dispatchEvent(new CustomEvent('sv-model', {
+        bubbles: true, detail: { model: m, fams: this.fams }
+      }));
       this.draw();
     }).catch(err => {
       this._error = err.message;
@@ -76,14 +83,21 @@ class SphereView extends HTMLElement {
     this.resize();
   }
   disconnectedCallback() { this._ro?.disconnect(); }
+  /* Per-layout home cameras. These frame the whole figure in the panel's
+     viewport; they are not portable to a different aspect ratio. */
   homeCam() {
     const l = this.attr('layout') || 'sphere';
-    if (l === 'shells') return { yaw: 0.42, pitch: 0.34, dist: 5.8 };
+    if (l === 'shells') return { yaw: 0.42, pitch: 0.34, dist: 7.0 };
     if (l === 'sectors') return { yaw: 0.6, pitch: 0.22, dist: 4.8 };
     return { yaw: 0.6, pitch: 0.22, dist: 4.3 };
   }
-  attributeChangedCallback(n) {
-    if (n === 'layout') { this.cam = this.homeCam(); this.home = { ...this.cam }; }
+  attributeChangedCallback(n, old, val) {
+    /* Only a change of layout moves the camera — recentring on a colour change
+       or a slider drag would throw away the reader's viewpoint. */
+    if (n === 'layout' && old !== null && old !== val) {
+      this.cam = this.homeCam(); this.home = { ...this.cam };
+      this.emit('sv-cam', { dist: this.cam.dist });
+    }
     this.draw();
   }
   /* ---------- interaction ---------- */
@@ -119,7 +133,7 @@ class SphereView extends HTMLElement {
     this.addEventListener('pointerleave', () => { this.hover = null; this.tip.style.display = 'none'; this.draw(); });
     this.addEventListener('wheel', e => {
       e.preventDefault();
-      this.cam.dist = Math.max(0.35, Math.min(9, this.cam.dist * (1 + Math.sign(e.deltaY) * 0.09)));
+      this.cam.dist = Math.max(0.35, Math.min(11, this.cam.dist * (1 + Math.sign(e.deltaY) * 0.09)));
       this.emit('sv-cam', { dist: this.cam.dist });
       this.draw();
     }, { passive: false });
@@ -231,7 +245,8 @@ class SphereView extends HTMLElement {
       ctx.fillText(this._error || 'reading graph.json…', 16, 24);
       return;
     }
-    const accent = this.attr('accent') || RED;
+    const mode = this.attr('colour') || 'status';
+    const fams = this.fams;
     const haloAlpha = parseFloat(this.attr('halo-alpha') || '0.5');
     const markScale = parseFloat(this.attr('mark-scale') || '1');
     const layout = this.attr('layout') || 'sphere';
@@ -245,8 +260,8 @@ class SphereView extends HTMLElement {
     const vis = new Array(m.nodes.length).fill(false);
     const pts = new Array(m.nodes.length);
     const stack = layout === 'shells';
-    /* 1c splits on rank alone, because height is the only axis it draws;
-       1a/1b split on both coordinates. The difference is intentional. */
+    /* the stack splits on rank alone, because height is the only axis it draws;
+       the ball and the sectors split on both coordinates. Intentional. */
     const off = n => stack ? n.lvl == null : n.halo;
     m.nodes.forEach((n, i) => {
       if (off(n) && !showHalo) return;
@@ -261,7 +276,11 @@ class SphereView extends HTMLElement {
       pts[i] = this.project(this.pos(n));
     });
 
-    /* edges — painted under the marks, ink hairlines */
+    /* edges — painted under the marks. Ink hairlines, except: a contradiction
+       is always the accent, and in any colour mode the two edges that build the
+       ladder (`cons`, broad `ladder`) take the board's broad violet, so the
+       skeleton the view is about reads as one structure. */
+    const ladderInk = mode === 'ink' ? INK : BOARD.broad;
     ctx.lineWidth = 1;
     for (const e of m.edges) {
       if (!kinds.has(e.k) || !vis[e.a] || !vis[e.b]) continue;
@@ -271,8 +290,8 @@ class SphereView extends HTMLElement {
       const fade = Math.max(0.05, Math.min(1, 2.2 / ((A[2] + Bp[2]) / 2)));
       ctx.beginPath();
       ctx.setLineDash(e.k === 'lat' ? [3, 3] : e.k === 'cite' ? [6, 3] : []);
-      ctx.strokeStyle = contra ? accent : INK;
-      ctx.globalAlpha = (e.k === 'ladder' ? 0.5 : e.k === 'cons' ? 0.2 : 0.15) * fade + (contra ? 0.25 : 0);
+      ctx.strokeStyle = contra ? RED : (e.k === 'ladder' || e.k === 'cons') ? ladderInk : INK;
+      ctx.globalAlpha = (e.k === 'ladder' ? 0.55 : e.k === 'cons' ? 0.24 : 0.15) * fade + (contra ? 0.25 : 0);
       ctx.lineWidth = e.k === 'ladder' ? 2 : 1;
       ctx.moveTo(A[0], A[1]); ctx.lineTo(Bp[0], Bp[1]);
       ctx.stroke();
@@ -292,12 +311,16 @@ class SphereView extends HTMLElement {
       const isSel = this.sel && this.sel.k === n.k;
       const isHov = this.hover && this.hover.n && this.hover.n.k === n.k;
       const s = (n.t === 'b' ? (n.lvl === 0 ? 6 : 4.2) : off(n) ? 2.1 : n.floor ? 2.9 : 2.5) * persp * markScale;
-      ctx.globalAlpha = off(n) ? haloAlpha * Math.min(1, persp) : Math.min(1, 0.45 + persp * 0.5);
-      const col = off(n) ? accent : INK;
+      ctx.globalAlpha = off(n) ? haloAlpha * Math.min(1, persp) : Math.min(1, 0.5 + persp * 0.5);
+      /* `off` beats the colour mode: a node with no coordinate is red in all
+         four readings, because that is what this view exists to show. */
+      const col = off(n) ? RED : colourOf(mode, n, fams);
       ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = 1;
       if (n.t === 'b') {
         ctx.globalAlpha = 1;
-        ctx.fillStyle = n.kind === 'broad question' ? '#f3f2f2' : INK;
+        /* a broad question is the hollow square — the same open/filled
+           distinction the board draws between asking and asserting */
+        if (n.kind === 'broad question') { ctx.fillStyle = '#f3f2f2'; }
         ctx.beginPath(); ctx.rect(p[0] - s, p[1] - s, s * 2, s * 2); ctx.fill(); ctx.stroke();
       } else if (n.floor) {
         ctx.fillRect(p[0] - s, p[1] - s * 0.62, s * 2, s * 1.24);
@@ -312,14 +335,16 @@ class SphereView extends HTMLElement {
         ctx.beginPath(); ctx.arc(p[0], p[1], s, 0, 6.284); ctx.stroke();
       }
       if (isSel || isHov) {
-        ctx.globalAlpha = 1; ctx.strokeStyle = accent; ctx.lineWidth = 2;
+        /* ink, not the accent: with colour on, an accent bracket around a red
+           haze node would be the same colour as the node it is pointing at */
+        ctx.globalAlpha = 1; ctx.strokeStyle = INK; ctx.lineWidth = 2;
         ctx.beginPath(); ctx.rect(p[0] - s - 4, p[1] - s - 4, s * 2 + 8, s * 2 + 8); ctx.stroke();
       }
       this.proj.push({ sx: p[0], sy: p[1], n });
     }
     ctx.globalAlpha = 1;
 
-    if (this.attr('labels') !== '0') this.drawLabels(ctx, m, pts, vis, accent, isoI);
+    if (this.attr('labels') !== '0') this.drawLabels(ctx, m, pts, vis, mode, fams, isoI);
   }
   drawPlates(ctx, m) {
     const nP = this.plateCount(m), nS = m.stats.maxSlice;
@@ -356,7 +381,7 @@ class SphereView extends HTMLElement {
     }
     ctx.restore(); ctx.globalAlpha = 1;
   }
-  drawLabels(ctx, m, pts, vis, accent, isoI) {
+  drawLabels(ctx, m, pts, vis, mode, fams, isoI) {
     const layout = this.attr('layout') || 'sphere';
     if (layout === 'shells') return;
     const ex = layout === 'sectors' ? parseFloat(this.attr('explode') || '0.4') : 0;
@@ -365,7 +390,9 @@ class SphereView extends HTMLElement {
       for (const b of placed) if (x < b[2] && x + w > b[0] && y < b[3] && y + h > b[1]) return false;
       placed.push([x, y, x + w, y + h]); return true;
     };
-    /* the sixteen, labelled on the perimeter with a hairline leader */
+    /* the top-level entries, labelled on the perimeter with a hairline leader.
+       In `family` mode the leader and the label carry the family's own colour,
+       which is what makes the strip under the viewport a legend. */
     ctx.font = '800 10.5px Archivo, system-ui, sans-serif';
     m.families.forEach((f, i) => {
       if (isoI != null && isoI !== i) return;
@@ -382,11 +409,12 @@ class SphereView extends HTMLElement {
       const y = outer[1] + 3.5;
       if (y < 12 || y > this.h - 8) return;
       if (!fits(x, y - 11, w, 14)) return;
+      const famCol = mode === 'family' ? fams[i] : INK;
       ctx.globalAlpha = behind ? 0.28 : 0.9;
-      ctx.strokeStyle = INK; ctx.lineWidth = 1;
+      ctx.strokeStyle = famCol; ctx.lineWidth = 1;
       ctx.beginPath(); ctx.moveTo(inner[0], inner[1]); ctx.lineTo(outer[0], outer[1]); ctx.stroke();
-      ctx.globalAlpha = behind ? 0.35 : 1;
-      ctx.fillStyle = isoI === i ? accent : INK;
+      ctx.globalAlpha = behind ? 0.4 : 1;
+      ctx.fillStyle = isoI === i ? RED : famCol;
       ctx.fillText(txt, x, y);
     });
     /* the LOD merge: individual broad titles only once you have flown close */
@@ -398,7 +426,7 @@ class SphereView extends HTMLElement {
         const txt = n.title;
         const w = ctx.measureText(txt).width;
         if (!fits(p[0] + 9, p[1] - 12, w, 13)) return;
-        ctx.globalAlpha = 0.75; ctx.fillStyle = INK;
+        ctx.globalAlpha = 0.75; ctx.fillStyle = mode === 'ink' ? INK : BOARD.broad;
         ctx.fillText(txt, p[0] + 9, p[1] - 3);
       });
     }

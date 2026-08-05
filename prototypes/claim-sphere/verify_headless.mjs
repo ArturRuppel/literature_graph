@@ -15,7 +15,9 @@
  *   - the plate index is injective across slices and broad nodes (the
  *     collision a fifth slice rank would otherwise introduce);
  *   - every edge names two real node indices;
- *   - the family axes are unit vectors and pairwise distinct.
+ *   - the family axes are unit vectors and pairwise distinct;
+ *   - every colour mode returns a parseable hex for every node, and the haze
+ *     stays the accent in all of them.
  *
  * Cross-check the counts against verify.py, which re-derives them in Python
  * from scratch — a match between the two is a real check, not the same bug
@@ -25,6 +27,7 @@
  */
 import { readFileSync } from 'node:fs';
 import { deriveModel } from './derive-model.js';
+import { colourOf, familyColours, ramp, RED } from './colour.js';
 
 const i = process.argv.indexOf('--graph');
 if (i === -1 || !process.argv[i + 1]) {
@@ -92,6 +95,22 @@ check(m.families.every(f => Math.abs(Math.hypot(...f.axis) - 1) < 1e-3), 'family
 check(new Set(m.families.map(f => f.axis.join(','))).size === m.families.length, 'family axes are pairwise distinct');
 check(m.families.reduce((a, f) => a + f.members, 0) >= s.famAuthored + s.famInherited,
   'branch member counts cover every familied slice');
+
+/* colour — the second channel. A colour that fails to parse in a canvas leaves
+   the previous fillStyle standing, so a silent bad hex presents as a drawing
+   bug; the shape of every string is checked here instead. */
+const HEX = /^#[0-9a-f]{6}$/;
+const fams = familyColours(m.families.length);
+check(fams.every(c => HEX.test(c)), 'every family colour is a parseable hex');
+check(new Set(fams).size === fams.length, 'family colours are pairwise distinct');
+check(Array.from({ length: 21 }, (_, i) => ramp(i / 20)).every(c => HEX.test(c)),
+  'the generality ramp is parseable end to end');
+for (const mode of ['status', 'family', 'generality', 'ink']) {
+  const cols = m.nodes.map(n => colourOf(mode, n, fams));
+  check(cols.every(c => HEX.test(c)), `colour="${mode}" returns a hex for every node`,
+    `${new Set(cols).size} distinct`);
+  check(m.nodes.every((n, k) => !n.halo || cols[k] === RED), `colour="${mode}" leaves the haze red`);
+}
 
 console.log('\n=== the sixteen, in ladder order ===');
 m.families.forEach((f, k) => console.log(`  ${String(k).padStart(2)}  ${String(f.members).padStart(4)}  ${f.kind.padEnd(15)} ${f.title}`));

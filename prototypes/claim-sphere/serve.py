@@ -2,8 +2,8 @@
 """Standalone static server for the claim-sphere prototype.
 
 Serves this directory's static files (index.html, app.js, sphere-view.js,
-derive-model.js, style.css) and proxies the graph payload at GET /graph.json
-from an externally-supplied path. --graph is required and has no
+derive-model.js, colour.js, style.css) and proxies the graph payload at
+GET /graph.json from an externally-supplied path. --graph is required and has no
 default/fallback: the real data lives in a private repo and this one is
 public, so no path is ever committed here.
 

@@ -1,201 +1,156 @@
 <!DOCTYPE html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Claim sphere — three renderings of the support skeleton</title>
+<title>Claim sphere — the support skeleton</title>
 <link rel="stylesheet" href="style.css">
 
-<!-- Three views over the same authored data. Every number in the chrome is
-     filled in by app.js from the derived model — nothing here is hardcoded,
-     because the library grows and a stale count in a standfirst is a lie. -->
+<!-- One panel. The three readings of the sphere (ball · sectors · stack) are a
+     setting, not three pages, so a selection, a colour mode and an isolated
+     branch all survive switching between them.
 
-<div class="deck">
+     Every number in the chrome is filled in by app.js from the derived model —
+     nothing here is hardcoded, because the library grows and a stale count in a
+     standfirst is a lie. -->
 
-  <!-- ══ 1a · the ball and the haze ═══════════════════════════════════════ -->
-  <section class="screen" id="s-a">
-    <div class="screen-head">
-      <span class="id-chip">1A</span>
-      <div class="kicker">Reading one · what the library establishes</div>
-      <div class="statline" data-f="aStats">…</div>
+<section class="screen">
+
+  <div class="screen-head">
+    <span class="id-chip">01</span>
+    <div class="kicker" data-f="kicker">…</div>
+    <a class="back" id="back" href="../../" hidden>← board</a>
+    <div class="statline" data-f="stats">…</div>
+  </div>
+  <h2 data-f="title">The claim sphere</h2>
+  <p class="standfirst" data-f="lede"></p>
+  <div class="rule"></div>
+
+  <div class="body">
+
+    <!-- ══ settings ═══════════════════════════════════════════════════════ -->
+    <div class="ctl-col">
+
+      <div>
+        <div class="ctl-label">Rendering</div>
+        <div class="seg seg-stack" id="layout">
+          <button class="seg-btn" data-v="sphere" aria-pressed="true">
+            <b>the ball and the haze</b>
+            <span>radius is generality, direction is family</span>
+          </button>
+          <button class="seg-btn" data-v="sectors" aria-pressed="false">
+            <b>the branches, pulled apart</b>
+            <span>same coordinates, families exploded along their own axis</span>
+          </button>
+          <button class="seg-btn" data-v="shells" aria-pressed="false">
+            <b>the stack and the slab</b>
+            <span>radius unrolled — distance-to-floor becomes height</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <div>
+        <div class="ctl-label">Colour</div>
+        <div class="seg seg-wrap" id="colour">
+          <button class="seg-btn sm" data-v="status" aria-pressed="true">status</button>
+          <button class="seg-btn sm" data-v="family" aria-pressed="false">family</button>
+          <button class="seg-btn sm" data-v="generality" aria-pressed="false">generality</button>
+          <button class="seg-btn sm" data-v="ink" aria-pressed="false">ink</button>
+        </div>
+        <div class="ctl-note" data-f="colourNote"></div>
+        <div class="key" id="key"></div>
+      </div>
+
+      <div class="divider"></div>
+
+      <!-- radial peel: the ball and the sectors only; the stack has no radius axis -->
+      <div data-when="sphere sectors">
+        <div class="ctl-label">Shell window</div>
+        <div class="ctl-note">Peel radially. The middle of a filled ball is unreadable otherwise.</div>
+        <div class="range-stack">
+          <label class="range-row">inner<input type="range" min="0" max="100" value="0" id="s-min"></label>
+          <label class="range-row">outer<input type="range" min="0" max="100" value="100" id="s-max"></label>
+        </div>
+        <div class="readout" data-f="shell">r ∈ [0.00, 1.70]</div>
+      </div>
+
+      <div data-when="sectors">
+        <div class="ctl-label">Explode</div>
+        <div class="range-stack">
+          <label class="range-row">axis<input type="range" min="0" max="120" value="45" id="explode"></label>
+        </div>
+      </div>
+
+      <div data-when="shells">
+        <div class="ctl-label">Plates, bottom up</div>
+        <div class="plates" id="plates"></div>
+      </div>
+
+      <div class="divider"></div>
+
+      <div>
+        <div class="ctl-label">Authored edges</div>
+        <div class="check-list" id="edges">
+          <label class="check"><input type="checkbox" data-edge="up" checked><span>grounding · up</span><span class="count" data-f="eUp"></span></label>
+          <label class="check"><input type="checkbox" data-edge="cons" checked><span>into broad · cons</span><span class="count" data-f="eCons"></span></label>
+          <label class="check"><input type="checkbox" data-edge="ladder" checked><span>broad ladder</span><span class="count" data-f="eLadder"></span></label>
+          <label class="check"><input type="checkbox" data-edge="gen" checked><span>generalization · gen</span><span class="count" data-f="eGen"></span></label>
+          <label class="check"><input type="checkbox" data-edge="cite" checked><span>sharpened citation</span><span class="count" data-f="eCite"></span></label>
+          <label class="check"><input type="checkbox" data-edge="lat" checked><span>corr / contra</span><span class="count" data-f="eLat"></span></label>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <label class="check"><input type="checkbox" id="halo" checked><span data-f="haloLabel"></span></label>
+      <button class="btn btn-secondary" id="reset">Reset view</button>
+
+      <div class="divider"></div>
+
+      <div>
+        <div class="ctl-label">Marks</div>
+        <div class="marks">
+          <span class="sw sw-dot"></span><span>grounded claim</span>
+          <span class="sw sw-ring"></span><span>plausible claim</span>
+          <span class="sw sw-square"></span><span>method</span>
+          <span class="sw sw-bar"></span><span>floor · measurement</span>
+          <span class="sw sw-broad"></span><span>broad node</span>
+          <span class="sw sw-haze"></span><span>no coordinate</span>
+        </div>
+      </div>
+
+      <div class="help" data-f="help"></div>
     </div>
-    <h2>The ball and the haze</h2>
-    <p class="standfirst">
-      Radius is generality — floors on the surface, the <span data-f="aFamCount">sixteen</span> top-level
-      entries at the centre. Direction is family.
-      <b data-f="aLede"></b>
-      Nothing out there was placed by a vote or a similarity; it is diffuse because the library
-      does not say where it goes.
-    </p>
-    <div class="rule"></div>
 
-    <div class="body-controls-left">
-      <div class="ctl-col">
+    <!-- ══ the view ═══════════════════════════════════════════════════════ -->
+    <div class="view-col">
+      <sphere-view id="v" view-id="v" src="graph.json" layout="sphere" colour="status"
+                   shell-min="0" shell-max="100" explode="0.45"
+                   edges="up,gen,cons,ladder,cite,lat" halo="1"></sphere-view>
+
+      <div class="strip-head">
+        <div class="ctl-label">Top-level entries — click to isolate a branch</div>
+        <button class="btn btn-secondary sm" id="all">show all</button>
+      </div>
+      <div class="branches" id="branches"></div>
+      <div class="iso-line" data-f="isoLine"></div>
+
+      <div class="rule-under"></div>
+      <div class="sel">
         <div>
-          <div class="ctl-label">Shell window</div>
-          <div class="ctl-note">Peel radially. The middle of a filled ball is unreadable otherwise.</div>
-          <div class="range-stack">
-            <label class="range-row">inner
-              <input type="range" min="0" max="100" value="0" id="a-min">
-            </label>
-            <label class="range-row">outer
-              <input type="range" min="0" max="100" value="100" id="a-max">
-            </label>
-          </div>
-          <div class="readout" data-f="aShell">r ∈ [0.00, 1.70]</div>
+          <div class="sel-kind" data-f="selKind"></div>
+          <div class="sel-text" data-f="selText"></div>
+          <div class="sel-quote" data-f="selQuote"></div>
         </div>
-
-        <div class="divider"></div>
-
-        <div>
-          <div class="ctl-label">Authored edges</div>
-          <div class="check-list" id="a-edges">
-            <label class="check"><input type="checkbox" data-edge="up" checked>grounding · up <span class="count" data-f="eUp"></span></label>
-            <label class="check"><input type="checkbox" data-edge="cons" checked>into broad · cons <span class="count" data-f="eCons"></span></label>
-            <label class="check"><input type="checkbox" data-edge="ladder" checked>broad ladder <span class="count" data-f="eLadder"></span></label>
-            <label class="check"><input type="checkbox" data-edge="gen" checked>generalization · gen <span class="count" data-f="eGen"></span></label>
-            <label class="check"><input type="checkbox" data-edge="cite" checked>sharpened citation <span class="count" data-f="eCite"></span></label>
-            <label class="check"><input type="checkbox" data-edge="lat" checked>corr / contra <span class="count" data-f="eLat"></span></label>
-          </div>
-        </div>
-
-        <div class="divider"></div>
-
-        <div>
-          <div class="ctl-label">Marks</div>
-          <div class="marks">
-            <span class="sw sw-dot"></span><span>grounded claim</span>
-            <span class="sw sw-ring"></span><span>plausible claim</span>
-            <span class="sw sw-square"></span><span>method</span>
-            <span class="sw sw-bar"></span><span>floor · measurement</span>
-            <span class="sw sw-broad"></span><span>broad node</span>
-            <span class="sw sw-haze"></span><span>haze · no coordinate</span>
-          </div>
-        </div>
-
-        <div class="divider"></div>
-
-        <label class="check"><input type="checkbox" id="a-halo" checked><span>show the haze (<span data-f="aHaloN"></span>)</span></label>
-        <button class="btn btn-secondary" id="a-reset">Reset view</button>
-        <div class="help">Drag to orbit · wheel to fly in toward the apexes · click a mark to read it.
-          Position <b>within</b> a shell is packing, not meaning.</div>
-      </div>
-
-      <div class="view-col">
-        <sphere-view id="v-a" view-id="a" layout="sphere" src="graph.json" class="vp-660"
-                     shell-min="0" shell-max="100" edges="up,gen,cons,ladder,cite,lat" halo="1"></sphere-view>
-        <div class="rule-under"></div>
-        <div class="sel">
-          <div>
-            <div class="sel-kind" data-f="aSelKind"></div>
-            <div class="sel-text" data-f="aSelText"></div>
-            <div class="sel-quote" data-f="aSelQuote"></div>
-          </div>
-          <div class="sel-meta">
-            <div data-f="aSelCoord"></div>
-            <div data-f="aSelFam"></div>
-            <div data-f="aSelPaper"></div>
-            <code data-f="aSelKey"></code>
-          </div>
+        <div class="sel-meta">
+          <div data-f="selCoord"></div>
+          <div data-f="selFam"></div>
+          <div data-f="selPaper"></div>
+          <code data-f="selKey"></code>
         </div>
       </div>
     </div>
-  </section>
-
-  <!-- ══ 1b · the sixteen, pulled apart ═══════════════════════════════════ -->
-  <section class="screen" id="s-b">
-    <div class="screen-head">
-      <span class="id-chip">1B</span>
-      <div class="kicker">Reading two · where the mass sits</div>
-      <div class="statline" data-f="bStats">…</div>
-    </div>
-    <h2>The sixteen, pulled apart</h2>
-    <p class="standfirst">
-      Same coordinates, families exploded along their own axis so a solid angle becomes a limb.
-      <b data-f="bLede"></b>
-      <span data-f="bSmall"></span> Click a branch to fly down it.
-    </p>
-    <div class="rule"></div>
-
-    <div class="body-controls-right">
-      <div class="view-col-left">
-        <sphere-view id="v-b" view-id="b" layout="sectors" src="graph.json" class="vp-700"
-                     explode="0.45" halo="0" edges="up,cons,ladder,gen,cite"></sphere-view>
-        <div class="vp-bar">
-          <label class="explode">explode
-            <input type="range" min="0" max="120" value="45" id="b-explode">
-          </label>
-          <label class="check"><input type="checkbox" id="b-halo">show the haze</label>
-          <button class="btn btn-secondary push" id="b-all">All sixteen</button>
-          <button class="btn btn-secondary" id="b-reset">Reset view</button>
-        </div>
-        <div class="iso-line" data-f="bIsoLine"></div>
-      </div>
-      <div class="view-col">
-        <div class="ctl-label">Top-level entries</div>
-        <div class="branches" id="b-branches"></div>
-        <div class="branch-foot" data-f="bFoot"></div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ══ 1c · the stack and the slab ══════════════════════════════════════ -->
-  <section class="screen" id="s-c">
-    <div class="screen-head">
-      <span class="id-chip">1C</span>
-      <div class="kicker">Reading three · the ladder, unrolled</div>
-      <div class="statline" data-f="cStats">…</div>
-    </div>
-    <h2>The stack and the slab</h2>
-    <p class="standfirst">
-      The same radius, cut into plates and stacked: distance-to-floor becomes height, so the
-      ladder can be read edge-on.
-      <b data-f="cLede"></b>
-      A claim whose chain never reaches a measurement is not on the floor — it is off the building.
-    </p>
-    <div class="rule"></div>
-
-    <div class="body-controls-left">
-      <div class="ctl-col">
-        <div>
-          <div class="ctl-label">Plates, bottom up</div>
-          <div class="plates" id="c-plates"></div>
-        </div>
-        <div class="divider"></div>
-        <div>
-          <div class="ctl-label">Show</div>
-          <div class="check-list" id="c-edges">
-            <label class="check"><input type="checkbox" data-edge="up" checked>grounding · up</label>
-            <label class="check"><input type="checkbox" data-edge="cons" checked>into broad · cons</label>
-            <label class="check"><input type="checkbox" data-edge="ladder" checked>broad ladder</label>
-            <label class="check"><input type="checkbox" data-edge="lat">corr / contra</label>
-            <label class="check"><input type="checkbox" id="c-halo" checked>the slab</label>
-          </div>
-        </div>
-        <div class="divider"></div>
-        <div class="ctl-foot">
-          Height is authored: distance to a measurement floor for a slice, ladder tier for a broad
-          node. Position <b>on</b> a plate is packing — the ring only groups a claim with its
-          family, and a claim with no authored family sits at the plate's centre.
-        </div>
-        <button class="btn btn-secondary" id="c-reset">Reset view</button>
-      </div>
-      <div class="view-col">
-        <sphere-view id="v-c" view-id="c" layout="shells" src="graph.json" class="vp-660"
-                     labels="0" edges="up,cons,ladder" halo="1"></sphere-view>
-        <div class="rule-under"></div>
-        <div class="sel" style="min-height: 110px">
-          <div>
-            <div class="sel-kind" data-f="cSelKind"></div>
-            <div class="sel-text" data-f="cSelText"></div>
-          </div>
-          <div class="sel-meta">
-            <div data-f="cSelCoord"></div>
-            <div data-f="cSelPaper"></div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-</div>
+  </div>
+</section>
 
 <script type="module" src="app.js"></script>

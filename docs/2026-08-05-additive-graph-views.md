@@ -289,6 +289,48 @@ hours stale by the time it was implemented (911 slices → 938), which is the ar
 The fly camera is gone with three.js; orbit + dolly is the whole gesture set, and flying to the
 centre is still flying to the apexes.
 
+### 3.3 One panel — the rendering is a setting, and colour comes in
+
+**Date:** 2026-08-05. §3.2 shipped the three readings as three stacked screens, each with its own
+control column. That was the wrong shape and the page said so: **three menus for three settings
+of one view.** The prototype is now a **single panel**, and `layout` is a control in it beside the
+others.
+
+The merge is not just tidying. Because there is one view and one state, a selected claim, an
+isolated branch and a radial peel all **survive switching reading** — so "where does this thing
+sit in the stack" is now a click, not a scroll to another screen and a hunt for the same mark.
+The one place state is deliberately *not* per-reading is the haze checkbox: it means "the haze" in
+the ball and the sectors, "the slab" in the stack, and it keeps one value across all three. The
+sectors help line says out loud that the haze belongs to no limb, rather than the panel quietly
+switching it off.
+
+**Colour is a second channel, chosen in the settings** (`colour.js`, pure). Four readings:
+
+| Mode | What the hue is | Where it comes from |
+|---|---|---|
+| `status` *(default)* | grounded · borrowed · plausible · question · floor · model | **the board's own emergent colours** — `graph._slice_color` (SCHEMA §7), hexes mirrored from `viewer/template.html`'s `:root` |
+| `family` | one hue per top-level entry | golden-angle over the hue circle, at constant OKLCH lightness and chroma — the same trick that distributes the family *axes*, so ladder-neighbours are far apart in colour too |
+| `generality` | distance to a measurement floor | an ordered ochre→indigo ramp; the quantity the radius already draws, as a second channel |
+| `ink` | nothing | the monochrome the view was first drawn in |
+
+Two rules hold across all four. **The status palette is not ours** — a claim that is green on its
+card is green in the sphere, and the sphere invents no hue the board does not already use; that
+also means it inherits the board's near-collisions (`floor`/`question` are both brown, `model`/
+`broad` both violet), which shape disambiguates here. And **red still means exactly one thing**: a
+node with no authored coordinate is drawn in the accent in *every* mode, because that is the
+finding the view exists to show. Colour never reaches the haze. The selection bracket moved from
+red to ink for the same reason — with colour on, an accent bracket around a red haze node points
+at itself.
+
+The branch strip under the viewport carries each family's hue on its magnitude bar, so it is the
+`family` legend and the isolate control at once, and `colour.js` is imported by both the renderer
+and the chrome — a swatch and the dot it explains cannot disagree.
+
+**OKLCH → sRGB is hand-rolled** rather than handed to the browser's `oklch()`. The same hex has to
+reach a canvas fill, a CSS background and Node under the headless check; a colour string that
+fails to parse in one of the three leaves the previous `fillStyle` standing, which presents as a
+drawing bug.
+
 ## 4. How they get built and looked at
 
 Standalone, side by side, nothing welded:
@@ -305,6 +347,16 @@ Standalone, side by side, nothing welded:
 a HUD toggle beside `walk` and its projection moves into the emit layer. If it doesn't, the
 directory is deleted and nothing else has to be untangled. That property is the reason for the
 separate servers, and it is worth more than the convenience of building in place.
+
+**Reachable, not yet welded (2026-08-05).** The halfway step is in: `lit serve` publishes the
+`prototypes/` tree at `/views/<slug>/` and lists what is actually on disk in a HUD dropdown, and
+each view links back to the board. Nothing moved into the emit layer — a view still fetches a
+*relative* `graph.json`, which lands at `/views/<slug>/graph.json` and is answered with the
+server's live payload, so the views read the same rebuilt-from-YAML graph as the board rather than
+a stale `dist/` artifact. It stays **serve-only**: a static `lit build` is one self-contained file
+and gets no `views` key, hence no dropdown whose links nothing would answer. Because `_VIEWS` is a
+module constant, *a running server predates any change here* — the dropdown appears only after a
+restart, which is exactly how the first version of this went missing for two days.
 
 ## 5. Deliberately not decided
 

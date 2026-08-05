@@ -1,7 +1,12 @@
-/* Claim sphere — Modernist tokens and the chrome the three screens are built
-   from. Ink and red only; no semantic hues, no rounded corners, no shadows.
-   Red means exactly one thing: "no authored coordinate" (or, on an edge,
-   "contradiction"). Rules and alignment do the organising.
+/* Claim sphere — Modernist tokens and the chrome of the one panel.
+   Radius 0 everywhere, no shadows, rules and alignment do the organising.
+
+   On colour: the marks used to be ink and red only. They now carry a second
+   channel, chosen in the settings — and the palette is not ours. `status` is
+   the board's own emergent colours (viewer/template.html :root, mirrored in
+   colour.js); `family` and `generality` are derived scales. What did not
+   change is the accent: red still means exactly one thing, "no authored
+   coordinate" (or, on an edge, "contradiction"), in all four colour modes.
 
    Archivo is the system's face. A prototype pulls nothing from a CDN, so it is
    used if the machine has it and falls back to system-ui if not. */
@@ -48,17 +53,9 @@ input[type="checkbox"] { accent-color: var(--accent); width: 13px; height: 13px;
 
 /* ── the page ───────────────────────────────────────────────────────────── */
 
-.deck {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 40px;
-  padding: 40px;
-  align-items: flex-start;
-}
-
 .screen {
-  width: 1280px;
-  max-width: 100%;
+  width: min(1480px, 100%);
+  margin: 32px auto;
   background: var(--ground);
   padding: var(--space-8) var(--space-8) 28px;
   border-top: 6px solid var(--ink);
@@ -76,6 +73,11 @@ input[type="checkbox"] { accent-color: var(--accent); width: 13px; height: 13px;
   font-size: 11px; font-weight: 800; letter-spacing: .1em;
   text-transform: uppercase; color: var(--muted);
 }
+.back {
+  font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase;
+  color: var(--ink); text-decoration: none; border-bottom: 2px solid var(--accent);
+}
+.back[hidden] { display: none; }
 .statline {
   margin-left: auto; font-size: 11px; color: var(--muted);
   font-variant-numeric: tabular-nums;
@@ -85,7 +87,7 @@ input[type="checkbox"] { accent-color: var(--accent); width: 13px; height: 13px;
   font-size: 40px; font-weight: 800; line-height: 1.12; letter-spacing: -.02em;
 }
 .standfirst {
-  margin: 0; max-width: 900px;
+  margin: 0; max-width: 980px; min-height: 66px;
   font-size: 15px; line-height: 1.5; text-wrap: pretty;
 }
 
@@ -95,23 +97,22 @@ input[type="checkbox"] { accent-color: var(--accent); width: 13px; height: 13px;
 .rule-under { height: 2px; background: var(--ink); margin-top: 18px; }
 .divider { height: 2px; background: var(--divider); }
 
-/* ── the two body grids ─────────────────────────────────────────────────── */
+/* ── the body grid ──────────────────────────────────────────────────────── */
 
-.body-controls-left { display: grid; grid-template-columns: 268px 1fr; gap: 0; }
-.body-controls-right { display: grid; grid-template-columns: 1fr 320px; gap: 0; }
+.body { display: grid; grid-template-columns: 296px 1fr; gap: 0; }
 
 /* min-width: 0 on every grid child. A track's default min-width:auto lets a
    fixed-size child widen the column, and the canvas sets itself to the
    column's width — which is a feedback loop the ResizeObserver runs forever. */
-.body-controls-left > *, .body-controls-right > * { min-width: 0; }
+.body > * { min-width: 0; }
 
 .ctl-col {
   border-right: 2px solid var(--ink);
   padding: 18px 20px 0 0;
-  display: flex; flex-direction: column; gap: 18px;
+  display: flex; flex-direction: column; gap: 16px;
 }
+.ctl-col > [hidden] { display: none; }
 .view-col { padding-left: 20px; }
-.view-col-left { padding: 18px 20px 0 0; border-right: 2px solid var(--ink); }
 
 /* ── control column ─────────────────────────────────────────────────────── */
 
@@ -119,9 +120,8 @@ input[type="checkbox"] { accent-color: var(--accent); width: 13px; height: 13px;
   font-size: 11px; font-weight: 800; letter-spacing: .1em;
   text-transform: uppercase; margin-bottom: var(--space-2);
 }
-.ctl-note { font-size: 11px; color: var(--muted); line-height: 1.4; margin-bottom: var(--space-2); }
-.ctl-foot { font-size: 11px; color: var(--muted); line-height: 1.5; }
-.help { font-size: 10.5px; color: var(--muted); line-height: 1.45; margin-top: -4px; }
+.ctl-note { font-size: 11px; color: var(--muted); line-height: 1.4; margin-top: var(--space-2); }
+.help { font-size: 10.5px; color: var(--muted); line-height: 1.45; padding-bottom: 4px; }
 
 .range-stack { display: flex; flex-direction: column; gap: 6px; }
 .range-row {
@@ -137,7 +137,48 @@ input[type="checkbox"] { accent-color: var(--accent); width: 13px; height: 13px;
 .check { display: flex; align-items: center; gap: var(--space-2); cursor: pointer; }
 .check .count { margin-left: auto; color: var(--muted); font-variant-numeric: tabular-nums; }
 
-/* the mark legend — the whole vocabulary, at canvas scale */
+/* ── the two segmented settings (rendering, colour) ─────────────────────────
+   Buttons, not a <select>: the rendering choice carries a line of explanation
+   each, and the point of the merge is that the three readings are visible as a
+   set rather than hidden behind a closed menu. */
+
+.seg-stack { display: flex; flex-direction: column; }
+.seg-wrap { display: flex; flex-wrap: wrap; gap: 0; }
+
+.seg-btn {
+  font-family: var(--font); text-align: left; cursor: pointer;
+  background: transparent; color: var(--ink);
+  border: 1px solid var(--hairline); border-radius: 0;
+  display: flex; flex-direction: column; gap: 1px;
+  padding: 7px 9px;
+}
+.seg-stack .seg-btn + .seg-btn { border-top: 0; }
+.seg-wrap .seg-btn + .seg-btn { border-left: 0; }
+.seg-btn b { font-size: 12.5px; font-weight: 800; letter-spacing: -.01em; line-height: 1.25; }
+.seg-btn span { font-size: 10.5px; color: var(--muted); line-height: 1.35; }
+.seg-btn.sm { padding: 5px 9px; font-size: 11.5px; font-weight: 800; flex: 1 1 auto; }
+.seg-btn:hover { background: var(--surface); }
+.seg-btn[aria-pressed="true"] {
+  background: var(--ink); color: var(--ground); border-color: var(--ink);
+}
+.seg-btn[aria-pressed="true"] span { color: color-mix(in srgb, var(--ground) 70%, transparent); }
+
+/* ── the colour key — rebuilt per mode by app.js ────────────────────────── */
+
+.key {
+  display: grid; grid-template-columns: 14px 1fr; gap: 4px var(--space-2);
+  align-items: center; font-size: 11px; margin-top: var(--space-3);
+}
+.key[hidden] { display: none; }
+.key-ramp { display: block; }
+.ksw { display: block; width: 14px; height: 10px; }
+.kramp { display: block; height: 12px; width: 100%; }
+.kramp-lab {
+  display: flex; justify-content: space-between;
+  font-size: 10px; color: var(--muted); margin-top: 3px;
+}
+
+/* the mark legend — the shape vocabulary, which no colour mode changes */
 .marks {
   display: grid; grid-template-columns: 18px 1fr; gap: 5px var(--space-2);
   font-size: 11px; align-items: center;
@@ -147,10 +188,10 @@ input[type="checkbox"] { accent-color: var(--accent); width: 13px; height: 13px;
 .sw-ring { width: 8px; height: 8px; border: 1px solid var(--ink); border-radius: 50%; }
 .sw-square { width: 9px; height: 9px; border: 1px solid var(--ink); }
 .sw-bar { width: 12px; height: 4px; background: var(--ink); }
-.sw-broad { width: 11px; height: 11px; background: var(--ink); }
+.sw-broad { width: 11px; height: 11px; background: #7a4fb0; }
 .sw-haze { width: 8px; height: 8px; background: var(--accent); border-radius: 50%; opacity: .55; }
 
-/* the plate table (1c) */
+/* the plate table (the stack reading) */
 .plates {
   display: grid; grid-template-columns: 1fr auto; gap: 4px 10px;
   font-size: 12px; font-variant-numeric: tabular-nums;
@@ -168,6 +209,7 @@ input[type="checkbox"] { accent-color: var(--accent); width: 13px; height: 13px;
   border: 1px solid transparent; border-radius: 0;
   padding: 7px var(--space-3);
 }
+.btn.sm { font-size: 11px; padding: 4px var(--space-2); }
 .btn-secondary { border-color: var(--divider); }
 .btn-secondary:hover { background: color-mix(in srgb, var(--ink) 7%, transparent); }
 .btn-secondary:active { background: color-mix(in srgb, var(--ink) 14%, transparent); }
@@ -175,18 +217,60 @@ input[type="checkbox"] { accent-color: var(--accent); width: 13px; height: 13px;
 /* ── viewport ───────────────────────────────────────────────────────────── */
 
 sphere-view {
-  display: block; width: 100%;
+  display: block; width: 100%; height: 720px;
   border: 1px solid var(--hairline);
   background: var(--ground);
 }
-.vp-660 { height: 660px; }
-.vp-700 { height: 700px; }
+
+/* ── the branch strip ───────────────────────────────────────────────────── */
+
+.strip-head { display: flex; align-items: center; gap: var(--space-3); padding: 14px 0 6px; }
+.strip-head .ctl-label { margin-bottom: 0; }
+.strip-head .btn { margin-left: auto; }
+
+.branches {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(172px, 1fr));
+  border-top: 1px solid color-mix(in srgb, var(--ink) 20%, transparent);
+  border-left: 1px solid color-mix(in srgb, var(--ink) 20%, transparent);
+}
+.branch {
+  display: flex; flex-direction: column; gap: 2px; align-items: stretch;
+  text-align: left; cursor: pointer;
+  border: 0;
+  border-right: 1px solid color-mix(in srgb, var(--ink) 20%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--ink) 20%, transparent);
+  background: transparent; padding: 6px 8px 7px;
+  font-family: var(--font);
+}
+.branch:hover { background: var(--surface); }
+.branch[aria-pressed="true"] { background: var(--accent-tint); }
+.branch[aria-pressed="true"] .branch-title { color: var(--accent-deep); }
+.branch-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: baseline; }
+.branch-title {
+  font-size: 12px; font-weight: 800; letter-spacing: -.01em; line-height: 1.2;
+  color: var(--ink);
+}
+.branch-count {
+  font-size: 11.5px; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--muted);
+}
+.branch-kind {
+  font-size: 9.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted-2);
+}
+/* the bar is two things at once: length is the branch's size, colour is its
+   identity — the same hue the marks take in `family` mode */
+.branch-bar { display: block; height: 3px; margin-top: 2px; background: var(--surface); }
+.branch-bar i { display: block; height: 100%; }
+
+.iso-line {
+  font-size: 11.5px; line-height: 1.5; color: var(--muted);
+  padding-top: 10px; max-width: 900px;
+}
 
 /* ── the readout under the viewport ─────────────────────────────────────── */
 
 .sel {
   display: grid; grid-template-columns: 1fr 300px; gap: var(--space-6);
-  padding-top: 14px; min-height: 132px;
+  padding-top: 14px; min-height: 128px;
 }
 .sel-kind {
   font-size: 11px; font-weight: 800; letter-spacing: .1em;
@@ -194,11 +278,11 @@ sphere-view {
 }
 .sel-text {
   font-size: 17px; line-height: 1.35; margin-top: 6px;
-  max-width: 720px; text-wrap: pretty;
+  max-width: 760px; text-wrap: pretty;
 }
 .sel-quote {
   font-size: 12px; color: var(--muted); margin-top: var(--space-2);
-  font-style: italic; max-width: 720px;
+  font-style: italic; max-width: 760px;
 }
 .sel-meta {
   font-size: 11.5px; line-height: 1.7;
@@ -208,44 +292,6 @@ sphere-view {
   display: inline-block; margin-top: 6px; font-size: 11px;
   background: var(--surface); padding: 2px 6px; user-select: all;
 }
-
-/* ── 1b · the branch list ───────────────────────────────────────────────── */
-
-.branches { display: flex; flex-direction: column; }
-.branch {
-  display: flex; flex-direction: column; gap: var(--space-1); align-items: stretch;
-  text-align: left; cursor: pointer;
-  border: 0; border-bottom: 1px solid color-mix(in srgb, var(--ink) 20%, transparent);
-  background: transparent; padding: var(--space-2) 6px;
-  font-family: var(--font);
-}
-.branch:hover { background: var(--surface); }
-.branch[aria-pressed="true"] { background: var(--accent-tint); }
-.branch[aria-pressed="true"] .branch-title { color: var(--accent-deep); }
-.branch-row { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: baseline; }
-.branch-title {
-  font-size: 12.5px; font-weight: 800; letter-spacing: -.01em; line-height: 1.25;
-  color: var(--ink);
-}
-.branch-count {
-  font-size: 12px; font-weight: 800; font-variant-numeric: tabular-nums; color: var(--muted);
-}
-.branch-kind {
-  font-size: 9.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted-2);
-}
-.branch-bar { display: block; height: 3px; background: var(--accent); }
-
-.branch-foot { font-size: 11px; color: var(--muted); line-height: 1.5; margin-top: var(--space-3); }
-.iso-line {
-  font-size: 11.5px; line-height: 1.5; color: var(--muted);
-  padding-top: 10px; max-width: 820px;
-}
-
-/* ── 1b · the bar under the viewport ────────────────────────────────────── */
-
-.vp-bar { display: flex; align-items: center; gap: 20px; padding: 14px 0 0; }
-.vp-bar .explode {
-  display: grid; grid-template-columns: auto 160px; align-items: center; gap: 10px;
-  font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase;
-}
-.vp-bar .push { margin-left: auto; }
+/* with nothing selected the citekey slot is empty — without this it still
+   paints its own little grey tile */
+.sel-meta code:empty { display: none; }
