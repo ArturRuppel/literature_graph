@@ -680,3 +680,13 @@
 
   window.addEventListener('resize', () => { if (LAYOUT) fitToView(); });
 })();
+
+/* Under `lit serve` this page is /views/<slug>/ and the board sits at the root;
+   standalone (serve.py) there is nothing above it, so the link stays hidden
+   rather than pointing at a 404. On a phone this is the whole of the way back:
+   the board's menu opens views in the same tab on touch, so the back gesture
+   works too, but a visible door beats a remembered gesture. */
+if (location.pathname.startsWith('/views/')) {
+  const back = document.getElementById('back');
+  if (back) { back.href = '/'; back.hidden = false; }
+}

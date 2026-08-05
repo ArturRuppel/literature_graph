@@ -53,7 +53,7 @@ const COPY = {
       `coordinates; ${m.stats.halo} slices have neither and sit in the haze outside the sphere. ` +
       `Nothing out there was placed by a vote or a similarity — it is diffuse because the library ` +
       `does not say where it goes.`,
-    help: 'Drag to orbit · wheel to fly in toward the apexes · click a mark to read it. ' +
+    help: 'Drag to orbit · wheel or pinch to fly in toward the apexes · click a mark to read it. ' +
       'Position within a shell is packing, not meaning.',
     halo: m => `show the haze (${m.stats.halo})`,
   },
@@ -70,7 +70,7 @@ const COPY = {
         `${m.families.filter(f => f.kind === 'broad method').length} of the ${m.families.length} are ` +
         `broad methods, and a method branch counts instruments, not conclusions.`;
     },
-    help: 'Drag to orbit · wheel to fly down a limb · click a branch in the strip to isolate it. ' +
+    help: 'Drag to orbit · wheel or pinch to fly down a limb · click a branch in the strip to isolate it. ' +
       'The haze has no family by construction, so it belongs to no limb — turn it off to read this one.',
     halo: m => `show the haze (${m.stats.halo})`,
   },

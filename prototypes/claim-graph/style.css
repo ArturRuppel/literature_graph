@@ -213,3 +213,21 @@ svg#graph { display: block; }
   background: rgba(255,255,255,.85); padding: 2px 8px; border-radius: 4px;
   pointer-events: none;
 }
+
+/* ── the way back ────────────────────────────────────────────────────────────
+   Under `lit serve` this page is /views/claim-graph/ and the board is the root.
+   Shown by app.js only there, so the standalone server has no dead link. */
+.backlink {
+  font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+  color: var(--ink); text-decoration: none;
+  border-bottom: 2px solid var(--broad); padding: 4px 0;
+  touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+}
+.backlink[hidden] { display: none; }
+
+/* the stat line is nowrap by design (it reads as one sentence) — on a phone that
+   is the one thing pushing the page wider than the screen */
+@media (max-width: 640px) {
+  #stats { white-space: normal; }
+  header { gap: 10px; }
+}

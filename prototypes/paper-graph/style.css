@@ -224,3 +224,14 @@ main {
   border-top: 2px solid var(--corr);
 }
 .lat-line.contra { border-top: 2px dashed var(--contra); }
+
+/* ── the way back ────────────────────────────────────────────────────────────
+   Under `lit serve` this page is /views/paper-graph/ and the board is the root.
+   Shown by app.js only there, so the standalone server has no dead link. */
+.backlink {
+  font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+  color: var(--text); text-decoration: none;      /* this prototype is dark-themed */
+  border-bottom: 2px solid var(--accent); padding: 4px 0;
+  touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+}
+.backlink[hidden] { display: none; }

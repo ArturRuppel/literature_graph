@@ -295,3 +295,100 @@ sphere-view {
 /* with nothing selected the citekey slot is empty — without this it still
    paints its own little grey tile */
 .sel-meta code:empty { display: none; }
+
+/* ── narrow screens ───────────────────────────────────────────────────────────
+   Two axes, deliberately separate. Layout keys off width (a 296px settings
+   column beside a canvas cannot fit on a phone at any input device); tap-target
+   sizing keys off (pointer:coarse), because a narrow desktop window still has a
+   mouse and does not need 24px checkboxes.
+
+   The stacking order is the interesting part. `.ctl-col` becomes
+   `display:contents`, which dissolves the column and lets its groups be ordered
+   individually against the view — so the page reads: rendering · the figure ·
+   what you selected · everything else. The rendering switch stays pinned to the
+   top because it is the one control that is navigation rather than adjustment:
+   the merge is only an improvement on a phone if switching reading does not
+   cost a scroll to find it. */
+
+@media (max-width: 860px) {
+  body { font-size: 14px; }
+
+  .screen {
+    margin: 0;
+    padding: 16px 14px 22px;
+    border-top-width: 4px;
+  }
+  .screen-head { flex-wrap: wrap; gap: 8px 12px; }
+  /* the door first: on a phone the way back is the most important thing in the
+     header, and it was landing on its own line below a kicker that had wrapped */
+  .back { order: -1; }
+  .statline { margin-left: 0; flex-basis: 100%; }
+  .screen h2 { font-size: 26px; margin: 8px 0 6px; }
+  .standfirst { min-height: 0; font-size: 13.5px; line-height: 1.45; }
+  .rule { margin-top: 14px; }
+
+  .body { display: flex; flex-direction: column; gap: 16px; }
+  .ctl-col { display: contents; }
+  .view-col { padding-left: 0; order: 2; }
+  /* the canvas sizes itself to its box and its box to the canvas — the loop the
+     ResizeObserver would run forever. min-width:0 has to follow the groups out
+     of the dissolved column. */
+  .ctl-col > *, .view-col { min-width: 0; }
+
+  /* the settings groups, in one flow with the view between them */
+  .ctl-col > * { order: 3; }
+  .ctl-col > *:first-child { order: 1; }
+  /* reset belongs beside what it resets, not eight groups below it */
+  #reset { order: 1; align-self: flex-start; }
+
+  /* the rendering switch: three buttons across, notes dropped, stuck to the top
+     of the viewport so it is reachable from anywhere in the page */
+  .ctl-col > *:first-child {
+    position: sticky; top: 0; z-index: 3;
+    background: var(--ground);
+    padding-bottom: 6px;
+    margin: 0 -14px;              /* full-bleed, so nothing shows through beside it */
+    padding-left: 14px; padding-right: 14px;
+    box-shadow: 0 1px 0 var(--hairline);
+  }
+  .seg-stack { flex-direction: row; }
+  .seg-stack .seg-btn { flex: 1 1 0; min-width: 0; }
+  .seg-stack .seg-btn + .seg-btn { border-top: 1px solid var(--hairline); border-left: 0; }
+  .seg-stack .seg-btn span { display: none; }
+  .seg-stack .seg-btn b { font-size: 11.5px; }
+
+  /* a divider between two groups that are no longer adjacent is noise */
+  .ctl-col > .divider { display: none; }
+
+  sphere-view { height: 62vh; min-height: 300px; }
+
+  .branches { grid-template-columns: repeat(auto-fill, minmax(142px, 1fr)); }
+  .sel { grid-template-columns: 1fr; gap: var(--space-4); min-height: 0; }
+  .sel-meta { border-left: 0; padding-left: 0; border-top: 2px solid var(--divider); padding-top: 10px; }
+  .sel-text { font-size: 15px; }
+  .strip-head { flex-wrap: wrap; }
+}
+
+@media (pointer: coarse) {
+  /* fingers, not a cursor: the numbers below are minimums, not taste */
+  input[type="checkbox"] { width: 20px; height: 20px; }
+  input[type="range"] { height: 26px; }
+  .check { padding: 5px 0; gap: var(--space-3); }
+  .seg-btn { padding: 11px 10px; }
+  .seg-btn.sm { padding: 10px 10px; }
+  .btn { padding: 11px var(--space-4); }
+  .btn.sm { padding: 8px var(--space-3); }
+  .branch { padding: 9px 9px 10px; }
+  .back { padding: 4px 0; }
+  /* every control is a discrete target: no double-tap-to-zoom delay, no grey
+     flash on the tap that lands */
+  .seg-btn, .btn, .branch, .check, .back {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+  /* :hover sticks after a tap on touch — the pressed state is the real signal */
+  .seg-btn:hover { background: transparent; }
+  .seg-btn[aria-pressed="true"]:hover { background: var(--ink); }
+  .branch:hover { background: transparent; }
+  .branch[aria-pressed="true"]:hover { background: var(--accent-tint); }
+}

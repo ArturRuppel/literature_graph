@@ -101,41 +101,98 @@ class SphereView extends HTMLElement {
     this.draw();
   }
   /* ---------- interaction ---------- */
+  /* Every live pointer is tracked, not just the first: one finger orbits, two
+     pinch. A touchscreen has no wheel, so without the pinch the view is nailed
+     to its home distance on a phone — and this is a figure whose whole point is
+     flying in toward the apexes. Mouse behaviour is unchanged; a mouse simply
+     never puts a second pointer down. */
   bindEvents() {
-    let drag = null;
+    const live = new Map();
+    let drag = null, pinch = null;
+    const spread = () => {
+      const [a, b] = [...live.values()];
+      return Math.hypot(a.x - b.x, a.y - b.y) || 1;
+    };
+    const dolly = (d) => {
+      this.cam.dist = Math.max(0.35, Math.min(11, d));
+      this.emit('sv-cam', { dist: this.cam.dist });
+      this.draw();
+    };
+    const orbitFrom = (p, moved) =>
+      ({ x: p.x, y: p.y, yaw: this.cam.yaw, pitch: this.cam.pitch, moved });
+
     this.addEventListener('pointerdown', e => {
-      drag = { x: e.clientX, y: e.clientY, yaw: this.cam.yaw, pitch: this.cam.pitch, moved: 0 };
-      this.setPointerCapture(e.pointerId); this.style.cursor = 'grabbing';
+      live.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      try { this.setPointerCapture(e.pointerId); } catch (_) { }
+      if (live.size === 2) {
+        /* the second finger converts the gesture: the orbit stops where it is
+           rather than being rewound, so a pinch mid-drag does not snap back */
+        pinch = { d0: spread(), dist: this.cam.dist };
+        drag = null;
+        this.tip.style.display = 'none';
+      } else if (live.size === 1) {
+        drag = orbitFrom({ x: e.clientX, y: e.clientY }, 0);
+        this.style.cursor = 'grabbing';
+      }
     });
+
     this.addEventListener('pointermove', e => {
-      const r = this.getBoundingClientRect();
+      const prev = live.get(e.pointerId);
+      if (prev) {
+        /* path length measured from the tracked point, not e.movementX, which
+           is unreliable (often 0) for touch pointers */
+        if (drag) drag.moved += Math.abs(e.clientX - prev.x) + Math.abs(e.clientY - prev.y);
+        prev.x = e.clientX; prev.y = e.clientY;
+      }
+      if (pinch && live.size === 2) { dolly(pinch.dist * pinch.d0 / spread()); return; }
       if (drag) {
-        drag.moved += Math.abs(e.movementX) + Math.abs(e.movementY);
         this.cam.yaw = drag.yaw + (e.clientX - drag.x) * 0.006;
         this.cam.pitch = Math.max(-1.45, Math.min(1.45, drag.pitch + (e.clientY - drag.y) * 0.006));
         this.draw();
-      } else {
-        this.pick(e.clientX - r.left, e.clientY - r.top);
+        return;
       }
-    });
-    this.addEventListener('pointerup', e => {
-      const wasDrag = drag && drag.moved > 6;
-      drag = null; this.style.cursor = 'grab';
-      try { this.releasePointerCapture(e.pointerId); } catch (_) { }
-      if (!wasDrag) {
+      /* hover picking is a mouse affordance — a finger has no hover, and on
+         touch this event only ever arrives mid-gesture anyway */
+      if (e.pointerType !== 'touch') {
         const r = this.getBoundingClientRect();
         this.pick(e.clientX - r.left, e.clientY - r.top);
-        this.sel = this.hover && this.hover.n;
-        this.emit('sv-select', this.hover);
-        this.draw();
       }
     });
-    this.addEventListener('pointerleave', () => { this.hover = null; this.tip.style.display = 'none'; this.draw(); });
+
+    const end = e => {
+      const tap = drag && drag.moved <= 6 && !pinch && e.type === 'pointerup';
+      live.delete(e.pointerId);
+      try { this.releasePointerCapture(e.pointerId); } catch (_) { }
+      if (live.size < 2) pinch = null;
+      if (live.size === 1) {
+        /* one finger lifted out of a pinch — re-seat the orbit on the survivor
+           at its current position so the view does not jump, and mark it moved
+           so releasing it is not read as a tap */
+        drag = orbitFrom([...live.values()][0], 99);
+        return;
+      }
+      if (live.size) return;
+      drag = null; this.style.cursor = 'grab';
+      if (!tap) return;
+      const r = this.getBoundingClientRect();
+      this.pick(e.clientX - r.left, e.clientY - r.top);
+      this.sel = this.hover && this.hover.n;
+      this.emit('sv-select', this.hover);
+      /* a finger leaves no cursor behind, so the tip would sit on the canvas
+         until the next tap; the readout under the view has the full text */
+      if (e.pointerType === 'touch') { this.hover = null; this.tip.style.display = 'none'; }
+      this.draw();
+    };
+    this.addEventListener('pointerup', end);
+    this.addEventListener('pointercancel', end);
+
+    this.addEventListener('pointerleave', () => {
+      if (drag || pinch) return;
+      this.hover = null; this.tip.style.display = 'none'; this.draw();
+    });
     this.addEventListener('wheel', e => {
       e.preventDefault();
-      this.cam.dist = Math.max(0.35, Math.min(11, this.cam.dist * (1 + Math.sign(e.deltaY) * 0.09)));
-      this.emit('sv-cam', { dist: this.cam.dist });
-      this.draw();
+      dolly(this.cam.dist * (1 + Math.sign(e.deltaY) * 0.09));
     }, { passive: false });
   }
   emit(name, node) {

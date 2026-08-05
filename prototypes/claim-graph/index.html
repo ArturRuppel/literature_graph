@@ -1,7 +1,14 @@
+<!doctype html>
+<meta charset="utf-8">
+<!-- Without the viewport meta a phone lays this page out at 980px and scales the result down,
+     which makes the header unreadable and every tap target a third of its size. The doctype
+     matters for the same reason: quirks mode is not a place to debug an SVG's coordinates. -->
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Claim graph — support skeleton</title>
 <link rel="stylesheet" href="style.css">
 <div id="app">
   <header>
+    <a class="backlink" id="back" href="../../" hidden>← board</a>
     <h1>Claim graph</h1>
     <div class="sub">the support skeleton — 822 slices + 45 broad nodes, layered by distance-to-floor</div>
     <div id="stats">loading…</div>

@@ -358,6 +358,41 @@ and gets no `views` key, hence no dropdown whose links nothing would answer. Bec
 module constant, *a running server predates any change here* — the dropdown appears only after a
 restart, which is exactly how the first version of this went missing for two days.
 
+### 4.1 Navigation on a phone
+
+Three changes, one principle each.
+
+**A view opened in a new tab is a room with no door.** The HUD dropdown opened each view with
+`target="_blank"`, which on a mouse is right — the board keeps its scroll position and whatever
+the reader had open. On a touchscreen it is not: the back gesture is the only navigation a phone
+reliably has, and a new tab severs it. The links now drop the target under
+`(hover:none) and (pointer:coarse)`, so back returns to the board. Both halves are belt and
+braces: every view also carries a visible `← board` link, because a remembered gesture is worse
+than a door you can see. `paper-graph` and `claim-graph` had neither and now have both;
+`claim-graph` was additionally missing a doctype and a viewport meta, so a phone was laying it out
+at 980px and scaling the result down — quirks mode is not a place to debug an SVG's coordinates.
+
+**A pinch is the only zoom a phone has.** `sphere-view` listened for `wheel` and nothing else, so
+on a touchscreen the camera was nailed to its home distance — in a figure whose entire point is
+flying in toward the apexes. It now tracks every live pointer rather than the first: one finger
+orbits, two pinch. The details that matter are the seams. A second finger landing mid-drag
+converts the gesture in place instead of rewinding the orbit; lifting one finger out of a pinch
+re-seats the orbit on the survivor at *its* current position, so the view does not jump, and marks
+it moved so the release is not read as a tap; a tap on touch clears the tooltip behind it, because
+a finger leaves no cursor to move away and the readout under the figure has the full text anyway.
+Path length for the tap/drag test is measured from the tracked point, not `e.movementX`, which is
+routinely 0 for touch pointers.
+
+**The rendering switch is navigation, not adjustment.** The merged panel puts a 296px settings
+column beside the canvas, which fits no phone at any input device. Below 860px `.ctl-col` becomes
+`display:contents`, dissolving the column so its groups can be ordered individually against the
+view; the page then reads *rendering · the figure · what you selected · everything else*. The
+rendering control keeps `position:sticky; top:0` and sheds its explanatory notes to a three-across
+row. That is the one control worth pinning: the merge is only an improvement on a phone if
+switching reading costs no scroll to find it. `reset view` is pulled up beside the thing it
+resets. Layout keys off width; tap-target sizing keys off `(pointer:coarse)` separately, since a
+narrow desktop window still has a mouse and does not need 20px checkboxes.
+
 ## 5. Deliberately not decided
 
 - **Whether the two paper projections should ever be shown at once.** They are different

@@ -244,6 +244,16 @@
     font-size:12px;letter-spacing:0;text-transform:none}
   #viewsMenu a:hover{background:rgba(90,159,208,.26)}
   #viewsMenu a .vn{display:block;color:#93a4b3;font-size:10.5px;margin-top:1px}
+  @media (max-width:640px){
+    /* the HUD wraps on a phone, so the button this menu hangs off can end up anywhere
+       along it. Dropping the wrap's positioning context re-anchors the menu to #hud
+       (position:fixed) and lets it span the viewport, where it cannot fall off an edge. */
+    #viewsWrap{position:static}
+    #viewsMenu{left:8px;right:8px;min-width:0;max-height:60vh;overflow:auto}
+  }
+  @media (hover:none) and (pointer:coarse){
+    #viewsMenu a{padding:11px 12px;font-size:13px}
+  }
 
   @media (max-width:760px){
     #libFacets{flex-basis:170px}
@@ -5028,8 +5038,13 @@ window.litWalk = WALK;      // the seam gotoPaper reaches through (see its TDZ n
 
 // ── the alternative renderings ────────────────────────────────────────────────────────────────
 // A dropdown of the same graph drawn other ways (docs/2026-08-05-additive-graph-views.md). These
-// are separate pages under /views/<slug>/, not board modes, so the menu holds plain links and
-// opens each in a new tab — the board keeps its scroll position and whatever the reader had open.
+// are separate pages under /views/<slug>/, not board modes, so the menu holds plain links.
+//
+// On a mouse they open in a new tab: the board keeps its scroll position and whatever the reader
+// had open. On a touchscreen they do NOT — a phone has no tab strip worth the name, and the back
+// gesture is the only navigation the reader actually has, so a view opened in a new tab is a room
+// with no door. Same tab means back returns to the board; each view carries a "← board" link for
+// the same reason.
 // `GRAPH.views` is set only by `lit serve`; a static build has no key, so the button never shows.
 (() => {
   const wrap = document.getElementById("viewsWrap");
@@ -5038,8 +5053,9 @@ window.litWalk = WALK;      // the seam gotoPaper reaches through (see its TDZ n
   const views = Array.isArray(GRAPH.views) ? GRAPH.views : [];
   if (!wrap || !btn || !menu || !views.length) return;
   const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+  const tab = matchMedia("(hover:none) and (pointer:coarse)").matches ? "" : ` target="_blank" rel="noopener"`;
   menu.innerHTML = views.map(v =>
-    `<a href="/views/${encodeURIComponent(v.slug)}/" target="_blank" rel="noopener">` +
+    `<a href="/views/${encodeURIComponent(v.slug)}/"${tab}>` +
     `${esc(v.label)}<span class="vn">${esc(v.note || "")}</span></a>`).join("");
   wrap.hidden = false;
   const open = on => { menu.hidden = !on; btn.classList.toggle("on", on); };
