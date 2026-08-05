@@ -2,12 +2,11 @@
 """Throwaway verification script — NOT part of the shipped prototype.
 
 Independent, from-scratch numeric check of the claim-sphere data model
-against dist/graph.json, BEFORE trusting model.js's own numbers:
+against dist/graph.json, BEFORE trusting derive-model.js's own numbers:
 
   - the 16 top-level families (broad nodes with empty leads_to)
   - slices with an authored family direction: direct via `cons`, then via
-    forward propagation along the local paper `gen`/`up` ladder (RULE 1 —
-    see model.js's own comment for why this is forward-only, not undirected)
+    forward propagation along the local paper `gen`/`up` ladder
   - the one broad node with two distinct top-level ancestors
   - the unified distance-to-floor BFS (slices AND broad nodes together,
     walking up/gen/cons/ladder/cite) — reused verbatim from
@@ -15,8 +14,22 @@ against dist/graph.json, BEFORE trusting model.js's own numbers:
     graph.json's own `grounded` field
   - shell population per radius (rank) band, and broad-node count per family
 
-This is a Python re-derivation, independent of model.js, so a match between
-the two is a real cross-check and not just "the same bug twice".
+This is a Python re-derivation, independent of derive-model.js, so a match
+between the two is a real cross-check and not just "the same bug twice".
+
+ONE DELIBERATE DISAGREEMENT: family inheritance here is the FORWARD-ONLY
+walk, while derive-model.js uses the *undirected* local closure — so the two
+report different familied-slice counts (481 vs 592 on today's library) on
+purpose. The rule is underdetermined — the walk you pick moves this number
+by hundreds — and the spread is recorded in
+docs/2026-08-05-additive-graph-views.md §3.1. The halo
+conclusion survives every one of them, because the radius constraint binds
+first — which is exactly why no conclusion may rest on the choice. Every
+other number below is rule-independent and must match.
+
+The renderer's own code path is checked separately by verify_headless.mjs,
+which runs derive-model.js under Node and asserts the invariants the drawing
+depends on.
 
 Usage: python3 verify.py --graph /path/to/graph.json
 """

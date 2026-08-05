@@ -253,8 +253,41 @@ see-the-middle fix in one control.
 Quantitative readouts (meters, counts) stay in a 2D side panel — perspective and occlusion make
 distance and density unreadable in 3D, so the sphere is for structure and navigation only.
 
-Built standalone at `prototypes/claim-sphere/`, port **8003**, three.js vendored locally (no
-CDN). Flat version stays on 8002 for comparison.
+Built standalone at `prototypes/claim-sphere/`, port **8003**. Flat version stays on 8002 for
+comparison.
+
+### 3.2 Three readings, one renderer — and three.js is gone
+
+**Date:** 2026-08-05, from the design handoff. The sphere holds, and the WebGL build under it
+does not: `prototypes/claim-sphere/` is now **2D canvas** with a hand-rolled perspective
+projection and a painter's-algorithm depth sort. ~1000 nodes and ~1000 edges never needed a GPU,
+and canvas buys exact control of hairline weight, dash patterns and label placement — which is
+what makes the ink-and-red treatment legible at all. The vendored `three.module.js`,
+`OrbitControls`, `FlyControls`, `scene.js` and `model.js` are deleted; `derive-model.js` (pure,
+the five coordinate rules) and `sphere-view.js` (the renderer) replace them.
+
+**One renderer, three layouts** — `layout="sphere" | "sectors" | "shells"` over one node table,
+so the three readings cannot drift apart:
+
+- **1a · the ball and the haze** — the reading above, unchanged: radial shell-window peel,
+  per-kind edge toggles, the unplaceable claims as a red haze outside the sphere.
+- **1b · the sixteen, pulled apart** — same coordinates, each family exploded along its own axis
+  so a solid angle reads as a limb. The ranked branch list doubles as the isolate control, and it
+  stays in the **ladder's own order**, never sorted by size, so the claim/method asymmetry
+  survives the sort.
+- **1c · the stack and the slab** — radius unrolled: distance-to-floor becomes height, the ladder
+  read edge-on as stacked plates, with the rank-less claims standing beside it as a slab at no
+  height at all.
+
+1c splits on **rank alone** while 1a/1b split on **both coordinates**, so their haze counts
+differ by design; each view says which in its standfirst.
+
+**No number in the chrome is hardcoded.** Every count in a heading, standfirst, checkbox label
+or plate table is read off the derived model at load. The design bundle's own figures were three
+hours stale by the time it was implemented (911 slices → 938), which is the argument.
+
+The fly camera is gone with three.js; orbit + dolly is the whole gesture set, and flying to the
+centre is still flying to the apexes.
 
 ## 4. How they get built and looked at
 

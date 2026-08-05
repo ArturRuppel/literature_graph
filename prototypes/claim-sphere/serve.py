@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 """Standalone static server for the claim-sphere prototype.
 
-Serves this directory's static files (index.html, app.js, model.js, scene.js,
-style.css, vendor/) and proxies the graph payload at GET /graph.json from an
-externally-supplied path. --graph is required and has no default/fallback:
-the real data lives in a private repo and this one is public, so no path is
-ever committed here.
+Serves this directory's static files (index.html, app.js, sphere-view.js,
+derive-model.js, style.css) and proxies the graph payload at GET /graph.json
+from an externally-supplied path. --graph is required and has no
+default/fallback: the real data lives in a private repo and this one is
+public, so no path is ever committed here.
+
+The page derives its coordinates in the browser from that one payload, so
+there is nothing to build and nothing else to serve.
 
 Usage:
     python3 serve.py --graph /path/to/dist/graph.json [--port 8003]
