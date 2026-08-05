@@ -81,9 +81,13 @@ the rate limiter; never flood. A half-finished graph is a normal, valid state.**
   Validation fails the build on a dangling ref or a curated/stub citekey collision (SCHEMA §6).
   The viewer's HUD carries a **paper-finding search box** (title · author · journal · year · tag,
   curated + stubs) — client-side, so it works in the static artifact offline.
-  Next to the width slider it carries the **board zoom** (`− 100% +`, ctrl/⌘-wheel over the board,
-  or the bare `+` `−` `0` keys; remembered in `localStorage`). The two controls are deliberately
-  not the same thing: **width** re-lays-out a card's text, **zoom** is a *camera* — one `scale()`
+  Next to the width slider it carries the **board zoom** — its own slider, plus ctrl/⌘-wheel over
+  the board and the bare `+` `−` `0` keys; remembered in `localStorage`, and clicking the `100%`
+  readout puts it back. The track is **log-spaced over 1/3 … 3**, so 100% sits exactly mid-track
+  and half sits as far from it as double (zoom multiplies; a linear track would crush the whole
+  zoom-out half into a fifth of the bar). Same shape as the width slider because the gesture is
+  the same — you sweep until the board looks right — but they are not the same thing:
+  **width** re-lays-out a card's text, **zoom** is a *camera* — one `scale()`
   on `#stage`, so nothing re-wraps and the picture you had learned survives the move. Zoomed out
   the board stops being readable and becomes a **map** (which column fans where, whether a hoisted
   claim actually gathered anything) — the question you have on a paper with 58 cards, and one the
@@ -144,7 +148,7 @@ the rate limiter; never flood. A half-finished graph is a normal, valid state.**
     scrollbar, a live page indicator, and a pan / text-select toolbar (drag to
     pan, or select & copy the page's real text via a transparent word overlay). The location comes
     from a stored `quote_loc` (SCHEMA §6) when present, else resolved live.
-    Its **zoom is its own** — a `− 100% +` stepper in the titlebar, ⌘/ctrl-wheel over the page, or
+    Its **zoom is its own** — a slider in the titlebar, ⌘/ctrl-wheel over the page, or
     the bare `+` `−` `0` keys while the pointer is on it (in a PDF-only window they are always its,
     since there is no board there to mean instead). It shares nothing with the board's: a page at
     200% beside a board at 60% is the ordinary way to curate. Fit-width is the floor, and the zoom

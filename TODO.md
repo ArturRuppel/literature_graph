@@ -102,14 +102,19 @@ Open requests for the `lit build` viewer. Details deliberately left thin for now
 - [x] **Zoom, on the board and on the PDF — separately.** — *Two surfaces read side by side at two
   distances, so two zooms that share no control, no state and no storage key. The **board** gets a
   camera: `#stage` carries one `scale(var(--bz))`, so nothing re-wraps and zooming out turns the
-  board into a map of itself; HUD stepper (beside the width slider, which is the layout control the
+  board into a map of itself; HUD slider (beside the width slider, which is the layout control the
   camera is deliberately not), ctrl/⌘-wheel, bare `+`/`−`/`0`. A transform rather than CSS `zoom`
   because every `board.scrollLeft += <viewport delta>` in the file keeps working under it; only
   redraw() converts back (÷ BZ), and only `.snodes` — the one scroller INSIDE the stage — needed
-  the same division. The **PDF** gets `wireZoom`: the stepper both mounts were missing, the same
+  the same division. The **PDF** gets `wireZoom`: the slider both mounts were missing, the same
   keys while the pointer is on it, and — the thing that made it read as having no zoom before — a
   distance **remembered across mounts**, so re-aiming at the next quote doesn't stand you back up.
-  Fit-width stays its floor.*
+  Fit-width stays its floor.
+  Both tracks are log-spaced (`zoomSlider`) because zoom multiplies; the board's runs 1/3 … 3 so
+  100% lands dead centre. Two things the sliders turned up: zooming moves `scrollTop`, which the
+  HUD read as the reader scrolling and slid the bar away mid-drag (`hudQuiet` now marks the
+  scrolls the code performed), and the keyboard's "don't fight typing" guard was swallowing
+  `+`/`−`/`0` whenever a zoom slider had focus (range inputs are not typing).*
 
 ## Open
 
@@ -148,7 +153,7 @@ repo's *propose, don't impose* rule. Ordered high→low leverage.
   difference. No behavior change — but the viewer has no automated tests, so it needs a manual
   `lit serve` pass.
   *Half done.* The zoom half came out as **`wireZoom`** when the PDF got a real zoom control
-  (titlebar stepper, `+`/`−`/`0`, a distance remembered across mounts) — writing that twice was
+  (titlebar slider, `+`/`−`/`0`, a distance remembered across mounts) — writing that twice was
   not on. Both mounts now hand it the same `{body, sizer, stage, view}` and differ only in
   `sharpen`, and the opening scroll is shared as `showQuote` / `unionBox`. Still duplicated:
   pointer-drag pan, the `.pw-tools` toggle, highlight-rect placement, the text layer.

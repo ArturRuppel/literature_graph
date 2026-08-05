@@ -45,19 +45,18 @@
     font-size:10px;letter-spacing:1px;text-transform:uppercase;color:#a9b7c4}
   #hud .widthctl input{width:150px;accent-color:#5a9fd0;cursor:pointer}
   #hud .widthctl .val{min-width:34px;text-align:right;color:#d7e0e7;letter-spacing:0}
-  /* board zoom — the camera control, next to width, which is a LAYOUT control. Deliberately
-     adjacent and deliberately not the same shape: a slider for the thing that reflows, a
-     stepper for the thing that only moves the camera. `margin-left:auto` here (rather than on
-     .widthctl) parks the pair together at the right end of the bar. */
-  #hud .zoomctl{margin-left:auto;display:inline-flex;align-items:center;
-    border:1px solid rgba(255,255,255,.18);border-radius:999px;background:rgba(255,255,255,.08)}
-  #hud .zoomctl button{cursor:pointer;border:0;background:transparent;color:#bcd2e4;font:inherit;
-    line-height:1;padding:4px 9px;border-radius:999px}
-  #hud .zoomctl button:hover{background:rgba(255,255,255,.16);color:#fff}
-  #hud .zoomctl .zb{font-size:13px}
-  #hud .zoomctl .zval{font-size:10px;letter-spacing:.5px;min-width:44px;
-    font-variant-numeric:tabular-nums;color:#d7e0e7}
-  #hud .zoomctl button:disabled{opacity:.35;cursor:default;background:transparent}
+  /* board zoom — the camera control, beside width, which is the LAYOUT control. Same shape as
+     width on purpose: both are continuous, both want to be swept rather than counted up to, and
+     a camera especially — you find the distance you want by moving until the board looks right,
+     which is a drag, not eleven clicks. The track is LOG-spaced (see BOARD_ZOOM): zoom is
+     multiplicative, so half and double have to sit the same distance from 100%.
+     `margin-left:auto` here (rather than on .widthctl) parks the pair together at the bar's end. */
+  #hud .zoomctl{margin-left:auto;display:flex;align-items:center;gap:8px;
+    font-size:10px;letter-spacing:1px;text-transform:uppercase;color:#a9b7c4}
+  #hud .zoomctl input{width:120px;accent-color:#5a9fd0;cursor:pointer}
+  #hud .zoomctl .zval{min-width:38px;text-align:right;color:#d7e0e7;letter-spacing:0;
+    font-variant-numeric:tabular-nums;cursor:pointer}
+  #hud .zoomctl .zval:hover{color:#fff;text-decoration:underline}
 
   /* find-a-paper search box (build + serve) + its results dropdown */
   #hud #search{width:240px;font:inherit;font-size:11px;color:#eaf1f6;
@@ -598,15 +597,16 @@
   .pw-tool{cursor:pointer;border:0;background:transparent;color:var(--faint);font:inherit;
     font-size:11px;line-height:1;padding:2px 5px;border-radius:3px}
   .pw-tool:hover{color:#24313d}
-  /* the PDF's own zoom stepper, in its own titlebar — the board's lives in the HUD. Two
-     surfaces, two distances, and nothing about them shared but the shape of the control. */
-  .pw-zoom{display:flex;align-items:center;gap:1px}
+  /* the PDF's own zoom slider, in its own titlebar — the board's lives in the HUD. Two surfaces,
+     two distances; the control has the same shape because the gesture is the same (sweep to the
+     distance you want), and nothing else about them is shared. Short track: the bar is 22px of
+     chrome beside the key, the page number and four tools, and the wheel is the fine control. */
+  .pw-zoom{display:flex;align-items:center;gap:5px}
   .pw-zoom[hidden]{display:none}
-  .pw-zb{cursor:pointer;border:0;background:transparent;color:var(--faint);font:inherit;
-    font-size:11px;line-height:1;padding:2px 5px;border-radius:3px}
-  .pw-zb:hover:not(:disabled){color:#24313d;background:#dce3e9}
-  .pw-zb:disabled{opacity:.35;cursor:default}
-  .pw-zoom .pz-val{font-size:9px;min-width:32px;font-variant-numeric:tabular-nums}
+  .pw-zoom input{width:66px;height:12px;margin:0;accent-color:#6ea8d8;cursor:pointer}
+  .pw-zoom .pz-val{font-size:9px;min-width:30px;text-align:right;color:var(--faint);
+    font-variant-numeric:tabular-nums;cursor:pointer}
+  .pw-zoom .pz-val:hover{color:#24313d}
   .pw[data-tool=pan]  .pw-tool[data-t=pan],
   .pw[data-tool=text] .pw-tool[data-t=text]{background:#cfd8e0;color:#24313d}
   .pw-x{cursor:pointer;padding:0 5px;color:var(--faint);font-size:12px;line-height:1}
@@ -969,11 +969,10 @@
   <button id="pdfToggle" class="pdfbtn" hidden>📄 PDF</button>
   <button id="backBtn" class="libbtn" hidden>← graph</button>
   <button id="finishBtn" class="donebtn" hidden>✓ finish curation</button>
-  <span id="bzoom" class="zoomctl" title="board zoom — ctrl/⌘-wheel over the board, or + / − / 0">
-    <button class="zb" data-z="out" title="zoom out (−)">−</button>
-    <button class="zval" data-z="reset" title="reset to 100% (0)">100%</button>
-    <button class="zb" data-z="in" title="zoom in (+)">+</button>
-  </span>
+  <label id="bzoom" class="zoomctl" title="board zoom — drag, ctrl/⌘-wheel over the board, or + / − / 0">zoom
+    <input type="range" min="0" max="1000" step="1" value="500">
+    <span class="zval" title="back to 100% (0)">100%</span>
+  </label>
   <label class="widthctl">width
     <input id="colw" type="range" min="220" max="720" step="4" value="500">
     <span class="val"></span>
@@ -2949,6 +2948,11 @@ if (LIVE && !DRIVE) {
 // a mobile browser does with its own toolbar. It only ever moves ITSELF: the board is full-height
 // and merely pads its top by the measured bar height, so nothing reflows and the scroll never
 // jumps. The dock hangs from --hud-top, so the PDF grows into the space at the same time.
+// `hudQuiet` is how a scroll the CODE performed says so. Zooming the board keeps the point under
+// the cursor fixed, which means moving scrollTop — and the bar read that as the reader scrolling
+// down and slid away, taking the zoom slider out from under the hand still dragging it. A scroll
+// nobody asked for is not a signal about where the reader's attention is going.
+let hudQuiet = 0;                       // performance.now() before which scrolls aren't the reader's
 if (!PDFWIN) (function(){
   const hud = document.getElementById("hud");
   if (!hud) return;
@@ -2959,6 +2963,7 @@ if (!PDFWIN) (function(){
   board.addEventListener("scroll", () => {
     const y = Math.max(0, board.scrollTop), d = y - last;
     last = y;
+    if (performance.now() < hudQuiet) { run = 0; return; }   // ours, not the reader's
     if (!d) return;                     // horizontal scroll (fanning out columns) leaves it alone
     run = (d > 0) === (run > 0) ? run + d : d;   // distance travelled since the last turnaround
     if (y < 24) { run = 0; document.body.classList.remove("hud-off"); return; }   // top: always shown
@@ -3032,9 +3037,9 @@ function buildWin(key, sub, {onClose, at, onDetach} = {}){
   // which mounts non-interactively — doesn't advertise a control that does nothing there.
   win.innerHTML =
     `<div class="pw-bar"><b>${key}</b><span class="pw-sub">${sub}</span><span class="sp"></span>`
-    + `<span class="pw-zoom" hidden><button class="pw-zb" data-z="out" title="zoom out (−)">−</button>`
-    + `<button class="pw-zb pz-val" data-z="reset" title="back to fit-width (0)">100%</button>`
-    + `<button class="pw-zb" data-z="in" title="zoom in (+)">+</button></span>`
+    + `<span class="pw-zoom" hidden title="zoom this PDF — drag, ctrl/⌘-wheel, or + / − / 0">`
+    + `<input type="range" min="0" max="1000" step="1" value="0">`
+    + `<span class="pz-val" title="back to fit-width (0)">100%</span></span>`
     + `<span class="pw-tools"><button class="pw-tool" data-t="find" title="find in this PDF (ctrl/⌘-F)" hidden>🔍</button>`
     + `<button class="pw-tool" data-t="pan" title="pan (drag)">✥</button>`
     + `<button class="pw-tool" data-t="text" title="select text">I</button>${detach}</span>`
@@ -3053,14 +3058,28 @@ function buildWin(key, sub, {onClose, at, onDetach} = {}){
   if (at) { win.style.left = at.left + "px"; win.style.top = at.top + "px"; }
   dragBy(win.querySelector(".pw-bar"), (dx, dy, l, t) => { win.style.left = l + dx + "px"; win.style.top = t + dy + "px"; },
          // the guard names every control ON the titlebar: the bar is a drag handle, and dragBy
-         // eats the pointerdown, so a button left out of this list can never be clicked
-         () => [win.offsetLeft, win.offsetTop], ".pw-x,.pw-tool,.pw-zb");
+         // eats the pointerdown, so anything left out of this list can never be clicked or dragged
+         () => [win.offsetLeft, win.offsetTop], ".pw-x,.pw-tool,.pw-zoom");
   dragBy(win.querySelector(".pw-grip"), (dx, dy, w, h) => { win.style.width = Math.max(240, w + dx) + "px"; win.style.height = Math.max(160, h + dy) + "px"; },
          () => [win.offsetWidth, win.offsetHeight]);
   win.querySelector(".pw-x").addEventListener("click", onClose);
   if (onDetach) win.querySelector('.pw-tool[data-t=detach]').addEventListener("click", onDetach);
   return win;
 }
+
+// A zoom slider's track is LOG-spaced, and both zooms use this to map one. Zoom multiplies: half
+// and double are the same move in opposite directions, so they have to sit the same distance
+// either side of 100%. A linear track would crush the entire zoom-out half of the board's range
+// into a fifth of the bar and give the last stretch of zoom-in most of it — the reader would be
+// fighting the control at exactly the end they reach for when the board stops fitting.
+// 0..1000 ticks is finer than any track is wide, so the slider is continuous in practice.
+const zoomSlider = {
+  toTrack: (z, min, max) => Math.round(1000 * Math.log(z / min) / Math.log(max / min)),
+  toZoom(v, min, max){
+    const z = min * Math.pow(max / min, v / 1000);
+    return Math.abs(Math.log(z)) < 0.04 ? 1 : z;   // 100% is worth being able to land on by hand
+  },
+};
 
 // ── zoom, shared by both PDF mounts ──────────────────────────────────────────────────────
 // Both mounts lay a page out the same way — a sizer owning the scroll extent, a stage under one
@@ -3077,13 +3096,13 @@ function buildWin(key, sub, {onClose, at, onDetach} = {}){
 function wireZoom(win, view, {body, sizer, stage, sharpen, interactive = true}){
   const MIN = 1, MAX = 12, STEP = 1.35, KEY = "lit.pdf.zoom";
   const ctl = interactive ? win.querySelector(".pw-zoom") : null;
+  const slider = ctl && ctl.querySelector("input");
   const clamp = z => Math.max(MIN, Math.min(MAX, z || 1));
   const paint = () => {
     if (!ctl) return;
     ctl.hidden = false;
     ctl.querySelector(".pz-val").textContent = Math.round(view.z * 100) + "%";
-    ctl.querySelector('[data-z=out]').disabled = view.z <= MIN + 1e-6;
-    ctl.querySelector('[data-z=in]').disabled  = view.z >= MAX - 1e-6;
+    slider.value = String(zoomSlider.toTrack(view.z, MIN, MAX));
   };
   // Lay the stage out at `z` and leave the scroll alone — what a fresh mount wants, since it is
   // about to scroll to its highlight itself.
@@ -3112,10 +3131,10 @@ function wireZoom(win, view, {body, sizer, stage, sharpen, interactive = true}){
     in(){ mid(view.z * STEP); }, out(){ mid(view.z / STEP); }, reset(){ mid(1); }};
   if (!interactive) return api;
   win._zoom = api;                                 // the +/−/0 keys reach the PDF through this
-  ctl.addEventListener("click", e => {
-    const b = e.target.closest("button"); if (!b) return;
-    b.dataset.z === "in" ? api.in() : b.dataset.z === "out" ? api.out() : api.reset();
-  });
+  // Dragging the track zooms about the middle of the page you can see, which is the bit you are
+  // reading — zooming about a corner would slide the text out from under you.
+  slider.addEventListener("input", () => mid(zoomSlider.toZoom(+slider.value, MIN, MAX)));
+  ctl.querySelector(".pz-val").addEventListener("click", () => api.reset());
   body.addEventListener("wheel", e => {            // ctrl/⌘-wheel (and trackpad pinch) zooms; plain wheel scrolls
     if (!(e.ctrlKey || e.metaKey)) return;
     e.preventDefault();
@@ -3718,20 +3737,22 @@ if (PDFWIN) {
 // It is its own zoom, sharing nothing with the PDF viewer's (see wireZoom): two surfaces the
 // reader looks at side by side, each with its own distance, each remembered separately.
 const BOARD_ZOOM = (function(){
-  const MIN = 0.3, MAX = 3, STEP = 1.2, KEY = "lit.board.zoom";
+  // 1/3 … 3 rather than 0.3 … 3: a geometrically symmetric range puts 100% exactly mid-track on
+  // the log slider, so "back to normal" is a place the hand can find without reading the number.
+  const MIN = 1 / 3, MAX = 3, STEP = 1.2, KEY = "lit.board.zoom";
   const ctl = document.getElementById("bzoom");
   const val = ctl && ctl.querySelector(".zval");
+  const slider = ctl && ctl.querySelector("input");
   let z = 1;
   const clamp = v => Math.max(MIN, Math.min(MAX, v));
   const paint = () => {
     if (!ctl) return;
     val.textContent = Math.round(z * 100) + "%";
-    ctl.querySelector('[data-z=out]').disabled = z <= MIN + 1e-6;
-    ctl.querySelector('[data-z=in]').disabled  = z >= MAX - 1e-6;
+    slider.value = String(zoomSlider.toTrack(z, MIN, MAX));
   };
   // (cx,cy) is the point on the glass, relative to the board's own box, to keep fixed — the
-  // pointer for a wheel-zoom, the middle of the port for a button. Everything else follows from
-  // "the stage coordinate under that point must not move".
+  // pointer for a wheel-zoom, the middle of the port for the slider and the keys. Everything else
+  // follows from "the stage coordinate under that point must not move".
   function set(z1, cx, cy){
     z1 = clamp(z1);
     const r = board.getBoundingClientRect();
@@ -3739,6 +3760,7 @@ const BOARD_ZOOM = (function(){
     const z0 = z, ax = board.scrollLeft + cx, ay = board.scrollTop + cy;
     z = z1;
     document.documentElement.style.setProperty("--bz", String(z));
+    hudQuiet = performance.now() + 250;          // the scroll below is the zoom's, not the reader's
     board.scrollLeft = ax / z0 * z - cx;         // the browser clamps if the extent shrank
     board.scrollTop  = ay / z0 * z - cy;
     paint();
@@ -3750,10 +3772,12 @@ const BOARD_ZOOM = (function(){
   document.documentElement.style.setProperty("--bz", String(z));
   paint();
   if (z !== 1) redraw();                         // the columns were laid out before this ran
-  if (ctl) ctl.addEventListener("click", e => {
-    const b = e.target.closest("button"); if (!b) return;
-    set(b.dataset.z === "in" ? z * STEP : b.dataset.z === "out" ? z / STEP : 1);
-  });
+  // Dragging the track zooms about the middle of the port — the board you can see stays the board
+  // you can see, which is what makes sweeping for a distance work at all.
+  if (ctl) {
+    slider.addEventListener("input", () => set(zoomSlider.toZoom(+slider.value, MIN, MAX)));
+    val.addEventListener("click", () => set(1));
+  }
   // ctrl/⌘-wheel (and trackpad pinch) over the board, exactly as over a PDF page — same gesture,
   // and which one it lands on is simply which one you are pointing at.
   board.addEventListener("wheel", e => {
@@ -3772,7 +3796,10 @@ const BOARD_ZOOM = (function(){
 addEventListener("keydown", e => {
   if (e.ctrlKey || e.metaKey || e.altKey) return;
   if (!/^[+\-=_0]$/.test(e.key)) return;
-  if (/^(INPUT|TEXTAREA)$/.test(e.target.tagName || "") || e.target.isContentEditable) return;
+  // Typing beats zooming — but a range input is not typing, and after dragging a zoom slider the
+  // slider is what has focus, which was quietly eating the very keys that do the same job.
+  const el = e.target, tag = el.tagName || "";
+  if (el.isContentEditable || tag === "TEXTAREA" || (tag === "INPUT" && el.type !== "range")) return;
   const pw = document.querySelector(".pw");
   const pdf = pw && pw._zoom &&
               (document.body.classList.contains("detached") || pw.matches(":hover")) ? pw._zoom : null;

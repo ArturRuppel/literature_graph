@@ -151,8 +151,12 @@ def test_the_board_and_the_pdf_zoom_separately(srv):
     assert 'KEY = "lit.board.zoom"' in text
     # …and the PDF keeps its own, restored on every re-aim rather than reset to fit-width
     assert 'KEY = "lit.pdf.zoom"' in text
-    assert '<span class="pw-zoom" hidden>' in text      # revealed by wireZoom, per mount
+    assert '<span class="pw-zoom" hidden' in text        # revealed by wireZoom, per mount
     assert 'id="bzoom"' in text                          # the board's lives in the HUD instead
+    # both are sliders over a log-spaced track: zoom multiplies, so half and double have to sit
+    # the same distance either side of 100%
+    assert text.count('<input type="range" min="0" max="1000" step="1"') == 2
+    assert "toZoom(v, min, max)" in text
 
 
 def test_graph_json_endpoint(srv):
