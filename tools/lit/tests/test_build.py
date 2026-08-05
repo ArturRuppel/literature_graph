@@ -274,3 +274,67 @@ def test_quoting_a_sharpened_ref_makes_it_load():
         f = pathlib.Path(d) / "Ok2026Journal.yaml"
         f.write_text('claims:\n  - id: c1\n    corroborates: ["Other2026Journal:c4"]\n')
         assert load_yaml(f)["claims"][0]["corroborates"] == ["Other2026Journal:c4"]
+
+
+def test_yaml_error_names_the_offending_ref_and_line(tmp_path):
+    """The generic ruamel message ("could not find expected ':'") points at the wrong token
+    and gives no fix. When the parse failure matches this specific trap, the error should
+    name the exact ref and line instead, and spell out the fix inline."""
+    from litgraph.graph import BuildError, load_yaml
+    import pytest
+
+    bad = tmp_path / "Bi2014SoftMatter.yaml"
+    # pad with filler lines so the offending line number is unambiguous and not line 1
+    bad.write_text(
+        'title: "x"\n'
+        "type: original\n"
+        "claims:\n"
+        '  - id: c1\n'
+        '    text: "t"\n'
+        "    corroborates: [Key2026Journal:c4]\n"
+    )
+    with pytest.raises(BuildError) as e:
+        load_yaml(bad)
+    msg = str(e.value)
+    assert "Bi2014SoftMatter.yaml" in msg
+    assert "line 6" in msg
+    assert 'unquoted cross-paper ref in a flow sequence' in msg
+    assert 'write ["Key2026Journal:c4"], not [Key2026Journal:c4]' in msg
+
+
+def test_yaml_error_hint_reports_every_offending_line():
+    """More than one unquoted ref in the same broken file → every line gets named, not just
+    the first (ruamel aborts at the first syntax error, but our scan reads the whole text)."""
+    from litgraph.graph import load_yaml
+    import tempfile, pathlib, pytest
+    from litgraph.graph import BuildError
+
+    with tempfile.TemporaryDirectory() as d:
+        f = pathlib.Path(d) / "Two2020Traps.yaml"
+        f.write_text(
+            "claims:\n"
+            "  - id: c1\n"
+            "    corroborates: [Key2026Journal:c4]\n"
+            "  - id: c2\n"
+            "    contradicts: [Other2019Nat:c9]\n"
+        )
+        with pytest.raises(BuildError) as e:
+            load_yaml(f)
+        msg = str(e.value)
+        assert "line 3" in msg and "Key2026Journal:c4" in msg
+        assert "line 5" in msg and "Other2019Nat:c9" in msg
+
+
+def test_yaml_error_falls_back_to_ruamel_message_for_unrelated_syntax():
+    """A parse error that ISN'T the unquoted-sharpened-ref trap still gets a file-named
+    BuildError (the original bug this function fixed), just without the extra hint."""
+    from litgraph.graph import BuildError, load_yaml
+    import tempfile, pathlib, pytest
+
+    with tempfile.TemporaryDirectory() as d:
+        f = pathlib.Path(d) / "Malformed2020X.yaml"
+        f.write_text("title: [unclosed\n")
+        with pytest.raises(BuildError) as e:
+            load_yaml(f)
+        assert "Malformed2020X.yaml" in str(e.value)
+        assert "unquoted cross-paper ref" not in str(e.value)

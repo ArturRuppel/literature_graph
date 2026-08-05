@@ -310,3 +310,86 @@ def test_enrich_stubs_dry_run_writes_nothing(tmp_path):
     res = store.enrich_stubs(tmp_path, oa, dry_run=True)
     assert res.enriched == ["One2015BBA"]
     assert (tmp_path / "stubs.yaml").read_text() == before   # untouched
+
+
+# --- healing an unquoted sharpened ref on write (the actual outage) ------------------------
+#
+# graph.py loads with the strict `typ="safe"` parser (libyaml); this module writes with the
+# lax round-trip parser. In a flow sequence the round-trip parser accepts a plain scalar
+# carrying a `:` (a sharpened cross-paper ref, `Key2026Journal:c4`) that the safe parser
+# rejects outright — so a curator's hand edit that leaves such a ref unquoted produces a file
+# this tool can write but not read back. These tests confirm that any store.py write which
+# round-trips a curated paper's full document heals that ref in passing, not just the writer
+# that happens to be setting the field.
+
+def test_write_quote_loc_quotes_a_preexisting_unquoted_sharpened_ref(tmp_path):
+    # write_quote_loc only means to set c1's quote_loc; it round-trips the whole document, so
+    # the unquoted ref sitting right next to it must not ride along unfixed.
+    (tmp_path / "curated").mkdir(parents=True)
+    p = tmp_path / "curated" / "Chen2021Sys.yaml"
+    p.write_text(
+        "claims:\n"
+        '  - id: c1\n'
+        '    text: "t"\n'
+        '    quote: "throughput increased monotonically"\n'
+        "    corroborates: [Other2026Journal:c4]\n"
+    )
+    store.write_quote_loc(tmp_path, "Chen2021Sys", "c1", 2, [[0.1, 0.1, 0.2, 0.2]])
+    assert 'corroborates: ["Other2026Journal:c4"]' in p.read_text()
+
+    from litgraph.graph import load_yaml
+    doc = load_yaml(p)                                          # the safe loader — used to abort on this file
+    assert doc["claims"][0]["corroborates"] == ["Other2026Journal:c4"]
+
+
+def test_edit_tags_also_heals_an_unrelated_slices_unquoted_ref(tmp_path):
+    # The healing isn't special-cased to write_quote_loc — any full-document round-trip does it.
+    (tmp_path / "curated").mkdir(parents=True)
+    p = tmp_path / "curated" / "Chen2021Sys.yaml"
+    p.write_text(
+        'title: "T"\n'
+        "type: original\n"
+        "claims:\n"
+        '  - id: c1\n    text: "t"\n    contradicts: [Bad2020Journal:c9]\n'
+    )
+    store.edit_tags(tmp_path, "Chen2021Sys", ["batching"])
+    from litgraph.graph import load_yaml
+    assert load_yaml(p)["claims"][0]["contradicts"] == ["Bad2020Journal:c9"]
+
+
+def test_write_abstract_also_heals_an_unrelated_slices_unquoted_ref(tmp_path):
+    (tmp_path / "curated").mkdir(parents=True)
+    p = tmp_path / "curated" / "Chen2021Sys.yaml"
+    p.write_text(
+        'title: "T"\ntype: original\n'
+        "claims:\n"
+        '  - id: c1\n    text: "t"\n    corroborates: [Other2026Journal:c4]\n'
+    )
+    store.write_abstract(tmp_path, "Chen2021Sys", "an abstract")
+    from litgraph.graph import load_yaml
+    assert load_yaml(p)["claims"][0]["corroborates"] == ["Other2026Journal:c4"]
+
+
+def test_sharpened_ref_survives_a_store_write_and_the_safe_loader_reads_it_back(tmp_path):
+    """The property that matters end to end: anything the writer produces, the reader can
+    read. A curated file carrying sharpened refs (the only way they enter curated YAML today
+    — CuratedPaper.to_yaml has no affirmations yet, SCHEMA §4, so this is a hand-authored
+    file standing in for one), touched by a store.py writer, must come back byte-for-value
+    identical through graph.load_yaml — including a ref store.py never even looked at."""
+    (tmp_path / "curated").mkdir(parents=True)
+    p = tmp_path / "curated" / "Kumar2020Net.yaml"
+    p.write_text(
+        "claims:\n"
+        '  - id: c1\n'
+        '    text: "latency falls"\n'
+        '    quote: "median latency fell"\n'
+        "    corroborates: [Ruppel2026NatPhys:c4, Chen2021Sys:c2]\n"
+        "    leads_to: [batching-improves-throughput]\n"   # a broad slug, no colon — must stay untouched
+    )
+    store.write_quote_locs(tmp_path, "Kumar2020Net", {"c1": {"page": 1, "rects": [[0.0, 0.0, 1.0, 1.0]]}})
+
+    from litgraph.graph import load_yaml
+    c1 = load_yaml(p)["claims"][0]
+    assert c1["corroborates"] == ["Ruppel2026NatPhys:c4", "Chen2021Sys:c2"]
+    assert c1["leads_to"] == ["batching-improves-throughput"]
+    assert c1["quote_loc"]["page"] == 1
