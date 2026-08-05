@@ -1,0 +1,50 @@
+  /* ── mobile / touch: read-only friendliness ──────────────────────────────────────────────
+     Desktop is fenced off: layout keys off max-width (below ~640px two columns can't fit
+     anyway); input affordances key off (hover:none)+(pointer:coarse). The three unconditional
+     clamps below are desktop-safe (they only bite when a panel would overflow the viewport). */
+  #tip{max-width:calc(100vw - 16px)}
+  #wipPanel,#aimPanel{max-width:calc(100vw - 16px)}
+  #board{overscroll-behavior-x:contain}          /* no back/forward-swipe hijack from the h-scroll */
+  .pw-body{overscroll-behavior:contain}          /* nested page-scroll doesn't chain to the board */
+
+  @media (max-width:640px){
+    :root{--col:min(340px,86vw)}                 /* card fits with a gutter; neighbor column peeks */
+    #stage{gap:22px;padding:calc(var(--hud-h) / var(--bz) + 22px) max(12px, calc(50vw / var(--bz) - var(--col)/2)) 80px}
+    #hud{gap:8px 10px;flex-wrap:wrap}
+    #hud .widthctl{display:none}                 /* column ≈ full width — slider is moot (and ate swipes) */
+    #wipPanel,#aimPanel{left:8px;right:8px;width:auto;max-height:60vh}
+  }
+  @media (hover:none) and (pointer:coarse){
+    /* the movable/resizable quote window becomes a near-fullscreen sheet: no drag, no resize,
+       native scroll, closed by its × (drag/resize/pan are gated in JS on pointerType) */
+    .pw{position:fixed !important;inset:8px !important;width:auto !important;height:auto !important}
+    .pw-grip{display:none}
+    .pw-bar{cursor:default}
+    /* the find bar is a real form control on a touch screen: 16px is the size below which iOS
+       zooms the whole sheet on focus, and the arrows need a finger-sized target */
+    .pw-find{padding:5px 4px 5px 8px}
+    .pw-find input{font-size:16px;padding:4px 7px}
+    .pw-fb{padding:6px 9px;font-size:13px}
+    .card,.slice,.slices .sgrp,.card.stack,.pw-tool,.pw-x,#hud .wip,
+    #wipPanel .wp-row,#aimPanel .ap-row,#libFacets .tp-chip,
+    .bn{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+    .slice{padding:7px 6px}                       /* fatter tap targets */
+    .slices .sgrp{padding-top:9px;margin:9px 0 4px}
+    #wipPanel .wp-row{padding:11px 10px}
+    /* the aim rows wrap on a narrow screen: title on one line, the flag beneath it */
+    #aimPanel .ap-row{padding:12px 10px;flex-wrap:wrap;gap:2px 8px}
+    #aimPanel .ap-row .flag{margin-left:0;flex-basis:100%}
+    /* nothing on a card is tappable but the card: the strip is a label, and neither chip on a
+       claim is a control — the whole claim card is the target. */
+    .card .cprov{padding:5px 8px 6px 11px}
+    .bn .lens,.bn .bdrill{padding:4px 10px}
+    /* the nest costs width per level, and a 340px column cannot pay the desktop rate three deep:
+       halve the indent and keep the rule, which is what actually carries the depth */
+    .bnest{margin-left:5px;padding-left:5px}
+    .bfbar .bffold{padding:4px 10px}
+    .card:active{border-color:#b8c3cc}            /* tap feedback (replaces the lost :hover cue) */
+    .slice.drillable:active{background:#e9eef2}
+    .card.open .cabs{display:block}               /* abstract inline (no hover tip on touch) */
+    body{--grip:22px}                             /* a seam a finger can actually catch */
+  }
+

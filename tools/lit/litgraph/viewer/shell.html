@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#263646">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="LitGraph">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<title>LitGraph</title>
+/*@LITGRAPH_CSS@*/
+</style>
+</head>
+<body>
+<div id="hud">
+  <b>litgraph</b>
+  <input id="search" type="search" autocomplete="off" spellcheck="false"
+         placeholder="find a paper — title, author, journal, tag…">
+  <button id="libBtn" class="libbtn" hidden>library</button>
+  <button id="walkBtn" class="libbtn" hidden title="one focus, one relation, no drawn edges (w)">walk</button>
+  <button id="clearBtn" class="libbtn" hidden
+          title="release every pinned row and every shown claim — the board goes quiet (c)">clear arrows</button>
+  <span id="viewsWrap" hidden><button id="viewsBtn" class="libbtn"
+       title="alternative renderings of the same graph">show graph ▾</button><div id="viewsMenu" hidden></div></span>
+  <span id="wip" class="wip" hidden></span>
+  <span id="aims" class="wip" hidden></span>
+  <button id="pdfToggle" class="pdfbtn" hidden>📄 PDF</button>
+  <button id="backBtn" class="libbtn" hidden>← graph</button>
+  <button id="finishBtn" class="donebtn" hidden>✓ finish curation</button>
+  <label id="bzoom" class="zoomctl" title="board zoom — drag, ctrl/⌘-wheel over the board, or + / − / 0">zoom
+    <input type="range" min="0" max="1000" step="1" value="500">
+    <span class="zval" title="back to 100% (0)">100%</span>
+  </label>
+  <label class="widthctl">width
+    <input id="colw" type="range" min="220" max="720" step="4" value="500">
+    <span class="val"></span>
+  </label>
+</div>
+<div id="searchResults"></div>
+<div id="board"><div id="stage"><svg id="edges"></svg></div></div>
+<div id="dockEmpty">click a claim to jump to its quote · open a card, then 📄 PDF, for the whole paper</div>
+<div id="dockGrip"></div>
+<div id="detachPane"><div id="detachEmpty">waiting for the graph — hover a claim or open a card to load its PDF here</div></div>
+<div id="tip"></div>
+<div id="ctxmenu"></div>
+<div id="wipPanel" hidden></div>
+<div id="aimPanel" hidden></div>
+<div id="libraryPane">
+  <div id="libFacets"></div>
+  <div id="libMain">
+    <div id="libBar">
+      <input id="libFilter" type="search" autocomplete="off" spellcheck="false"
+             placeholder="filter the library — title, author, journal, tag…">
+      <span class="lb-count" id="libCount"></span>
+      <span class="lb-clear" id="libClear" hidden>clear filters</span>
+    </div>
+    <div id="libScroll"><div id="libSizer"><div id="libRows"></div></div></div>
+  </div>
+</div>
+<div id="walkPane">
+  <aside id="walkRail"></aside>
+  <main id="walkStage"></main>
+</div>
+
+<script>
+const NS="http://www.w3.org/2000/svg";
+// ── data: injected by `lit build` (replaces the mockup's hardcoded literals) ──
+const GRAPH = /*__GRAPH_JSON__*/ {"papers":{},"broad":{},"stubs":{},"order":[],"active":[]} /*__END__*/;
+/*@LITGRAPH_JS@*/
+</script>
+</body>
+</html>
