@@ -1,0 +1,94 @@
+  /* ── the local subgraph, drawn as a graph ───────────────────────────────────────────────
+     One node per slice and never more. The outline this replaces re-rendered a shared support
+     under every branch that reached it — Fuhs2022NatPhys's 26 slices drew 76 rows — and an
+     edge that skipped a generation had nowhere to be drawn at all.
+     The columns ARE the hierarchy: a slice's column is its longest chain of local support, so
+     the axis runs ground → derived, left → right, exactly as `leads-to` runs on the board. The
+     body scrolls sideways rather than squeezing the columns, because a claim you cannot read is
+     not a claim you can curate; fold the card when you want the shape instead of the text. */
+  .snodes{display:flex;align-items:flex-start;gap:26px;overflow-x:auto;padding-bottom:4px}
+  .scol{flex:0 0 auto;width:212px;display:flex;flex-direction:column;gap:4px}
+  .snodes.allfold .scol{width:106px}      /* badges only — the whole ladder lands on screen */
+  .schd{display:flex;align-items:center;gap:5px;font-size:7.5px;letter-spacing:1.4px;
+    text-transform:uppercase;color:var(--faint);padding:0 0 2px 3px;border-bottom:1px solid var(--line)}
+  .schd .sct{margin-left:auto;letter-spacing:0}
+  .snodes .slice{cursor:pointer;margin:0}
+  .snodes .slice:hover{background:#e9eef2}
+  .slices .sbar{display:flex;align-items:center;gap:6px;margin-bottom:6px;
+    font-size:8px;letter-spacing:1.2px;text-transform:uppercase;color:var(--faint)}
+  .slices .saxis{opacity:.75}
+  .slices .sfold{margin-left:auto;cursor:pointer;letter-spacing:.5px;padding:1px 6px;
+    border:1px solid var(--line);border-radius:9px;white-space:nowrap}
+  .slices .sfold:hover{color:var(--dim);border-color:#b8c3cc;background:#fff}
+  /* folded to its badge: the text goes, the node stays — collapse the card and the whole
+     topology lands in one screenful, which is when the arcs stop being decoration */
+  .slice.fold{padding:1px 5px}
+  .slice.fold .stx{display:none}
+  .slice.fold .fkd{display:inline}
+  .fkd{display:none;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+    color:var(--faint);font-size:8px;line-height:1.4}
+  /* the paper's entry rows partition into standing sections — its own novel claims &
+     questions, then the borrowed (restated) claims, then the open questions it leaves
+     unanswered (at the bottom) — each a labeled sub-container */
+  .slices .sgrp{display:flex;align-items:center;gap:4px;cursor:pointer;
+    font-size:8px;letter-spacing:1.2px;text-transform:uppercase;color:var(--faint);
+    margin:7px 0 3px;padding-top:5px;border-top:1px solid var(--line)}
+  .slices .sgrp:first-child{margin-top:0;padding-top:0;border-top:0}
+  .slices .sgrp:hover{color:var(--dim)}
+  .slices .sgrp .gcar{font-size:7px}
+  .slices .sgrp .gct{margin-left:auto;letter-spacing:0;font-weight:400;color:var(--faint)}
+  .slices .sgrpb{padding-left:6px;margin-left:2px;border-left:1px solid #e0e5e9}
+  .slice{display:flex;gap:5px;align-items:flex-start;padding:3px 5px;margin:2px 0;border-radius:5px;
+    background:#f3f6f8;font-size:9px}
+  .slice.drillable{cursor:pointer}
+  .slice.drillable:hover{background:#e9eef2}
+  .car{flex:none;width:9px;color:var(--faint);font-size:8px;margin-top:1px;text-align:center}
+  .sid{flex:none;font-size:7px;font-weight:700;padding:1px 4px;border-radius:3px;color:#fff;margin-top:1px}
+  .sid.fl{background:var(--floor)}.sid.cl{background:var(--grounded)}.sid.bo{background:var(--borrowed)}
+  .sid.q{background:var(--question)}
+  .sid.q.ans{opacity:.55}
+  /* programme slice badges: modality (pr/sp), the two feasibility kinds (te/ca), risk (ri) */
+  .sid.pr{background:var(--proposed)}.sid.sp{background:var(--plausible)}
+  .sid.te{background:var(--test)}.sid.ca{background:var(--capability)}
+  .sid.ri{background:var(--risk)}
+  /* the assumption badge — a claim carrying weight with no test under it */
+  .lb{flex:none;margin-left:5px;padding:0 4px;border-radius:6px;font-size:7px;
+      font-weight:700;color:#fff;background:var(--risk);margin-top:1px}
+  .stx{color:var(--ink);line-height:1.28}
+  /* the `discriminates` relation, shown ON the rows instead of by nesting: the test names what it
+     separates, each claim names the test aimed at it. Both sit in the same group, so drilling the
+     test to reach its rivals would render them twice — the relation is a cross-reference here. */
+  .tst{flex:none;margin-left:5px;margin-top:1px;padding:0 4px;border-radius:6px;font-size:7px;
+      font-weight:700;letter-spacing:.3px;color:var(--test);background:#eef4f8;border:1px solid #cddbe4}
+  .sep{display:block;margin-top:3px;font-size:8px;color:var(--faint)}
+  .sep b{color:var(--test);font-weight:700}
+  /* a slice whose weld is a PDF quote: its page pops on hover, pins on click (no inline text) */
+  .slice.pdf-src{cursor:pointer}
+  .slice.pdf-src .stx{border-bottom:1px dotted #b9a55f}
+  .slice.pdf-src:hover .stx{border-bottom-color:var(--borrowed)}
+  /* the generalization ladder: a row that ladders (leads_to) into the broader claim above */
+  .slice.gen{border-left:2px solid var(--broad)}
+  .gmk{flex:none;color:var(--broad);font-size:8px;margin-top:1px}
+
+  /* source stack — citation-wall collapse: a focused paper's uncurated sources fold into
+     one "▸ N sources" card; only an explicit click unfolds it */
+  .card.stack{cursor:pointer}
+  .stack .ckey{color:var(--dim);font-weight:600}
+  .srcs{display:none;border-top:1px solid var(--line);padding:5px 9px 8px;background:#f9fbfc}
+  .card.stack.open .srcs{display:block}
+  /* wrap, so the bib record an expanded row reveals gets a line of its own rather than
+     squeezing the citekey — the row is a flex line first and a record second */
+  .src{display:flex;flex-wrap:wrap;gap:6px;align-items:baseline;padding:2px 5px;margin:1px 0;
+    border-radius:4px;background:#f3f6f8;font-size:9px;cursor:pointer}
+  .src:hover{background:#e9eef2}
+  .src .skey{font-weight:700}
+  .src .sy{margin-left:auto;color:var(--faint);font-size:8px}
+  /* the same expansion as a stub CARD, in the one place most stubs actually stand: the wall.
+     Keyed off the same stubOpen set, so one uncited paper reads the same everywhere it appears. */
+  .sdet{display:none;flex-basis:100%;padding:2px 0 3px;line-height:1.35}
+  .src.open{background:#e9eef2}
+  .src.open .sdet{display:block}
+  .sdet .st{color:var(--dim)}
+  .sdet .sa{color:var(--faint);padding-top:2px}
+  .sdet .sj{color:var(--faint);font-style:italic;padding-top:2px}
+

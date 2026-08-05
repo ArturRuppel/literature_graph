@@ -7,7 +7,7 @@ import json
 import shutil
 from pathlib import Path
 
-from litgraph.graph import Aim, Graph, Paper, Slice, classify_ref
+from litgraph.graph import Aim, BuildError, Graph, Paper, Slice, classify_ref
 from litgraph.topics import keyword_closure, papers_in
 from litgraph.topics import roots as topic_roots
 
@@ -203,11 +203,42 @@ def to_json_dict(g: Graph, active: "tuple[str, ...]" = (), cockpit: "dict | None
     return out
 
 
-_TEMPLATE = Path(__file__).parent / "viewer" / "template.html"
+_VIEWER = Path(__file__).parent / "viewer"
+_SHELL = _VIEWER / "shell.html"
 _PWA_ASSETS = ("manifest.webmanifest", "icon-192.png", "icon-512.png",
                "apple-touch-icon.png")
 _TOKEN_START = "/*__GRAPH_JSON__*/"
 _TOKEN_END = "/*__END__*/"
+_CSS_MARK = "/*@LITGRAPH_CSS@*/"
+_JS_MARK = "/*@LITGRAPH_JS@*/"
+
+
+def _concat(subdir: str) -> str:
+    """The viewer's `subdir` modules, in filename order, as one blob.
+
+    The numeric filename prefixes ARE the load order — the viewer is one script
+    in one scope (no imports, no bundler), so a module that reads another's const
+    at parse time must come after it. Renaming a file renumbers its position.
+    Each file stores its slice plus one trailing newline; dropping that newline
+    and rejoining with "\\n" is exactly the inverse of the split."""
+    files = sorted((_VIEWER / subdir).glob(f"*.{subdir}"))
+    if not files:
+        raise BuildError(f"viewer/{subdir}/ has no modules — the install is incomplete")
+    return "\n".join(f.read_text(encoding="utf-8")[:-1] for f in files)
+
+
+def template_html() -> str:
+    """The viewer page with its modules inlined and the graph slot still empty.
+
+    The shipped artifact is one self-contained file with no external requests
+    (it has to open from file:// and from a phone with no network), so the split
+    into viewer/css/ + viewer/js/ is a *source* split that this reassembles."""
+    shell = _SHELL.read_text(encoding="utf-8")
+    for mark, sub in ((_CSS_MARK, "css"), (_JS_MARK, "js")):
+        if mark not in shell:
+            raise BuildError(f"viewer/shell.html has lost its {mark} marker")
+        shell = shell.replace(mark, _concat(sub))
+    return shell
 
 
 def render_html(payload: str) -> str:
@@ -215,7 +246,7 @@ def render_html(payload: str) -> str:
     Escapes "<" so a "</script>" inside any paper's text can't close the tag;
     \\u003c is a valid JS string escape that parses back to "<"."""
     inline = payload.replace("<", "\\u003c")
-    template = _TEMPLATE.read_text(encoding="utf-8")
+    template = template_html()
     start = template.index(_TOKEN_START)
     end = template.index(_TOKEN_END) + len(_TOKEN_END)
     return template[:start] + inline + template[end:]
@@ -229,4 +260,4 @@ def emit(g: Graph, out: Path) -> None:
     (out / "graph.json").write_text(payload, encoding="utf-8")
     (out / "index.html").write_text(render_html(payload), encoding="utf-8")
     for name in _PWA_ASSETS:
-        shutil.copy2(_TEMPLATE.parent / name, out / name)
+        shutil.copy2(_VIEWER / name, out / name)

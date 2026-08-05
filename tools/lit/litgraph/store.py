@@ -51,15 +51,6 @@ def load_taken(root: Path) -> dict[str, str | None]:
     return taken
 
 
-@dataclass
-class WriteResult:
-    curated_path: Path
-    pdf_renamed_to: Path | None
-    fulltext_path: Path | None
-    stubs_added: list[str]
-    stubs_deduped: list[str]
-
-
 def write_curated(root: Path, paper: CuratedPaper, force: bool, dry_run: bool) -> Path:
     """Write curated/<citekey>.yaml; never overwrite a curated file unless `force`."""
     path = curated_dir(root) / f"{paper.citekey}.yaml"
