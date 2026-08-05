@@ -22,13 +22,13 @@ exactly, so a static `lit build` artifact and any cached older viewer keep worki
 from __future__ import annotations
 
 import gzip
+import hashlib
 import json
 import os
 import re
 import shlex
 import shutil
 import subprocess
-import unicodedata
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -52,6 +52,7 @@ _SLICE_ID = re.compile(r"^[cqm]\d+$")
 _PAGE_REQ = re.compile(r"^/page/([A-Za-z0-9]+)/(\d+)\.(png|jpg)$")
 _WORDS_REQ = re.compile(r"^/words/([A-Za-z0-9]+)/(\d+)\.json$")
 _PAGES_REQ = re.compile(r"^/pages/([A-Za-z0-9]+)\.json$")
+_SEARCH_REQ = re.compile(r"^/search/([A-Za-z0-9]+)\.json$")
 
 # Page rasters, word geometry and the size manifest are all pure functions of the PDF's bytes, so
 # they're cacheable for a good long while — a day, then one cheap ETag revalidation that comes
@@ -96,56 +97,20 @@ def _needles(anchor: str) -> list[str]:
     return out
 
 
-def _norm_search(s: str) -> str:
-    """Fold text for the resolver's page prefilter: NFKD (splits ligatures), lowercase, then
-    keep only alphanumerics — dropping whitespace, hyphens and punctuation. Deliberately
-    *looser* than `search_for` (which ignores case and line breaks), so a page this prunes can
-    never be one `search_for` would have matched. A false keep just costs one extra search."""
-    s = unicodedata.normalize("NFKD", s).lower()
-    return re.sub(r"[^0-9a-z]+", "", s)
-
-
-def _match_words(page: "fitz.Page", anchor: str) -> list[list[float]]:
-    """Locate the *whole* anchor on a page via word geometry and return one rect per line it
-    spans (page-point coords). Builds a folded character stream from the page's words (each
-    char tagged with its source word), finds the folded anchor as a contiguous substring, then
-    unions the bboxes of the covered words per layout line. Folding drops case/space/hyphens/
-    punctuation, so a line-wrapped or hyphenated sentence still matches in full — unlike
-    `search_for`, which often only matches a leading fragment. Empty if the anchor isn't found
-    as one run (e.g. an embedded citation marker splits it)."""
-    words = page.get_text("words")  # (x0, y0, x1, y1, text, block, line, word_no)
-    if not words:
-        return []
-    stream, char_word = [], []
-    for wi, w in enumerate(words):
-        folded = _norm_search(w[4])
-        stream.append(folded)
-        char_word.extend([wi] * len(folded))
-    qn = _norm_search(anchor)
-    if not qn:
-        return []
-    i = "".join(stream).find(qn)
-    if i < 0:
-        return []
-    lines: dict = {}
-    for wi in sorted(set(char_word[i:i + len(qn)])):
-        x0, y0, x1, y1, _txt, block, line, _wn = words[wi]
-        lines.setdefault((block, line), []).append((x0, y0, x1, y1))
-    return [[min(b[0] for b in bs), min(b[1] for b in bs),
-             max(b[2] for b in bs), max(b[3] for b in bs)] for bs in lines.values()]
-
-
 def locate_quote(pdf: "Path | str", anchor: str) -> dict | None:
     """Best PDF location of `anchor` as {page, rects} with rects page fractions (0..1). Prefers
-    the full-coverage word-geometry match; only if that fails on every page does it fall back to
-    the `search_for` needle backoff (which may cover just a leading fragment)."""
+    the full-coverage word-geometry match (`pdfview.word_hits`: a folded character stream over the
+    page's words, so a line-wrapped or hyphenated sentence still matches in *full* — unlike
+    `search_for`, which often only matches a leading fragment); only if that fails on every page
+    does it fall back to the `search_for` needle backoff, which may cover just that fragment. The
+    matcher is shared with the viewer's find bar so a quote can't land where a search sees
+    nothing, and it reads through pdfview's mtime-keyed word cache."""
+    for n in range(len(pdfview.page_sizes(pdf))):
+        hits = pdfview.word_hits(pdfview.page_words(pdf, n), anchor, limit=1)
+        if hits:
+            return {"page": n, "rects": hits[0]}
     with fitz.open(pdf) as doc:
         pages = list(doc)
-        for n, page in enumerate(pages):
-            rects = _match_words(page, anchor)
-            if rects:
-                w, h = page.rect.width, page.rect.height
-                return {"page": n, "rects": [[r[0] / w, r[1] / h, r[2] / w, r[3] / h] for r in rects]}
         for needle in _needles(anchor):            # fragment fallback — rare, better than nothing
             for n, page in enumerate(pages):
                 hits = page.search_for(needle)
@@ -420,6 +385,25 @@ class _Handler(BaseHTTPRequestHandler):
                 except Exception:
                     return self._send(HTTPStatus.INTERNAL_SERVER_ERROR, "text/plain; charset=utf-8",
                                       f"page manifest failed: {m.group(1)}\n".encode())
+            m = _SEARCH_REQ.match(path)
+            if m:
+                # the viewer's find bar: every occurrence of `?q=` in the whole document, as page
+                # + highlight rects. Derived from the PDF's bytes and the query alone, so it caches
+                # exactly like a page render — retyping a query costs one 304.
+                pdf = self.server.pdf_dir / (m.group(1) + ".pdf")
+                if not pdf.is_file():
+                    return self._send(HTTPStatus.NOT_FOUND, "text/plain; charset=utf-8",
+                                      f"no PDF: {m.group(1)}\n".encode())
+                q = parse_qs(urlparse(self.path).query).get("q", [""])[0]
+                digest = hashlib.sha1(pdfview.fold(q).encode()).hexdigest()[:12]
+                try:
+                    return self._send_cached(
+                        "application/json; charset=utf-8",
+                        lambda: json.dumps(pdfview.search(pdf, q)).encode(),
+                        _etag(pdf, "search", digest))
+                except Exception:
+                    return self._send(HTTPStatus.INTERNAL_SERVER_ERROR, "text/plain; charset=utf-8",
+                                      f"search failed: {m.group(1)}\n".encode())
             m = _WORDS_REQ.match(path)
             if m:
                 pdf = self.server.pdf_dir / (m.group(1) + ".pdf")

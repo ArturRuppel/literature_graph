@@ -9,6 +9,7 @@ HTTP. The HTTP layers own only validation, routing, and caching headers.
 
 from __future__ import annotations
 
+import re
 import unicodedata
 from pathlib import Path
 
@@ -139,3 +140,74 @@ def page_words(pdf: Path, n: int) -> list[dict]:
 def preview(pdf: Path) -> bytes:
     """First page of ``pdf`` as a PNG for the tooltip thumbnail."""
     return render_page(pdf, 0, PREVIEW_WIDTH)
+
+
+# ── text matching ────────────────────────────────────────────────────────────────────────────
+# One folded-stream matcher serves both readers of this module: the quote resolver placing a
+# weld's highlight (`serve.locate_quote`) and the viewer's find bar (:func:`search`). They ask
+# different questions of it — "where is this one sentence" vs "where is every occurrence of
+# this" — but must agree on what *counts* as a match, or a quote would land where a search says
+# there is nothing.
+
+# A search that scanned the whole of a long PDF for a two-letter query would return thousands of
+# boxes nobody will walk. Cap it, and say so, rather than pretending the list is complete.
+SEARCH_LIMIT = 300
+
+
+def fold(s: str) -> str:
+    """Fold text for matching: NFKD (splits ligatures), lowercase, then keep only alphanumerics —
+    dropping whitespace, hyphens and punctuation. That is what lets a match survive a line break,
+    a hyphenation seam or an ``ﬁ`` ligature, none of which the reader can see in the text. It also
+    makes matching substring-wise (``cell`` is inside ``excellent``) and drops non-Latin script
+    entirely, so a query of only Greek folds to nothing."""
+    return re.sub(r"[^0-9a-z]+", "", unicodedata.normalize("NFKD", s).lower())
+
+
+def word_hits(words: list[dict], query: str, limit: int | None = None) -> list[list[list[float]]]:
+    """Every occurrence of ``query`` in one page's :func:`page_words` output, in reading order,
+    each as the list of rects covering it — one per layout line, so a hit that wraps or breaks
+    across a column comes back boxed in both places. Coordinates are page fractions, inherited
+    from ``page_words``. Occurrences don't overlap: the scan resumes past the hit it just found."""
+    q = fold(query)
+    if not q or not words:
+        return []
+    stream, owner = [], []          # owner[i] = which word contributed folded character i
+    for i, w in enumerate(words):
+        folded = fold(w["t"])
+        stream.append(folded)
+        owner.extend([i] * len(folded))
+    hay = "".join(stream)
+    out: list[list[list[float]]] = []
+    at = 0
+    while limit is None or len(out) < limit:
+        at = hay.find(q, at)
+        if at < 0:
+            break
+        lines: dict = {}
+        for wi in sorted(set(owner[at:at + len(q)])):
+            lines.setdefault(words[wi]["ln"], []).append(words[wi])
+        out.append([[min(w["x0"] for w in ws), min(w["y0"] for w in ws),
+                     max(w["x1"] for w in ws), max(w["y1"] for w in ws)] for ws in lines.values()])
+        at += len(q)
+    return out
+
+
+def search(pdf: Path, query: str, limit: int = SEARCH_LIMIT) -> dict:
+    """Find ``query`` across a whole PDF: ``{"hits": [{"page", "rects"}, ...], "truncated": bool}``
+    in document order, rects page fractions. Backs the viewer's find bar — the page is a raster, so
+    the browser's own find-in-page can only see the lazily-built text overlay and would report a
+    fraction of the document as all of it. Fed by the mtime-keyed ``page_words`` cache, so the
+    second search of a paper pays for no text extraction at all. A query folding to fewer than two
+    characters finds nothing (one letter matches half the paper; punctuation alone matches
+    nothing)."""
+    q = fold(query)
+    if len(q) < 2:
+        return {"hits": [], "truncated": False}
+    hits: list[dict] = []
+    for n in range(len(page_sizes(pdf))):
+        # ask for one past the cap, so "exactly `limit` hits" isn't reported as "and more"
+        for rects in word_hits(page_words(pdf, n), q, limit=limit + 1 - len(hits)):
+            hits.append({"page": n, "rects": rects})
+        if len(hits) > limit:
+            return {"hits": hits[:limit], "truncated": True}
+    return {"hits": hits, "truncated": False}

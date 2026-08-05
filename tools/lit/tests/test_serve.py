@@ -129,15 +129,30 @@ def test_the_pdf_split_follows_the_window_shape_in_every_mode(srv):
 
 
 def test_the_hud_slides_away_on_scroll_without_moving_the_board(srv):
-    """The bar is a transform, not a layout change: #board is full-height and pads its own top by
-    the measured bar height, so hiding the bar can't reflow the graph or jump the scroll."""
+    """The bar is a transform, not a layout change: the board is full-height and the stage pads its
+    own top by the measured bar height, so hiding the bar can't reflow the graph or jump the
+    scroll. The clearance divides by the board zoom: it is a distance on the glass, not on the
+    stage, so it must stay the bar's height however far back the camera stands."""
     text = get(srv, "/")[2].decode()
     assert "body.hud-off #hud{transform:translateY(-100%)}" in text
-    assert "#board{position:absolute;inset:0;" in text
-    assert "padding:calc(var(--hud-h) + 34px)" in text
+    assert "#board{position:absolute;inset:0;overflow:auto}" in text
+    assert "padding:calc(var(--hud-h) / var(--bz) + 34px)" in text
     assert "body{--hud-h:46px;--hud-top:var(--hud-h)}" in text
     assert "body.hud-off{--hud-top:0px}" in text          # the dock grows into the space too
     assert "top:var(--hud-top)" in text
+
+
+def test_the_board_and_the_pdf_zoom_separately(srv):
+    """Two surfaces read side by side at two distances — a page at 200% beside a board at 60% is
+    the ordinary way to curate — so they share no control and no stored state."""
+    text = get(srv, "/")[2].decode()
+    # the board is a camera: one transform over a stage, so zooming re-wraps nothing
+    assert "#stage{position:absolute;top:0;left:0;transform:scale(var(--bz));" in text
+    assert 'KEY = "lit.board.zoom"' in text
+    # …and the PDF keeps its own, restored on every re-aim rather than reset to fit-width
+    assert 'KEY = "lit.pdf.zoom"' in text
+    assert '<span class="pw-zoom" hidden>' in text      # revealed by wireZoom, per mount
+    assert 'id="bzoom"' in text                          # the board's lives in the HUD instead
 
 
 def test_graph_json_endpoint(srv):
@@ -268,6 +283,75 @@ def test_locate_quote_covers_a_hyphenated_line_break(tmp_path):
     assert loc and loc["page"] == 0
     assert len(loc["rects"]) == 2                    # both lines boxed, head + tail
     assert fitz.open(p)[0].search_for("mechanostructural coupling") == []  # search_for alone can't
+
+
+def test_search_finds_every_occurrence_including_across_a_line_break(tmp_path):
+    # the find bar's matcher IS the quote resolver's, so a hyphenation seam and a line break are
+    # invisible to it — and unlike the resolver it must return every occurrence, in document order
+    p = tmp_path / "many.pdf"
+    with fitz.open() as doc:
+        pg = doc.new_page()
+        pg.insert_text((72, 100), "traction force here")
+        pg.insert_text((72, 140), "and traction-")           # … split across the line break
+        pg.insert_text((72, 160), "force again")
+        doc.new_page().insert_text((72, 100), "traction force on page two")
+        doc.save(str(p))
+    res = pdfview.search(p, "Traction Force")                # case folds away too
+    assert res["truncated"] is False
+    assert [h["page"] for h in res["hits"]] == [0, 0, 1]     # document order
+    assert len(res["hits"][1]["rects"]) == 2                 # the split hit is boxed on both lines
+    for h in res["hits"]:
+        assert all(len(r) == 4 and all(0 <= v <= 1 for v in r) for r in h["rects"])
+    assert res["hits"][0]["rects"] != res["hits"][1]["rects"]
+
+
+def test_search_truncates_rather_than_overstating(tmp_path):
+    # a two-letter query over a real paper matches thousands of times; the cap is honest about it
+    p = tmp_path / "rep.pdf"
+    with fitz.open() as doc:
+        doc.new_page().insert_text((72, 100), "cell cell cell cell cell")
+        doc.save(str(p))
+    capped = pdfview.search(p, "cell", limit=3)
+    assert capped["truncated"] is True and len(capped["hits"]) == 3
+    full = pdfview.search(p, "cell", limit=10)
+    assert full["truncated"] is False and len(full["hits"]) == 5   # exactly 5 is not "5 and more"
+    assert pdfview.search(p, "cell", limit=5)["truncated"] is False
+    # too short to be worth thousands of boxes; punctuation alone folds to nothing at all
+    assert pdfview.search(p, "c") == {"hits": [], "truncated": False}
+    assert pdfview.search(p, "— ") == {"hits": [], "truncated": False}
+
+
+def test_search_endpoint_serves_hits_and_revalidates_per_query(srv):
+    status, headers, body = get(srv, "/search/Chen2021Sys.json?q=fixture")
+    assert status == 200 and headers["Content-Type"].startswith("application/json")
+    assert "max-age" in headers["Cache-Control"]             # a function of the PDF and the query
+    res = json.loads(body)
+    assert res["truncated"] is False and len(res["hits"]) == 1
+    assert res["hits"][0]["page"] == 0 and res["hits"][0]["rects"]
+    # the ETag keys on the query: retyping one costs a 304, a different one can't collide with it
+    tag = headers["ETag"]
+    assert get(srv, "/search/Chen2021Sys.json?q=fixture",
+               headers={"If-None-Match": tag})[0] == 304
+    assert get(srv, "/search/Chen2021Sys.json?q=paper")[1]["ETag"] != tag
+    assert json.loads(get(srv, "/search/Chen2021Sys.json?q=absent")[2])["hits"] == []
+    assert get(srv, "/search/Nope2020Xyz.json?q=x")[0] == 404
+
+
+def test_the_find_bar_searches_the_whole_document_not_the_lazy_text_overlay(srv):
+    """The browser's own Ctrl+F can only see the transparent word overlay, and that is built
+    lazily for pages already visited in text mode — it would search a fraction of the paper and
+    report it as all of it. The find bar asks the server for the whole document instead."""
+    text = get(srv, "/")[2].decode()
+    assert "search/${key}.json?q=${encodeURIComponent(q)}" in text
+    assert "attachFind(win, key, {body, pages, view});" in text
+    # the chrome is built with every window but only the whole-document mount unhides it, so the
+    # single-page fallback can't offer a search over one page of twenty
+    assert 'data-t="find"' in text and "hidden>🔍" in text
+    assert "btn.hidden = false;" in text
+    # ctrl/⌘-F is taken only while a PDF is actually on screen — otherwise the browser keeps it
+    assert 'const w = document.querySelector(".pw");' in text
+    # a search hit never wears the authored quote's yellow: its own blue, orange for the current
+    assert ".pw-fh{" in text and ".pw-fh.on{" in text and ".pw-hl{" in text
 
 
 def test_page_render_any_page_and_out_of_range(srv):

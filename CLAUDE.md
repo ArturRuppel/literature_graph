@@ -81,6 +81,15 @@ the rate limiter; never flood. A half-finished graph is a normal, valid state.**
   Validation fails the build on a dangling ref or a curated/stub citekey collision (SCHEMA §6).
   The viewer's HUD carries a **paper-finding search box** (title · author · journal · year · tag,
   curated + stubs) — client-side, so it works in the static artifact offline.
+  Next to the width slider it carries the **board zoom** (`− 100% +`, ctrl/⌘-wheel over the board,
+  or the bare `+` `−` `0` keys; remembered in `localStorage`). The two controls are deliberately
+  not the same thing: **width** re-lays-out a card's text, **zoom** is a *camera* — one `scale()`
+  on `#stage`, so nothing re-wraps and the picture you had learned survives the move. Zoomed out
+  the board stops being readable and becomes a **map** (which column fans where, whether a hoisted
+  claim actually gathered anything) — the question you have on a paper with 58 cards, and one the
+  500px column could never answer. The edge overlay lives on the same stage, so redraw() is the one
+  place that converts glass pixels back into stage pixels (÷ BZ); every scroll-anchoring site is
+  untouched, which is why this is a transform and not CSS `zoom`.
   **The board hides nothing pending a click.** The landing column lists **every curated paper** in
   `ORDER`'s pass ranking (plus a tail of cards for the uncurated papers a lateral / `answers` edge
   points at, so those arrows have an anchor), and the **synthesis band** gives every broad claim /
@@ -132,9 +141,17 @@ the rate limiter; never flood. A half-finished graph is a normal, valid state.**
     📄 lands on that claim's highlight; with nothing aimed yet the pill opens the focused paper at
     page 1. Open, hovering a quote-slice aims it at that claim's citation — the
     **whole PDF** as a lazily-rendered scroll of pages, opened on the highlight, with a real
-    scrollbar, ⌘/ctrl-wheel zoom, a live page indicator, and a pan / text-select toolbar (drag to
+    scrollbar, a live page indicator, and a pan / text-select toolbar (drag to
     pan, or select & copy the page's real text via a transparent word overlay). The location comes
-    from a stored `quote_loc` (SCHEMA §6) when present, else resolved live. The dock's titlebar
+    from a stored `quote_loc` (SCHEMA §6) when present, else resolved live.
+    Its **zoom is its own** — a `− 100% +` stepper in the titlebar, ⌘/ctrl-wheel over the page, or
+    the bare `+` `−` `0` keys while the pointer is on it (in a PDF-only window they are always its,
+    since there is no board there to mean instead). It shares nothing with the board's: a page at
+    200% beside a board at 60% is the ordinary way to curate. Fit-width is the floor, and the zoom
+    is **remembered across mounts** — aiming at the next quote is not a request to stand back up,
+    and the new page opens on its highlight at the distance you were already reading from
+    (`showQuote` centres the whole highlight, clamped to keep the quote's *opening line* in frame
+    once the zoom makes it wider than the pane). The dock's titlebar
     carries a **⧉ detach** button that pops the PDF into its **own OS window** (`index.html?detached=1`,
     for a second monitor); the same hover keeps aiming it via a `lit-pdf` BroadcastChannel, and the
     **📄 PDF** pill re-docks it. Detaching reclaims the graph's full width.

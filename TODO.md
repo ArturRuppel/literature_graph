@@ -99,6 +99,18 @@ Open requests for the `lit build` viewer. Details deliberately left thin for now
   a slice row (limited to focused papers, since a paper's outgoing edges exist only once
   it's focused).*
 
+- [x] **Zoom, on the board and on the PDF — separately.** — *Two surfaces read side by side at two
+  distances, so two zooms that share no control, no state and no storage key. The **board** gets a
+  camera: `#stage` carries one `scale(var(--bz))`, so nothing re-wraps and zooming out turns the
+  board into a map of itself; HUD stepper (beside the width slider, which is the layout control the
+  camera is deliberately not), ctrl/⌘-wheel, bare `+`/`−`/`0`. A transform rather than CSS `zoom`
+  because every `board.scrollLeft += <viewport delta>` in the file keeps working under it; only
+  redraw() converts back (÷ BZ), and only `.snodes` — the one scroller INSIDE the stage — needed
+  the same division. The **PDF** gets `wireZoom`: the stepper both mounts were missing, the same
+  keys while the pointer is on it, and — the thing that made it read as having no zoom before — a
+  distance **remembered across mounts**, so re-aiming at the next quote doesn't stand you back up.
+  Fit-width stays its floor.*
+
 ## Open
 
 - [ ] **Entry-row rule check after real use.** Entry rows = top-level claims + questions.
@@ -135,6 +147,11 @@ repo's *propose, don't impose* rule. Ordered high→low leverage.
   `wirePanZoom` / `addHighlights` / `buildTextLayer`; both mounts shrink to their layout
   difference. No behavior change — but the viewer has no automated tests, so it needs a manual
   `lit serve` pass.
+  *Half done.* The zoom half came out as **`wireZoom`** when the PDF got a real zoom control
+  (titlebar stepper, `+`/`−`/`0`, a distance remembered across mounts) — writing that twice was
+  not on. Both mounts now hand it the same `{body, sizer, stage, view}` and differ only in
+  `sharpen`, and the opening scroll is shared as `showQuote` / `unionBox`. Still duplicated:
+  pointer-drag pan, the `.pw-tools` toggle, highlight-rect placement, the text layer.
 
 - [ ] **One polite HTTP-JSON client for OpenAlex + Crossref.** `sources/openalex.py` and
   `sources/crossref.py` carry byte-identical `__init__` / `_http_get_json` (mailto append,

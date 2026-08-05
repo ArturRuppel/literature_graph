@@ -37,7 +37,7 @@ from litgraph import store
 from litgraph.build import render_html, to_json_dict
 from litgraph.config import load_config
 from litgraph.graph import BuildError, build_graph
-from litgraph.pdfview import PAGE_WIDTH, page_sizes, page_words, preview, render_page
+from litgraph.pdfview import PAGE_WIDTH, page_sizes, page_words, preview, render_page, search
 from litgraph.preview import isolate
 from litgraph.quotes import polish_graph
 from litgraph.serve import _CITEKEY, _PDF_NAME, _PNG_NAME, _SLICE_ID, _valid_rects, locate_quote
@@ -189,6 +189,18 @@ def register_litgraph_routes(app, root) -> None:
         except Exception:  # noqa: BLE001
             return _err("no such page", status=404)
         return Response(json.dumps(words), mimetype="application/json; charset=utf-8")
+
+    @app.route("/litgraph/search/<key>.json")
+    def litgraph_search(key):  # noqa: ANN202
+        """The viewer's find bar: every occurrence of `?q=` in the whole document."""
+        pdf = _pdf_for(key)
+        if not _CITEKEY.match(key) or not pdf.is_file():
+            return _err(f"no PDF: {key}", status=404)
+        try:
+            hits = search(pdf, request.args.get("q", ""))
+        except Exception:  # noqa: BLE001
+            return _err(f"search failed: {key}")
+        return Response(json.dumps(hits), mimetype="application/json; charset=utf-8")
 
     # ── quote location: resolve live, persist an anchor back to the YAML ─────────────────────
     @app.route("/litgraph/resolve", methods=["POST"])

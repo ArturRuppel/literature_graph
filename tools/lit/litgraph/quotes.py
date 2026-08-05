@@ -201,7 +201,7 @@ _LIGATURES = {"ﬁ": "fi", "ﬂ": "fl", "ﬀ": "ff", "ﬃ": "ffi", "ﬄ": "ffl"}
 def _fold(text: str) -> str:
     """Fold text for tolerant `quote_loc` comparison: casefold, expand ligatures, drop every
     hyphen and run of whitespace. This is deliberately the same kind of aggressive fold as the
-    PDF word-geometry matcher uses to *place* a quote_loc in the first place (serve._norm_search)
+    PDF word-geometry matcher uses to *place* a quote_loc in the first place (pdfview.fold)
     — the two should agree on what "the same text" means. NFKD alone already expands the named
     ligatures (they carry a compatibility decomposition), the explicit table is just insurance for
     any that a given Unicode version doesn't decompose that way."""
