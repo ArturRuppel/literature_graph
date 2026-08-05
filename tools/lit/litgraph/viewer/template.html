@@ -988,6 +988,8 @@
          placeholder="find a paper — title, author, journal, tag…">
   <button id="libBtn" class="libbtn" hidden>library</button>
   <button id="walkBtn" class="libbtn" hidden title="one focus, one relation, no drawn edges (w)">walk</button>
+  <button id="clearBtn" class="libbtn" hidden
+          title="release every pinned row and every shown claim — the board goes quiet (c)">clear arrows</button>
   <span id="viewsWrap" hidden><button id="viewsBtn" class="libbtn"
        title="alternative renderings of the same graph">show graph ▾</button><div id="viewsMenu" hidden></div></span>
   <span id="wip" class="wip" hidden></span>
@@ -1093,8 +1095,10 @@ const stacks=new Set();  // source-stack ids the human explicitly unfolded (pers
 let hover=null;          // {cardId,sid} — hovered slice row/broad node: redraw isolates its
                          // edges (bright) and highlights the counterpart papers, transiently
 let pin=[];              // [{cardId,sid}] — clicked isolations that persist after the pointer
-                         // leaves and ACCUMULATE: each click hardens another target. Bright set
-                         // = every pinned target ∪ the current hover; everything else stays dim.
+                         // leaves and ACCUMULATE: each click hardens another target. Lit set
+                         // = every pinned target ∪ the current hover; see edgeVis for the rest.
+                         // A pin names a ROW, and is dropped the moment that row leaves the board
+                         // (pinLive) — state with no mark on screen is state you cannot release.
 const SYNTH=1e6;         // synthesis band: the one column every broad node lives in
                          // (papers occupy small levels; builds-on growth stays left of it)
 // A broad node's OWN leads_to (SCHEMA §4) can ladder it into a broader broad node, and the band is
@@ -1342,9 +1346,11 @@ const cardIdLevel=cardId=>+cardId.slice(5,cardId.indexOf(":"));
 // card is tapped — which is exactly the "second click does nothing" it was reported as. The
 // suppression lifts the moment the hover genuinely moves somewhere else.
 let unpinned=null;
-// Hover-isolate: hovering a slice row (or a broad synthesis node) keeps only the edges
-// incident on it — every other arrow disappears — and each counterpart card lights up
-// (.hl), so the paper an edge touches is visible even while its slice is still folded.
+// Hover-isolate: hovering a slice row (or a broad synthesis node) LIGHTS the edges incident on
+// it — the rest of the board drops to scaffolding or goes out entirely, per edgeVis — and each
+// counterpart card lights up (.hl), so the paper an edge touches is visible even while its slice
+// is still folded. (It does not make every other arrow disappear; that comment was two rewrites
+// stale. Nothing here decides visibility — edgeVis is the only place that does.)
 function setHover(h){
   if (samePin(h, unpinned)) return;                 // still on the target we just released
   unpinned = null;
@@ -2310,12 +2316,119 @@ function broadIsoSlug(iso){
   const id=el.dataset.id||"";
   return id.slice(id.indexOf(":")+1)||null;
 }
-// Does this endpoint sit on a broad node? Read off the card id (`card-<level>:<key>`) rather
-// than the DOM — the synthesis band owns every level at/after SYNTH, and this is asked once per
-// edge inside redraw's read phase, where a lookup would be a lookup too many.
-function isBroadEnd(end){
+// ── the four states, decided in ONE place ──────────────────────────────────────────────
+// Every edge is in exactly one of:
+//
+//   E_OFF       not drawn at all
+//   E_GHOST     a whisper (0.07) — a relation that exists, between things you have not opened
+//   E_SCAFFOLD  faint (0.2) — structure you did not ask about, between two nodes you can see
+//   E_LIT       bright (0.85 / 0.95) — incident on a pin or the hover
+//
+// Nothing here reads a gesture. Every input is CURRENT STATE — what is open, what is pinned, where
+// the anchors are — so the same board always draws the same arrows however you arrived at it, and
+// an expand or a collapse moves the edge layer because it moved the state, not because a handler
+// remembered to say so. (Verified: `fold to graph`, the band's `show statements` and a per-slice
+// fold each leave a path set byte-identical to a full rebuild.)
+//
+// This used to be decided in five places: three `continue`s in the read loop, a special case for
+// any edge touching the synthesis band, and an opacity ternary at the far end of the write loop.
+// They were written at different times and never reconciled, so the board's answer to "why is
+// that arrow there, and why is that one not" depended on which of the five relations you were
+// looking at — a `cons` edge vanished at rest while an equally long `answers` edge stayed dim,
+// for no reason a reader could recover. Two questions now, asked in order:
+//
+//   1. Is there an honest place to draw it? — geometry, never policy. An endpoint naming a slice
+//      with no row on screen falls back to its card; when BOTH ends do that, the edge collapses
+//      onto the container→container line it shares with every sibling — a stack of identical
+//      arrows at the card border that no isolation can ever thin. Nothing left to say: off. An
+//      intra-card rung with either node scrolled out of the card would be drawn straight across
+//      the card's neighbours: off.
+//   2. Lit? If not, is it scaffolding at all? — TWO clauses, for two genuinely different reasons,
+//      both named here rather than one of them being left implicit:
+//
+//      a. ILLEGIBLE. An arrow whose two ends do not fit on the glass at once is not faint
+//         structure, it is a line leaving the screen. Measured with four papers open, 155 of the
+//         187 cross-card scaffolding arcs ran further than a screen vertically and the worst ran
+//         17,500 px — a `corr` from an open card to a landing card a hundred cards below it,
+//         drawn as a near-vertical stroke down the whole board whose other end you can never see.
+//         That is the "it gets really messy" half of the report, and NOTHING in the old code
+//         addressed it: the rule was written in terms of what an edge CONNECTS (broad or not),
+//         while the thing that makes an edge unreadable is how far it REACHES.
+//      b. UNINFORMATIVE EN MASSE. Every paper that reaches a broad claim throws an arrow at the
+//         synthesis band, and the band collects all of them — a permanent fan that says only
+//         "many things generalize", which you knew. Legible or not, it is noise until you ask.
+//
+//      They are different arguments — one about distance, one about density — and neither
+//      subsumes the other, so neither is dressed up as the other. (a) is measured on the glass, so
+//      it is zoom-aware for free: zoom out until both ends fit and the edge comes back as
+//      scaffolding, which is the board-becomes-a-map reading working as intended. It is a test on
+//      the DISTANCE between the anchors, never on where they sit, so scrolling changes nothing and
+//      no arrow flickers under a scroll.
+//   3. Are both its ends OPEN? — an arrow between two slice rows you can see says which claim rests
+//      on which. An arrow that dies on the closed border of a card says only "something in here" —
+//      it cannot name its own endpoint, because you have not opened the thing it lands on. Those
+//      are not the same statement and they should not be the same ink: the second is a GHOST, a
+//      whisper that there is a relation here if you open it. Measured with three papers open, 43 of
+//      the 193 resting arrows are of that second kind, every one of them running into a shut card.
+//      Open that card and the edge sharpens to scaffolding, and then to a lit fan if you pin it —
+//      one continuum, driven by how much of the graph you have opened up rather than by what you
+//      last clicked.
+const E_OFF=0, E_GHOST=1, E_SCAFFOLD=2, E_LIT=3;
+const OP_GHOST="0.07", OP_SCAFFOLD="0.2";   // the two resting weights; lit is set at the path
+// Is the thing at this end of the arrow OPENED UP? A card the reader has opened renders its slice
+// rows, so the arrow can land on a node and name what it means. A broad node needs no opening — it
+// IS a node, one card one claim — and a stack card carries `.open` when it is unfolded, so the same
+// class answers for all three. Pure state, one class check: deliberately NOT "did rowRect resolve",
+// which also goes null for a row merely scrolled sideways inside an open card, and would make the
+// edge layer shimmer under a scroll. (On the resting board the two agree exactly — 150 node+node /
+// 43 card+node either way — but only one of them stays still while you scroll.)
+function endOpen(end){
+  const el=document.getElementById(end.cardId);
+  return !!el&&(el.classList.contains("open")||el.classList.contains("bn"));
+}
+// Does this endpoint sit on a broad node? Read off the card id (`card-<level>:<key>`) rather than
+// the DOM — the synthesis band owns every level at/after SYNTH, and this is asked once per edge
+// inside redraw's read phase, where a lookup would be a lookup too many.
+function isBandEnd(end){
   const i=end.cardId.indexOf(":");
   return i>0&&+end.cardId.slice(5,i)>=SYNTH;
+}
+// `fa` / `fb` are the endpoints' row rects (null = fell back to the card) and `ra` / `rb` the
+// resolved anchors, passed in rather than re-measured: this runs inside redraw's read phase, where
+// a second lookup is a lookup too many. Rects are GLASS pixels and so are clientWidth/Height, which
+// is the whole point — the question is literally "would both ends be on screen at once".
+function edgeVis(e,lit,fa,fb,ra,rb){
+  if(e.intra) { if(!(fa&&fb)) return E_OFF; }
+  else if(e.from.sid&&e.to.sid&&!fa&&!fb) return E_OFF;                     // 1
+  if(lit) return E_LIT;
+  if(isBandEnd(e.from)||isBandEnd(e.to)) return E_OFF;                      // 2b
+  const dx=Math.abs((ra.left+ra.right)-(rb.left+rb.right))/2;
+  const dy=Math.abs((ra.top+ra.bottom)-(rb.top+rb.bottom))/2;
+  if(dx>board.clientWidth||dy>board.clientHeight) return E_OFF;             // 2a
+  return (endOpen(e.from)&&endOpen(e.to))?E_SCAFFOLD:E_GHOST;               // 3
+}
+// A pin names a row, and it is live only while that row is on the board. The test used to be
+// `document.getElementById(cardId)` — the CARD — so a pin outlived the card being collapsed, its
+// entry group being folded away, or a rebuild that no longer renders that row. What was left was
+// state with no mark on screen: arrows lit from an endpoint you cannot see, and no second click
+// available to release them, because the row you would click on is gone. That is the "expand a
+// few claims, collapse them, and the arrows stay" report, and it is why the escape hatches below
+// exist as well as this.
+// Laid out, not merely present, and not rowRect either — the two near-misses are both real:
+//   * DOM presence alone is too weak. `.slices` is `display:none` until the card is `.open`, so a
+//     collapsed card still ANSWERS a `[data-sid]` query with every row it ever rendered, and the
+//     pin survived exactly the gesture that was supposed to release it.
+//   * rowRect is too strong. It clips to the card's sideways scroller and returns null for a row
+//     that is merely scrolled out of view — losing your pins to a scroll would be a worse bug
+//     than the one this fixes.
+// `offsetParent === null` is the line between them: null under `display:none` (collapsed card,
+// folded group), non-null for a row that is on the board but off to one side.
+function pinLive(p){
+  const card=document.getElementById(p.cardId);
+  if(!card) return false;
+  if(!p.sid) return true;                              // a broad node pins its whole card
+  const row=card.querySelector(`[data-sid="${CSS.escape(p.sid)}"]`);
+  return !!row&&row.offsetParent!==null;
 }
 // Isolated broad node: synthesize an edge to every linked paper NOT already wired to this node
 // by a real (expanded-paper) edge, anchored on its card wherever it sits — so collapsed
@@ -2348,7 +2461,7 @@ function redraw(){
   // Isolation: the bright set is every pinned target (persisted, accumulating) ∪ the current
   // hover (transient). An edge incident on any target is drawn bright and its counterpart card
   // gets .hl; every other edge stays dim — faint scaffolding rather than a bright tangle.
-  pin=pin.filter(p=>document.getElementById(p.cardId));       // drop pins whose card is gone
+  pin=pin.filter(pinLive);                                    // drop pins whose row has left the board
   // deduped: the pointer usually rests on the target it just pinned, and a target counted twice
   // made broadExtraEdges synthesize its arrows twice — identical paths stacked on each other
   const all=hover?[...pin,hover]:pin;
@@ -2391,33 +2504,15 @@ function redraw(){
                broad:cssv('--broad')};
   const plan=[];
   for(const e of work){
-    const on=inc(e);
-    // The synthesis band is the one place where dim scaffolding stops being scaffolding. Every
-    // paper that reaches a broad claim throws an arrow clear across the board, and the band
-    // collects all of them — a permanent fan over every column that said only "many things
-    // generalize", which you knew. So an edge touching a broad node is drawn ONLY while that node
-    // (or the slice at the other end) is isolated: hover or click it and its fan appears alone,
-    // which is the question you actually had. Broad-to-broad rungs go with them — same rule, one
-    // rule, and the band's own ladder is one click away.
-    if(!on&&(isBroadEnd(e.from)||isBroadEnd(e.to))) continue;
     // `rowRect` is the row's rect CLIPPED to the boxes that actually clip it, and null once
     // nothing is left — so an endpoint scrolled out of the card's sideways-scrolling slice graph
     // falls back to its card here rather than anchoring where only the layout can see it.
     const fa=rowRect(e.from), fb=rowRect(e.to);
     const ra=fa||cardRect(e.from), rb=fb||cardRect(e.to);
-    if(!ra||!rb) continue;                          // no visible endpoint yet
-    // Both ends name a specific slice but neither is on screen (e.g. a source→method grounding
-    // while the sources stack is collapsed and methods aren't entry rows): the edge has no row
-    // to land on, so both ends fall back to their card and it collapses onto the identical
-    // container→container line — piling up with its siblings into one opaque, never-dimming
-    // arrow at the card border. Skip it until a drill reveals a row for it to sharpen onto.
-    if(e.from.sid && e.to.sid && !fa && !fb) continue;
-    // A card's own columns scroll sideways inside it, and this SVG spans the whole board with
-    // no per-card clip — so an arc to a node scrolled out of its card would be drawn straight
-    // across the card's neighbours. An intra-card rung is only meaningful while BOTH its nodes
-    // are on screen; the moment one scrolls out there is nothing honest left to draw.
-    if(e.intra&&!(fa&&fb)) continue;
-    plan.push({e,ra,rb,on});
+    if(!ra||!rb) continue;                          // no visible endpoint yet — nothing to anchor on
+    const vis=edgeVis(e,inc(e),fa,fb,ra,rb);        // the ONE decision; see there for the rule
+    if(vis===E_OFF) continue;
+    plan.push({e,ra,rb,vis,on:vis===E_LIT});        // `on` is "lit", used by the .hl pass below
   }
 
   // ── phase 2: write ─────────────────────────────────────────────────────────────────────
@@ -2446,7 +2541,7 @@ function redraw(){
     if(!lit.has(el.id)) el.classList.remove("hl"); else lit.delete(el.id);
   for(const id of lit){ const oc=document.getElementById(id); if(oc) oc.classList.add("hl"); }
 
-  for(const {e,ra,rb,on} of plan){
+  for(const {e,ra,rb,on,vis} of plan){
     const ya=Y((ra.top+ra.bottom)/2);
     const yb=Y((rb.top+rb.bottom)/2);
     const contra=e.kind==="contra"||e.kind==="contradict";
@@ -2484,7 +2579,11 @@ function redraw(){
     path.setAttribute("stroke-width","1.6");
     if(lat) path.setAttribute("stroke-dasharray","5 4");
     else if(ans) path.setAttribute("stroke-dasharray","2 3");   // dotted: answers ≠ support
-    path.setAttribute("opacity",on?(lat||ans?"0.85":"0.95"):"0.2");    // incident bright; dim floor lifted for the light canvas
+    // The state was decided in edgeVis; this only paints it. The 0.2 is lifted from a true hairline
+    // because the canvas is light, and the ghost sits well under it — present if you look for it,
+    // never something the eye has to step over on the way to what you opened.
+    path.setAttribute("opacity",on?(lat||ans?"0.85":"0.95")
+                                  :(vis===E_GHOST?OP_GHOST:OP_SCAFFOLD));
     if(ans) path.setAttribute("marker-end","url(#arq)");
     else if(gen) path.setAttribute("marker-end","url(#arg)");
     else if(!lat) path.setAttribute("marker-end","url(#ar)");
@@ -2492,7 +2591,8 @@ function redraw(){
     frag.appendChild(path);
   }
   svg.appendChild(frag);                            // one insertion, not one per edge
-}
+  syncClearBtn();      // every state change ends here, so this is the one place the way out
+}                      // can be sure it knows whether there is anything to clear
 function cssv(n){return getComputedStyle(document.documentElement).getPropertyValue(n).trim();}
 // The VISIBLE slab of an endpoint's row: its rect ∩ every box that clips it. A row's layout rect
 // is not where the eye sees it — a card hides its own overflow (`.card{overflow:hidden}`) and the
@@ -3592,14 +3692,60 @@ const broadLabel=slug=>{
   const b=BROAD[slug]||{}, s=b.title||b.text||slug;
   return s.length>36?s.slice(0,35)+"…":s;
 };
+// ── the way out ──────────────────────────────────────────────────────────────────────────
+// TWO DOORS, nested, sharing one implementation so they cannot disagree:
+//
+//   clear arrows (HUD, `c`)      every pinned row + every shown claim + the hover. The edge layer
+//                                goes quiet and the board stands still — nothing closes, nothing
+//                                re-sorts, no card moves.
+//   clear (landing column head)  the above, plus the stubs you summoned by name. A summoned stub
+//                                is a search result, not an arrow, which is the whole difference.
+//
+// The HUD door is new, and it is the fix for the report that opening and collapsing a run of
+// claims leaves the board full of arrows with no way back. Before it, releasing depended on
+// finding the thing you had pinned: click the same row again (impossible once its card is
+// collapsed — and see pinLive for the stale-pin half of that bug), or click empty board space
+// (there is none once four columns have fanned out, and it thawed row pins only, never a shown
+// claim), or scroll to the top of the landing column for a `clear` that did the exact opposite —
+// claims but not rows. Three partial exits, none reachable from the mess they made.
+//
+// It is deliberately NOT bound to Escape: Escape already closes the library, the walk, the views
+// menu and the search box, and a fifth listener that fires unconditionally would clear the board
+// behind whichever pane you were actually dismissing.
+function releaseArrows(){
+  if(!pin.length&&!shownBroad.size) return false;
+  pin=[]; hover=null; unpinned=null; shownBroad.clear();
+  return true;                                 // rebuild re-derives the claim pins from shownBroad
+}
+function clearArrows(){ if(releaseArrows()) rebuild(); }
 // `clear` no longer empties the column — a flat list has nothing to empty. It RELEASES: every shown
 // claim put away, its arrows dark, every stub summoned by name dismissed. Claim pins go with it,
 // because rebuild derives them from shownBroad — one state, one clear. It deliberately leaves the
 // ORDER the hoists built: releasing a claim is not a reason to re-sort the column under the reader.
 function clearLanding(){
-  landedStuck.clear(); shownBroad.clear();
+  releaseArrows(); landedStuck.clear();
   rebuild();
 }
+// The button reports HOW MUCH is being held, because "clear arrows" on a board with one pinned row
+// and on a board with eleven is the same words and very different news. Written only when the
+// count changes: redraw() calls this, and redraw() runs on every scroll event.
+const clearBtn=document.getElementById("clearBtn");
+let clearHeld=-1;
+function syncClearBtn(){
+  if(!clearBtn) return;
+  const n=pin.length+shownBroad.size;
+  if(n===clearHeld) return;
+  clearHeld=n;
+  clearBtn.hidden=!n;
+  clearBtn.textContent=`clear arrows · ${n}`;
+}
+if(clearBtn) clearBtn.addEventListener("click",()=>clearArrows());
+addEventListener("keydown",e=>{
+  if(e.key!=="c"||e.metaKey||e.ctrlKey||e.altKey) return;
+  if(/^(INPUT|TEXTAREA)$/.test(e.target.tagName||"")||e.target.isContentEditable) return;
+  if(document.body.classList.contains("library")||document.body.classList.contains("walk")) return;
+  clearArrows();
+});
 // ── showing a claim: ONE gesture ─────────────────────────────────────────────────────────
 // This used to be three. A ◂ chip landed the claim's papers in the column; a ▸ chip walked one rung
 // down the ladder; a click on the card pinned its edges bright and hoisted the block. They read as
@@ -4281,6 +4427,9 @@ if(!DRIVE && !PDFWIN && !MOBILE_CURATE) (function(){
 })();
 
 board.addEventListener("scroll",redraw);
+// The overlay is sized from the port (redraw's W/H floor) and edgeVis's legibility clause is
+// measured against it, so a resized window leaves both stale until something else redraws.
+addEventListener("resize",redraw);
 addEventListener("resize",redraw);
 
 // ── the in-progress worklist: launch a paper's windows (serve only) ──────────────────────────
@@ -4444,7 +4593,10 @@ if (LIVE && !DRIVE && !PDFWIN && !MOBILE_CURATE) (function(){
 // Click empty board space to thaw the SLICE-ROW pins. Claim pins are deliberately not thawed here:
 // they are not really pins, they are the "this claim is shown" state (showBroad), and dropping the
 // brightness while its papers stayed in the column would put back exactly the half-state the merge
-// removed. A claim goes away by clicking it again, or with `clear` in the papers-column header.
+// removed. A claim goes away by clicking it again, with `clear arrows` in the HUD (or `c`), or with
+// `clear` in the papers-column header. This gesture SURVIVES those two doors rather than being
+// replaced by them — it costs no travel and it is the quick one — but it is no longer the only way
+// back, which it had no business being: on a fanned-out board there is no empty space left to click.
 board.addEventListener("click",e=>{
   // .bfam counts as "not empty space": the box's own padding and its nest gutter are part of a
   // family, and thawing the board because the click landed on 7px of container chrome would be

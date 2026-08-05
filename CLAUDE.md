@@ -105,6 +105,40 @@ the rate limiter; never flood. A half-finished graph is a normal, valid state.**
   500px column could never answer. The edge overlay lives on the same stage, so redraw() is the one
   place that converts glass pixels back into stage pixels (÷ BZ); every scroll-anchoring site is
   untouched, which is why this is a transform and not CSS `zoom`.
+  **An edge is in one of four states, decided in one place** (`edgeVis`): *lit* (incident on a pin or
+  the hover), *scaffolding* (faint, 0.2), a *ghost* (0.07), or *not drawn*. It used to be decided in five
+  places written at different times, so the board's answer to "why is that arrow there and that one not"
+  depended on which relation you were looking at. **Nothing in it reads a gesture** — every input is
+  current state (what is open, what is pinned, where the anchors are), so the same board draws the same
+  arrows however you got there, and an expand or a collapse moves the edge layer because it moved the
+  state. (`fold to graph`, the band's `show statements`, a per-slice fold and showing a claim each leave
+  a path set byte-identical to a full `rebuild()`.) Three questions: **is there an honest place to draw it**
+  (geometry — both ends fell back to their cards, or an intra-card rung has a node scrolled out: off),
+  and if it isn't lit, **is it scaffolding at all**. The second has *two* clauses, kept apart because
+  they are different arguments and neither subsumes the other: an edge whose ends **don't fit on the
+  glass at once** is a line leaving the screen, not faint structure (with four papers open, 155 of the
+  187 cross-card arcs ran further than a screen and the worst ran 17,500 px — that clause was simply
+  missing, and it is most of the mess); and an edge touching the **synthesis band** stays dark until you
+  ask, because every paper throws one and the fan only ever said "many things generalize". Legibility is
+  measured on the glass, so it is zoom-aware for free — zoom out until both ends fit and the edge comes
+  back — and it tests the *distance* between anchors, never their position, so no arrow flickers under a
+  scroll. Third, **are both ends open?** An arrow between two slice rows you can see says which claim
+  rests on which; an arrow dying on the closed border of a card says only "something in here", because
+  you have not opened the thing it lands on. Not the same statement, so not the same ink — the second is
+  a **ghost**. With three papers open that is 43 of the 193 resting arrows, every one running into a shut
+  card; open it and those edges sharpen to scaffolding, close it and they fade back, exactly. "Open" is a
+  class check (`endOpen`) and not "did the row rect resolve" — the latter also goes null for a row merely
+  scrolled sideways, which would make the whole layer shimmer under a scroll.
+  **There is a way out, and it is visible.** A pin names a *row*, and is dropped the moment that row
+  leaves the board (`pinLive`): a pin used to outlive the card being collapsed, leaving arrows lit from
+  an endpoint you couldn't see and no row left to click to release them — expand a run of claims,
+  collapse them, and the arrows stayed. The HUD's **`clear arrows · N`** (or bare **`c`**) releases every
+  pinned row and every shown claim at once; it carries the count, and it is absent when there is nothing
+  held. The landing column's **`clear`** is the same release plus the stubs you summoned by name — a
+  summoned stub is a search result, not an arrow — and both go through one function so they cannot
+  disagree. Clicking empty board space still thaws row pins; it is the quick one, no longer the only one.
+  Deliberately **not** on `Escape`, which already dismisses the library, the walk, the views menu and
+  the search box.
   **The board hides nothing pending a click.** The landing column lists **every curated paper** in
   `ORDER`'s pass ranking (plus a tail of cards for the uncurated papers a lateral / `answers` edge
   points at, so those arrows have an anchor), and the **synthesis band** gives every broad claim /
