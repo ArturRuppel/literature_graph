@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ruamel.yaml import YAML
+from ruamel.yaml.error import YAMLError
 
 _yaml = YAML(typ="safe")
 
@@ -38,7 +39,12 @@ def load_topics(root) -> dict[str, Topic]:
     optional, exactly as the programme tree is."""
     topics: dict[str, Topic] = {}
     for f in sorted((Path(root) / "topics").glob("*.yaml")):
-        raw = _yaml.load(f.read_text()) or {}
+        # Name the file: ruamel is handed text, so its own errors say only
+        # `in "<unicode string>", line N` — see graph.load_yaml for the same guard.
+        try:
+            raw = _yaml.load(f.read_text()) or {}
+        except YAMLError as e:
+            raise TopicError(f"{f}: {e}") from e
         topics[f.stem] = Topic(
             slug=f.stem,
             title=raw.get("title", ""),

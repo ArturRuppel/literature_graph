@@ -8,10 +8,30 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from ruamel.yaml import YAML
+from ruamel.yaml.error import YAMLError
 
 from .topics import Topic, load_topics, validate_topics
 
 _yaml = YAML(typ="safe")
+
+
+def load_yaml(path: Path) -> dict:
+    """Parse one YAML file, or fail with a BuildError that says *which* file.
+
+    ruamel reports the location as `in "<unicode string>", line N` because it is handed
+    text, not a path — so a single malformed character anywhere in the repo used to abort
+    the whole build with a line number and no filename, which is a bad afternoon.
+
+    Worth knowing about the parser this uses: `typ="safe"` is libyaml, and it is stricter
+    than the round-trip parser `store.py` writes with. In particular a sharpened cross-paper
+    ref inside a flow sequence — `corroborates: [Key2026Journal:c4]` — round-trips fine but
+    is rejected here, because in flow context a plain scalar may not carry a `:`. Quote it
+    (`["Key2026Journal:c4"]`) and both agree. The mismatch is why this message matters."""
+    try:
+        return _yaml.load(path.read_text()) or {}
+    except YAMLError as e:
+        raise BuildError(f"{path}: {e}") from e
+
 
 _LOCAL = re.compile(r"^[cqmtk]\d+$")    # c claim · q question · m method · t test · k capability
 _CITEKEY = re.compile(r"^[A-Z][A-Za-z]*\d{4}[A-Za-z]")  # <Family><Year><Venue>; no $ — venue varies in length
@@ -177,11 +197,11 @@ def load_repo(root: Path) -> tuple[dict[str, Paper], dict[str, BroadNode]]:
     papers: dict[str, Paper] = {}
 
     for f in sorted((root / "curated").glob("*.yaml")):
-        papers[f.stem] = paper_from_raw(f.stem, _yaml.load(f.read_text()) or {})
+        papers[f.stem] = paper_from_raw(f.stem, load_yaml(f))
 
     stubs_path = root / "stubs.yaml"
     if stubs_path.exists():
-        for citekey, raw in (_yaml.load(stubs_path.read_text()) or {}).items():
+        for citekey, raw in load_yaml(stubs_path).items():
             raw = raw or {}
             if citekey in papers:
                 raise BuildError(f"{citekey} is both curated and a stub (SCHEMA §6.3)")
@@ -199,7 +219,7 @@ def load_repo(root: Path) -> tuple[dict[str, Paper], dict[str, BroadNode]]:
     for group, kind in (("claims", "broad claim"), ("questions", "broad question"),
                         ("methods", "broad method")):
         for f in sorted((root / group).glob("*.yaml")):
-            raw = _yaml.load(f.read_text()) or {}
+            raw = load_yaml(f)
             broad[f.stem] = BroadNode(slug=f.stem, kind=kind, text=raw.get("text", ""),
                                       title=raw.get("title", ""),
                                       leads_to=list(raw.get("leads_to", []) or []))
@@ -226,7 +246,7 @@ def load_programme(root: Path) -> dict[str, Aim]:
     root = Path(root)
     aims: dict[str, Aim] = {}
     for f in sorted((root / "programme" / "aims").glob("*.yaml")):
-        aim = aim_from_raw(f.stem, _yaml.load(f.read_text()) or {})
+        aim = aim_from_raw(f.stem, load_yaml(f))
         aims[aim.slug] = aim
     return aims
 

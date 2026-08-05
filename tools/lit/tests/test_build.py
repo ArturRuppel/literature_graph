@@ -246,3 +246,31 @@ def test_stub_payload_carries_authors_and_journal():
     s = d["stubs"]["Schwarz2015BBA"]
     assert s["journal"] == "Biochim. Biophys. Acta"
     assert s["authors"] == [["Ulrich S. Schwarz", "", False], ["Jérôme R. D. Soiné", "", False]]
+
+
+def test_yaml_error_names_the_file(tmp_path):
+    """A malformed YAML anywhere in the repo must say WHICH file.
+
+    ruamel is handed text, not a path, so its own message is `in "<unicode string>",
+    line N` — a line number with no filename, across a repo of a hundred files."""
+    from litgraph.graph import BuildError, load_yaml
+    import pytest
+
+    bad = tmp_path / "Broken2026Journal.yaml"
+    # a sharpened cross-paper ref left unquoted in a flow sequence: the round-trip parser
+    # store.py writes with accepts this, the safe parser the graph loads with does not
+    bad.write_text('title: x\nclaims:\n  - id: c1\n    corroborates: [Other2026Journal:c4]\n')
+    with pytest.raises(BuildError) as e:
+        load_yaml(bad)
+    assert "Broken2026Journal.yaml" in str(e.value)
+
+
+def test_quoting_a_sharpened_ref_makes_it_load():
+    """…and the fix the message implies actually works."""
+    from litgraph.graph import load_yaml
+    import tempfile, pathlib
+
+    with tempfile.TemporaryDirectory() as d:
+        f = pathlib.Path(d) / "Ok2026Journal.yaml"
+        f.write_text('claims:\n  - id: c1\n    corroborates: ["Other2026Journal:c4"]\n')
+        assert load_yaml(f)["claims"][0]["corroborates"] == ["Other2026Journal:c4"]
