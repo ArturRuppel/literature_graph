@@ -105,7 +105,7 @@ The generator resolves every ref into an edge and **fails the build on a danglin
 | `doi` / `url` / `pdf` | – | str | `pdf` defaults to `<citekey>.pdf` under the config PDF dir |
 | `authors` | ✔ | list | each `{name, position?, corresponding?}`; list order = byline. `position` ∈ `first \| middle \| last` (default `middle`) — an authorship **tier**, so multiple `first`s = co-first. `corresponding: true` is **independent** (any number) |
 | `note` | – | str | free-text curator orientation (e.g. the experimental setup); not a graph element |
-| `abstract` | – | str | verbatim abstract, written by `lit ingest` (OpenAlex/Crossref); shown in the viewer tooltip; not a graph element |
+| `abstract` | – | str | verbatim abstract, written by `lit ingest` (OpenAlex/Crossref, else read out of the paper's own full text — most Springer Nature / Elsevier papers have no abstract in the open metadata at all); shown in the viewer tooltip; not a graph element. `lit abstracts` backfills it for papers ingested before that fallback existed |
 | `tags` | – | list[str] | free-form curator labels — a **container filter axis** for organizing and finding papers, the same category as `type` (a cheap filter, no evidential weight; CONCEPT §6). Carries **no** evidential weight and **nothing in the graph derives it**; it never feeds grounding/strength/any emergent property, and lives **only on the container, never on a slice**. Authored by hand or via `lit tag`; searched by the viewer. **Curated-only** (a stub has none). Not a graph element |
 | `claims` / `questions` / `methods` | – | list | the paper's slices (below) — absent/empty is valid (partial curation is normal) |
 

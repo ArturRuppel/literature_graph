@@ -337,6 +337,32 @@ def edit_tags(root: Path, citekey: str, tags: list[str], remove: bool = False) -
     return result
 
 
+def write_abstract(root: Path, citekey: str, abstract: str, dry_run: bool = False) -> bool:
+    """Set `abstract` on curated/<citekey>.yaml, round-tripped so the curator's comments and
+    formatting survive. Inserted before `tags`/`authors` to match the on-disk field order
+    (SCHEMA §4, and `model.to_yaml`'s order for a freshly ingested file). Never overwrites an
+    abstract that is already there — the caller decides what is missing. Returns whether it
+    wrote. Raises FileNotFoundError if the paper is absent."""
+    path = curated_dir(root) / f"{citekey}.yaml"
+    if not path.is_file():
+        raise FileNotFoundError(f"no curated paper: {citekey}")
+    doc = _yaml_rt.load(path.read_text()) or {}
+    if (doc.get("abstract") or "").strip():
+        return False
+
+    from ruamel.yaml.scalarstring import DoubleQuotedScalarString as DQ
+    value = DQ(abstract)
+    anchor = next((k for k in ("tags", "authors") if k in doc), None)
+    if anchor is None:
+        doc["abstract"] = value
+    else:
+        doc.insert(list(doc).index(anchor), "abstract", value)
+    if not dry_run:
+        with path.open("w") as fh:
+            _yaml_rt.dump(doc, fh)
+    return True
+
+
 def rename_pdf(pdf_path: Path, citekey: str, dry_run: bool) -> Path | None:
     """Rename the source PDF to <dir>/<citekey>.pdf. Never clobber a different file."""
     pdf_path = Path(pdf_path)

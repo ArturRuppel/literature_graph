@@ -8,7 +8,7 @@ from pathlib import Path
 from . import pdf as pdfmod
 from . import store
 from .citekey import _norm_doi, make_citekey
-from .fulltext import extract_reference_dois, to_markdown
+from .fulltext import extract_abstract, extract_reference_dois, to_markdown
 from .model import Author, CuratedPaper, Stub, Work, map_type
 from .roles import resolve_roles
 from .sources.crossref import Crossref
@@ -43,6 +43,7 @@ class Report:
     stubs_deduped: list[str] = field(default_factory=list)
     stubs_pruned: list[str] = field(default_factory=list)  # stubs promoted to curated (§6.3 self-heal)
     refs_skipped: int = 0
+    abstract_source: str = ""  # "openalex"/"crossref" | "fulltext:heading" | "fulltext:byline" | ""
     curated_path: str = ""
     pdf_renamed_to: str | None = None
     pdf_rename_skipped: bool = False
@@ -237,6 +238,36 @@ def ingest(
     if stubs_only:
         report.curated_path = str(store.curated_dir(root) / f"{citekey}.yaml")
     else:
+        # Abstract fallback. Springer Nature and Elsevier deposit none to Crossref, and OpenAlex
+        # mirrors Crossref for abstracts, so `abstract_inverted_index` is null for most of the
+        # Nature family — the metadata simply does not exist to fetch. The paper's own full text
+        # has it, so read it from there (fulltext.extract_abstract). Done here, before the
+        # curated file is written, and the same markdown is reused as `<citekey>.md` below, so
+        # this costs no extra pymupdf4llm pass. Silence is the thing being fixed: a curated file
+        # with no abstract and no complaint is how four papers reached the in-progress worklist
+        # missing one, so every branch here says what happened.
+        markdown: str | None = None
+        if paper.abstract:
+            report.abstract_source = report.metadata_source
+        else:
+            markdown = to_markdown(pdf_path)
+            hit = extract_abstract(markdown, families)
+            if hit is None:
+                report.warnings.append(
+                    f"no abstract: {report.metadata_source} carries none for this DOI and none "
+                    f"could be anchored in the full text — add it to {citekey}.yaml by hand")
+            else:
+                paper.abstract = hit.text
+                report.abstract_source = f"fulltext:{hit.anchor}"
+                if hit.anchor == "byline":
+                    report.warnings.append(
+                        "abstract read from the full text's unlabelled lead paragraph (the paper "
+                        "prints no 'Abstract' heading) — check it against the PDF")
+                if hit.artifacts:
+                    report.warnings.append(
+                        "abstract may carry PDF text-layer damage (fused words: "
+                        f"{', '.join(hit.artifacts)}) — fix by hand in {citekey}.yaml")
+
         curated_path = store.write_curated(root, paper, force=force, dry_run=dry_run)
         report.curated_path = str(curated_path)
 
@@ -252,7 +283,8 @@ def ingest(
         if dry_run:
             report.fulltext_path = str(Path(pdf_path).with_name(f"{citekey}.md"))
         else:
-            markdown = to_markdown(str(md_source))
+            if markdown is None:  # not already extracted for the abstract fallback above
+                markdown = to_markdown(str(md_source))
             report.fulltext_path = str(store.write_fulltext(md_source, citekey, markdown, dry_run=False))
 
     added, deduped = store.merge_stubs(root, stubs, dry_run=dry_run)

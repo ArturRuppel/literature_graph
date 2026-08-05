@@ -70,7 +70,18 @@ the rate limiter; never flood. A half-finished graph is a normal, valid state.**
   written YAML together. Use `--dry-run` to preview without writing/renaming. It does *not*
   extract the claim/question/method slices — that's the curation step (CURATION.md). Ingest also
   writes each stub's `authors` + `journal` (the bib OpenAlex already returns per reference), which
-  the viewer shows on hover.
+  the viewer shows on hover. The focal **`abstract`** comes from OpenAlex/Crossref when they have
+  one and **from the paper's own full text when they don't** — Springer Nature and Elsevier
+  deposit no abstract to Crossref and OpenAlex mirrors Crossref there, so `abstract_inverted_index`
+  is null for most of the Nature family and all of Cell Press. The report's `abstract:` line names
+  the source (`openalex` · `fulltext:heading` · `fulltext:byline`), and every uncertain outcome
+  warns: a **`byline`** fill took an *unlabelled* lead paragraph and wants a look at the PDF, and
+  a paper where nothing anchored gets no abstract and says so. It never guesses — see
+  `fulltext.extract_abstract` for why a wrong abstract is worse than a missing one.
+- **`lit abstracts`** — the same move for papers **already on disk**: fills `abstract` on every
+  curated paper missing one, read from its stored `<citekey>.md` (no network). `--dry-run` reports
+  without writing; bare citekeys restrict the sweep. Never overwrites an abstract already there.
+  Run once, review the diff, commit. What it *can't* anchor it names rather than inventing.
 - **`lit enrich`** — backfill `authors` + `journal` onto **existing** `stubs.yaml` entries from
   OpenAlex (by DOI), for stubs ingested before those fields existed. One batched query; only fills
   gaps unless `--force`; `--dry-run` reports without writing. Run once, review the diff, commit.

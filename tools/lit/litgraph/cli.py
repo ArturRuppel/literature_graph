@@ -63,6 +63,7 @@ def _print_report(r: Report) -> None:
             print(f"  ⚠ {w}")
         print()
         return
+    print(f"  abstract   : {r.abstract_source or 'NONE — see the warning below'}")
     print(f"  curated    : {r.curated_path}")
     if r.pdf_renamed_to:
         print(f"  pdf -> {r.pdf_renamed_to}")
@@ -142,6 +143,13 @@ def main(argv: list[str] | None = None) -> int:
     p_enr.add_argument("--force", action="store_true",
                        help="re-fetch stubs that already have authors + journal (overwrite them)")
     p_enr.add_argument("--dry-run", action="store_true", help="report what would change; write nothing")
+
+    p_abs = sub.add_parser("abstracts", help="backfill missing abstracts onto curated papers from "
+                                             "their stored full text (for the publishers that "
+                                             "deposit none to OpenAlex/Crossref)")
+    p_abs.add_argument("citekeys", nargs="*", help="papers to fill (omit for every curated paper)")
+    p_abs.add_argument("--root", default=".", help="data root (curated/, pdfs/, config.toml)")
+    p_abs.add_argument("--dry-run", action="store_true", help="report what would change; write nothing")
 
     p_tag = sub.add_parser("tag", help="add / remove / list a curated paper's tags "
                                        "(free-form curator labels; searchable in the viewer)")
@@ -463,6 +471,31 @@ def main(argv: list[str] | None = None) -> int:
               f"complete, {len(res.no_doi)} without DOI, {len(res.unmatched)} unmatched")
         for k in res.unmatched:
             print(f"  ⚠ {k}: no OpenAlex match / nothing to add", file=sys.stderr)
+        return 0
+
+    if args.command == "abstracts":
+        from .abstracts import backfill
+        cfg = load_config(args.root)
+        res = backfill(cfg.root, cfg.pdf_dir, dry_run=args.dry_run,
+                       only=tuple(args.citekeys))
+        tag = "DRY-RUN — nothing written" if args.dry_run else "written"
+        print(f"lit abstracts ({tag}): {len(res.filled)} filled, {len(res.already)} already "
+              f"had one, {len(res.unanchored)} unanchored, {len(res.no_fulltext)} without a .md")
+        for key, anchor in res.filled:
+            # The anchor is the whole point of the report: a "heading" fill copied a section the
+            # paper itself labelled Abstract, a "byline" fill took the unlabelled lead paragraph
+            # and is the one to spot-check against the PDF.
+            note = "  ← unlabelled lead paragraph, check against the PDF" if anchor == "byline" else ""
+            print(f"  + {key} ({anchor}){note}")
+        for key, artifacts in res.flagged:
+            print(f"  ⚠ {key}: PDF text-layer damage in the abstract ({', '.join(artifacts)}) "
+                  f"— fix by hand", file=sys.stderr)
+        for key in res.unanchored:
+            print(f"  ⚠ {key}: nothing anchored safely in the full text — add the abstract by hand",
+                  file=sys.stderr)
+        for key in res.no_fulltext:
+            print(f"  ⚠ {key}: no <citekey>.md beside the PDF — re-ingest to write one",
+                  file=sys.stderr)
         return 0
 
     return 2

@@ -312,3 +312,68 @@ def test_reference_scan_reuses_the_stored_markdown(workspace, monkeypatch):
     r = ingest(str(pdf), root=root, doi=focal_doi, stubs_only=True,
                openalex=_openalex_no_focal_doi_batch(), crossref=cr)
     assert r.refs_from_fulltext is True and r.n_referenced == 1
+
+
+def _openalex_without_abstract() -> OpenAlex:
+    """OpenAlex as it actually answers for a Springer Nature / Elsevier paper: the work is
+    indexed, but `abstract_inverted_index` is null because the publisher deposits none."""
+    focal = json.loads((FIX / "oa_focal.json").read_text())
+    focal["abstract_inverted_index"] = None
+    batch = json.loads((FIX / "oa_refs_batch.json").read_text())
+
+    def get_json(url: str) -> dict:
+        if "/works/https://doi.org/" in url:
+            return focal
+        if "filter=openalex_id" in url:
+            return batch
+        return {"results": []}
+
+    return OpenAlex(mailto="t@e", get_json=get_json)
+
+
+def test_abstract_falls_back_to_the_full_text(workspace, monkeypatch):
+    """No abstract in the metadata is the normal case for a Nature-family paper, not an error:
+    ingest reads it out of the paper's own text instead of writing a curated file without one."""
+    root, pdf = workspace
+    body = ("We measured force propagation across a pair of cells and found it is carried by the "
+            "substrate as much as by the junction. The result held for every stiffness we tested "
+            "and for both cell lines. We conclude that the two routes cannot be separated by "
+            "junction perturbation alone, which is how the field has been reading these data.")
+    md = f"## LETTER\n\n## A Title\n\n## Abstract\n\n{body}\n\n## Introduction\n\nOther text here.\n"
+    monkeypatch.setattr("litgraph.ingest.to_markdown", lambda p: md)
+
+    r = ingest(str(pdf), root=root, openalex=_openalex_without_abstract(), crossref=_crossref())
+
+    assert r.abstract_source == "fulltext:heading"
+    assert body in Path(r.curated_path).read_text()
+    # The same markdown is reused for <citekey>.md — no second pymupdf4llm pass.
+    assert Path(r.fulltext_path).read_text() == md
+
+
+def test_abstract_from_metadata_skips_the_fallback(workspace, monkeypatch):
+    """When OpenAlex carries the abstract the fallback must not run — and the PDF is still
+    parsed exactly once, for the `.md`. Two passes would double the cost of every ingest."""
+    root, pdf = workspace
+    calls = []
+
+    def record(path):
+        calls.append(path)
+        return "## A Title\n\nfull text\n"
+
+    monkeypatch.setattr("litgraph.ingest.to_markdown", record)
+
+    r = ingest(str(pdf), root=root, openalex=_openalex(), crossref=_crossref())
+
+    assert r.abstract_source == "openalex"
+    assert len(calls) == 1
+
+
+def test_warns_when_no_abstract_can_be_found_anywhere(workspace, monkeypatch):
+    """Silence is the bug being fixed: a curated file with no abstract must say so."""
+    root, pdf = workspace
+    monkeypatch.setattr("litgraph.ingest.to_markdown", lambda p: "## A Title\n\ncolumns interleaved\n")
+
+    r = ingest(str(pdf), root=root, openalex=_openalex_without_abstract(), crossref=_crossref())
+
+    assert r.abstract_source == ""
+    assert any("no abstract" in w for w in r.warnings)

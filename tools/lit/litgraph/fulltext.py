@@ -7,6 +7,8 @@ removed, hyphenation at line-ends joined, trailing whitespace trimmed.
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
+from dataclasses import dataclass
 
 import pymupdf4llm
 
@@ -80,6 +82,263 @@ def extract_keywords(text: str) -> list[str]:
             seen.add(kw.lower())
             out.append(kw)
     return out
+
+
+# ── Abstract -> the paper's own full text (ingest Stage B'' fallback).
+# Springer Nature and Elsevier deposit no abstract to Crossref, and OpenAlex mirrors Crossref
+# here, so `abstract_inverted_index` comes back null — for most of the Nature family and all of
+# Cell Press. The abstract is of course printed in the PDF, hence in our markdown; this recovers
+# it from there. Two anchors, deliberately kept apart because they earn very different trust:
+#
+#   "heading" — a real `## Abstract` / `## SUMMARY` section label. The paper itself says where
+#               the abstract is, so this is as good as a metadata fetch.
+#   "byline"  — no label at all (Nature letters/articles run the abstract as an unlabelled lead
+#               paragraph). Anchored on the *author line*, which we can find because ingest
+#               already knows the author families from OpenAlex/Crossref — a far tighter anchor
+#               than "the first longish paragraph", which would just as happily grab an
+#               affiliation block. Held to stricter prose tests than the labelled path, and the
+#               caller is told which anchor fired so a curator can spot-check the loose one.
+#
+# Never guesses silently: no anchor, or a candidate that fails the prose tests, returns None and
+# the caller warns. A missing abstract is recoverable by hand; a wrong one is a lie in a curated
+# file (SCHEMA §4), and this module's whole job is fidelity to the page.
+
+_ABS_LABEL = re.compile(
+    r"^[ \t]*#{0,6}[ \t]*\*{0,3}[ \t]*(abstract|summary)\b\*{0,3}[ \t]*[:.—-]?[ \t]*(.*)$",
+    re.IGNORECASE | re.MULTILINE,
+)
+# Sections that end an abstract. `introduction` and the keyword line are the usual next thing;
+# `significance`/`graphical abstract` are the front-matter blocks Cell Press and PNAS print.
+_ABS_STOP = re.compile(
+    r"^[ \t]*#{0,6}[ \t]*\*{0,3}[ \t]*"
+    r"(key[ \t]?words|introduction|references|results|methods|significance|"
+    r"graphical[ \t]+abstract|in[ \t]+brief|highlights|author[ \t]+summary|citation|"
+    r"copyright|funding|acknowledge?ments?|author[ \t]+contributions|"
+    r"conflict[ \t]+of[ \t]+interest|data[ \t]+availability|edited[ \t]+by|reviewed[ \t]+by)\b",
+    re.IGNORECASE,
+)
+# Publisher furniture that is prose-shaped and therefore sails through every readability test:
+# the licence block, the submission note, the copyright line. Frontiers prints its citation and
+# copyright sidebar with the full author list in it, so the byline anchor lands squarely on the
+# licence paragraph unless this rejects it.
+_BOILERPLATE = re.compile(
+    r"©|creative[ \t]commons|open[- \t]access article distributed|"
+    r"this article was submitted to|use, distribution or reproduction",
+    re.IGNORECASE,
+)
+# A structured abstract's own sub-labels — the one reason to keep reading past the first
+# paragraph when that paragraph ended in a full stop (Cell Press, BMC, PLOS clinical style).
+_ABS_PART = re.compile(
+    r"^\*{0,2}(background|objectives?|aims?|purpose|design|setting|methods?|"
+    r"materials?[ \t]+and[ \t]+methods|results?|findings|discussion|interpretation|"
+    r"conclusions?|significance)\b\*{0,2}[ \t]*[:.]",
+    re.IGNORECASE,
+)
+_HEADING = re.compile(r"^[ \t]*#{1,6}[ \t]")
+_PICTURE = re.compile(r"^\s*\*\*==>.*<==\*\*\s*$")
+_PARA_SPLIT = re.compile(r"\n\s*\n")
+# A citation superscript the PDF prints inline: digits and separators only, so `[Ca2+]` and
+# `[35S]` survive while `[1–3]` / `[4, 5]` go.
+_REF_MARK = re.compile(r"\[[\d\s,;–—-]+\]")
+_SENTENCE_END = re.compile(r"[.!?](?:\s|$)")
+# PDF text layers drop the spaces between words often enough to matter ("tocontract
+# anactomyosinringthat", "proliferation.Whenwetrigger"). Not repairable without a dictionary,
+# but very visible — so flag it and let the human fix the one line.
+#
+# Length alone cannot be the test. This is a mechanobiology corpus: `mechanotransduction`,
+# `metalloproteinases`, `microenvironment` and `pathophysiological` are ordinary vocabulary
+# here, and a detector that flags them fires on a fifth of the library and gets tuned out —
+# which costs more than the artifacts it finds. So a long run is only suspicious when it is
+# *absurdly* long, or when it contains a function word no single English word contains
+# (`anactomyosinringthat`, `selforganization`). Deliberately incomplete: precision buys a
+# warning that is worth reading.
+_FUSED_LONG = re.compile(r"\b[a-z]{26,}\b")
+_FUSED_RUN = re.compile(r"\b[a-z]{14,}\b")
+# Only words distinctive enough not to hide inside a morpheme. The short ones are traps:
+# `for` sits in trans*for*mations, `not` in mecha*not*ransduction, `and` in lig*and*, `the` in
+# hypo*the*sis, `but` in distri*but*ion — each one turns a real word into a false alarm.
+_FUSED_JOIN = re.compile(r"that|this|with|from|which|were|have|been|their|these|when|while|such")
+_FUSED_SENTENCE = re.compile(r"\w{4}[.,][A-Z]\w{3}")
+_LABEL_LEAD = re.compile(r"^(abstract|summary)\b[:.—\s-]*", re.IGNORECASE)
+
+_ABS_MIN_LABELLED = 150   # a labelled section is authoritative; only reject the obviously empty
+_ABS_MIN_BYLINE = 400     # unlabelled: long enough that an affiliation block can't pass for one
+_ABS_MAX = 4000           # past this we have run off the label into the body
+_ABS_MAX_PARAS = 6        # structured abstracts (Background/Methods/Results/Conclusions)
+# The byline lives on the title page, always. Without this window the anchor also matches a
+# figure caption ("Adapted from Bendix et al.") and, far worse, the reference list — where the
+# authors' own names recur and the paragraph after them is a *reference*, which sails through
+# every prose test. Both were live failures on this corpus before the window went in.
+_BYLINE_HEAD = 8000
+
+
+@dataclass(frozen=True)
+class AbstractHit:
+    """An abstract recovered from a paper's full text, with the provenance the caller reports."""
+
+    text: str
+    anchor: str  # "heading" (a real section label) | "byline" (unlabelled lead paragraph)
+    artifacts: tuple[str, ...] = ()  # PDF text-layer damage found in `text` — warn, don't fix
+
+
+def _clean_abstract(s: str) -> str:
+    """Markdown/PDF furniture off an abstract paragraph, leaving the authors' prose.
+
+    Reference superscripts go too: the abstracts OpenAlex hands us carry none, and a stray
+    `[1–3]` in half the corpus would make the field inconsistent to read and to search.
+    """
+    s = s.replace("**", "")
+    s = _HEADING.sub("", s)
+    s = _LABEL_LEAD.sub("", s)
+    s = _REF_MARK.sub("", s)
+    s = re.sub(r"\s+([,.;:])", r"\1", s)  # space the superscript left behind
+    return re.sub(r"\s+", " ", s).strip()
+
+
+def _artifacts(s: str) -> tuple[str, ...]:
+    """Samples of PDF text-layer damage in `s` (fused words / fused sentences), for a warning."""
+    fused = [w for w in _FUSED_RUN.findall(s) if _FUSED_JOIN.search(w)]
+    found = _FUSED_LONG.findall(s) + fused + _FUSED_SENTENCE.findall(s)
+    seen: set[str] = set()
+    out: list[str] = []
+    for f in found:
+        if f not in seen:
+            seen.add(f)
+            out.append(f)
+    return tuple(out[:3])
+
+
+def _is_prose(s: str, *, min_chars: int) -> bool:
+    """Does this paragraph read like an abstract rather than the page furniture around one?
+
+    The paragraph after a byline is as often an affiliation block or a correspondence line as
+    it is the abstract, and those are what these tests exclude: they carry emails, they are
+    mostly comma-separated fragments rather than sentences, and they are dense with the
+    superscript digits that key each author to an institution.
+    """
+    if not (min_chars <= len(s) <= _ABS_MAX):
+        return False
+    if "@" in s:  # correspondence / affiliation block
+        return False
+    if _BOILERPLATE.search(s):
+        return False
+    if len(_SENTENCE_END.findall(s)) < 3:
+        return False
+    tokens = s.split()
+    return sum(t[0].isdigit() for t in tokens if t) <= len(tokens) * 0.15
+
+
+def _ends_sentence(para: str) -> bool:
+    """Does this paragraph close a sentence? Markdown emphasis and a trailing citation
+    superscript sit *after* the full stop (`…tumour progression.**`, `…barrier[4] .`), so the
+    tail has to be shaved before asking — otherwise no paragraph ever looks finished and the
+    continuation rule in `_paragraphs_after` swallows the whole introduction."""
+    return _REF_MARK.sub("", para).rstrip().rstrip("*_ \t").endswith((".", "!", "?", '."', ".'"))
+
+
+def _paragraphs_after(text: str, pos: int) -> list[str]:
+    """The paragraphs following `pos` that still belong to the abstract.
+
+    Continuation is the whole difficulty: the markdown loses the heading that would say where
+    the abstract ends, so "read until the next heading" quietly swallows the first paragraph of
+    the introduction. Two reasons — and only these two — to keep reading past a paragraph:
+
+    * it ended **mid-sentence**, so the abstract was broken across a column and the rest of the
+      sentence is in the next paragraph; or
+    * the next paragraph opens with a **structured-abstract label** (`Results:`, `Conclusions:`),
+      which is the abstract explicitly continuing itself.
+
+    A paragraph that ends in a full stop and is followed by ordinary prose ends the abstract.
+    That is the common case, and getting it wrong in the other direction — appending body text —
+    is the failure this rule exists to prevent.
+    """
+    out: list[str] = []
+    for para in _PARA_SPLIT.split(text[pos:]):
+        para = para.strip()
+        if not para or _PICTURE.match(para):
+            continue
+        # `Results:` is both a stop-word and a structured-abstract label, so which one a
+        # paragraph is gets decided by what follows it: a bare `## Results` heading starts the
+        # body, while `Results: To understand how…` is the abstract continuing. Tested in this
+        # order — the other way round, every structured abstract truncates at `Background:`.
+        part = _ABS_PART.match(para)
+        if not (part and len(para) - part.end() > 80):
+            if _ABS_STOP.match(para) or (_HEADING.match(para) and out):
+                break
+            # A bare heading with no prose on it, before any content: page furniture sitting
+            # between the label and the abstract (Nature Reviews prints a `## Sections` contents
+            # block right there). Skipping it rather than taking it as the abstract's first
+            # paragraph is the difference between recovering that paper's abstract and
+            # recovering the word "Sections". Checked *after* the stop-list, or a bare
+            # `## Introduction` gets skipped too and the body walks in behind it.
+            if _HEADING.match(para) and len(para) < 60 and not _ends_sentence(para):
+                continue
+            # A column break splits a sentence in two: the part before has no terminator *and*
+            # the part after opens lowercase. Requiring both is what separates a real split from
+            # an abstract whose last sentence merely lost its full stop to the text layer —
+            # where continuing would append the introduction's opening paragraph instead.
+            if out and not (not _ends_sentence(out[-1]) and para[:1].islower()):
+                break
+        out.append(para)
+        if len(out) >= _ABS_MAX_PARAS:
+            break
+    return out
+
+
+def _from_label(text: str) -> AbstractHit | None:
+    """The abstract under an explicit `Abstract` / `Summary` section label.
+
+    Exact-matched on the label word so `Graphical Abstract` and `Author Summary` — the Cell
+    Press and PLOS front-matter blocks that sit *above* the real one — can never anchor it.
+    """
+    for m in _ABS_LABEL.finditer(text):
+        inline = m.group(2).strip()
+        paras = [inline] if inline else []
+        paras += _paragraphs_after(text, m.end())
+        body = _clean_abstract(" ".join(p for p in paras if p))
+        if _is_prose(body, min_chars=_ABS_MIN_LABELLED):
+            return AbstractHit(body, "heading", _artifacts(body))
+    return None
+
+
+def _from_byline(text: str, families: Sequence[str]) -> AbstractHit | None:
+    """The unlabelled lead paragraph of a Nature-style paper: the one right after the byline.
+
+    The byline is located by the author families we already fetched, so this is anchored on the
+    paper's own identity rather than on a guess about layout. Requires two families on one line
+    (a single family also matches a running header or a citation), and only looks at the title
+    page (`_BYLINE_HEAD`), where a byline is the only thing that can be.
+    """
+    fams = [f for f in families if len(f) >= 3]
+    if len(fams) < 2:
+        return None
+    for m in re.finditer(r"^.*$", text[:_BYLINE_HEAD], re.MULTILINE):
+        if sum(f in m.group(0) for f in fams) < 2:
+            continue
+        # Paragraphs are read from the *full* text: only the search is windowed, so an abstract
+        # that straddles the window boundary still comes out whole. Joined, not just the first —
+        # a two-column PDF splits the abstract mid-sentence often enough that taking only the
+        # paragraph immediately after the byline lops the opening off (`_paragraphs_after`'s
+        # continuation rule is what keeps the join from running into the body).
+        body = _clean_abstract(" ".join(_paragraphs_after(text, m.end())))
+        # An abstract is a complete unit: it ends on a full stop. A paragraph that stops
+        # mid-sentence is the body's column flow, which is what sits directly under the byline
+        # when the PDF's text layer carries no abstract block at all (some Nature layouts) —
+        # and taking it hands back the paper's *introduction* dressed as its abstract. The
+        # labelled path doesn't need this: there, the paper itself said where the abstract is.
+        if _ends_sentence(body) and _is_prose(body, min_chars=_ABS_MIN_BYLINE):
+            return AbstractHit(body, "byline", _artifacts(body))
+    return None
+
+
+def extract_abstract(text: str, author_families: Sequence[str] = ()) -> AbstractHit | None:
+    """A paper's abstract, read out of its own full text. None when nothing anchors safely.
+
+    Tries the explicit section label first, then the unlabelled-lead-paragraph anchor (which
+    needs `author_families` to find the byline). See the module comment above for why the two
+    are reported separately.
+    """
+    return _from_label(text) or _from_byline(text, author_families)
 
 
 # ── Reference list -> DOIs (ingest Stage C fallback).
