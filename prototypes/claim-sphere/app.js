@@ -237,10 +237,29 @@ function selVals(n) {
   };
 }
 
+/* ── the handoff back to the board ────────────────────────────────────────────
+   This view says where a claim SITS — how general it is, whose family it is in,
+   whether it reaches a floor at all. It cannot say what the claim rests on, and
+   that is the board's whole job, so a selection carries a door to it.
+
+   What travels is the node's own name in the schema's spelling: `Citekey:sid`
+   for a slice (a sharpened ref, SCHEMA §3), the bare slug for a broad node. The
+   board resolves it against its own payload (viewer/js/17-handoff), so nothing
+   here knows how the board finds things — the trees stay disjoint. Same tab, as
+   with `← board`: the reader asked to leave. */
+const SERVED = location.pathname.startsWith('/views/');
+function selDoor(n) {
+  const go = $('selGo');
+  if (!SERVED || !n) { go.hidden = true; return; }
+  go.href = '/?goto=' + encodeURIComponent(n.t === 'b' ? n.slug : n.paper + ':' + n.sid);
+  go.hidden = false;
+}
+
 document.addEventListener('sv-select', e => {
   const n = (e.detail || {}).node;
   const v = selVals(n);
   for (const [k, text] of Object.entries(v)) fields('sel' + k, text);
+  selDoor(n);
   /* the click always names a focus target; whether that hides anything is the
      checkbox's business, so reading a claim stays a free action */
   state.focusKey = n ? n.k : null;
@@ -361,6 +380,7 @@ function fillChrome(m) {
   buildPlates(m);
   buildBranches(m);
   for (const k of Object.keys(EMPTY)) fields('sel' + k, EMPTY[k]);
+  selDoor(null);                       // nothing selected → nothing to hand off
 }
 
 /* the renderer announces the model once it has parsed graph.json */
@@ -373,8 +393,9 @@ document.addEventListener('sv-model', e => {
 });
 
 /* Under `lit serve` this page is /views/claim-sphere/ and the board is at the
-   root; standalone (serve.py) there is nothing above it, so no dead link. */
-if (location.pathname.startsWith('/views/')) {
+   root; standalone (serve.py) there is nothing above it, so no dead link —
+   which gates the per-node handoff below as well as the door in the header. */
+if (SERVED) {
   const back = $('back');
   back.href = '/';
   back.hidden = false;

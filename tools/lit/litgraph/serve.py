@@ -42,6 +42,7 @@ from litgraph.build import render_html
 from litgraph.config import load_config
 from litgraph.graph import BuildError, build_graph
 from litgraph.preview import isolate
+from litgraph.quotes import JOIN
 from litgraph.sources.openalex import OpenAlex
 
 # strictly <citekey>.<ext> — one flat name, no separators, so /pdf/ can't traverse out
@@ -90,6 +91,30 @@ def _available_views() -> list[dict]:
             if (_PROTOTYPES / s / "index.html").is_file()]
 
 
+# A stored quote is not always one contiguous run of PDF text, and the two ways it breaks both
+# have to be split on before matching or the whole anchor matches nothing:
+#   * an authored `[...]` join (SCHEMA §6.4) — the curator deliberately elided the middle;
+#   * a `<sup>30–32</sup>` citation marker carried in from the `.md`, which the PDF's text layer
+#     renders as bare inline numerals ("adhesion30–32, thereby"). Keeping the markup folds to
+#     `sup3032sup` and matches nothing; dropping it folds to `adhesionthereby` and *still* misses,
+#     because the numerals really are in the PDF stream. Treating it as a boundary is the only
+#     reading that matches either way.
+# Segments below the floor are dropped rather than searched: a 2–3 character fragment matches
+# half the paper, and a junk rect on a highlight is worse than a slightly short one.
+_SUP_MARKER = re.compile(r"<sup>.*?</sup>", re.S)
+_MIN_SEGMENT_FOLDED = 8
+
+
+def _segments(anchor: str) -> list[str]:
+    """Split a stored quote into the runs that should each match the PDF contiguously."""
+    parts: list[str] = []
+    for chunk in anchor.split(JOIN):
+        parts.extend(_SUP_MARKER.split(chunk))
+    segs = [p.strip() for p in parts if len(pdfview.fold(p)) >= _MIN_SEGMENT_FOLDED]
+    # An anchor that is *entirely* below the floor still deserves its old one-shot attempt.
+    return segs or ([anchor.strip()] if anchor.strip() else [])
+
+
 def _needles(anchor: str) -> list[str]:
     """Search strings for an anchor, longest → shortest, so a precise full-phrase match is
     always preferred over a short ambiguous one. Two robustness moves: a hyphen-seam variant
@@ -125,11 +150,35 @@ def locate_quote(pdf: "Path | str", anchor: str) -> dict | None:
     `search_for`, which often only matches a leading fragment); only if that fails on every page
     does it fall back to the `search_for` needle backoff, which may cover just that fragment. The
     matcher is shared with the viewer's find bar so a quote can't land where a search sees
-    nothing, and it reads through pdfview's mtime-keyed word cache."""
+    nothing, and it reads through pdfview's mtime-keyed word cache.
+
+    A quote that breaks into several segments (`_segments`: an authored `[...]` join, a `<sup>`
+    citation marker) is placed segment by segment and its rects unioned, because no contiguous
+    match for the whole string exists — the gap is *the curator's own elision*. Matching the
+    joined string as one needle used to fail on every page and drop to the fragment backoff
+    below, which highlights the leading run and silently drops the rest: the half of the sentence
+    carrying the claim would not light up at all. The page placing the most segments wins, since
+    `quote_loc` holds a single page; a segment stranded on another page contributes nothing
+    rather than dragging the highlight away from the bulk of the quote."""
+    segments = _segments(anchor)
+    if not segments:
+        return None
+    best: tuple[int, int, list[list[float]]] | None = None
     for n in range(len(pdfview.page_sizes(pdf))):
-        hits = pdfview.word_hits(pdfview.page_words(pdf, n), anchor, limit=1)
-        if hits:
-            return {"page": n, "rects": hits[0]}
+        words = pdfview.page_words(pdf, n)
+        rects: list[list[float]] = []
+        placed = 0
+        for seg in segments:
+            hits = pdfview.word_hits(words, seg, limit=1)
+            if hits:
+                placed += 1
+                rects.extend(hits[0])
+        if placed and (best is None or placed > best[0]):
+            best = (placed, n, rects)
+        if placed == len(segments):        # every segment on one page — nothing left to improve
+            break
+    if best:
+        return {"page": best[1], "rects": best[2]}
     with fitz.open(pdf) as doc:
         pages = list(doc)
         for needle in _needles(anchor):            # fragment fallback — rare, better than nothing

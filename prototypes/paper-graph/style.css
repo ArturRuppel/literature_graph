@@ -196,6 +196,16 @@ main {
   font-size: 11px;
 }
 #pin-panel button:hover { background: #343a47; }
+/* the handoff sits beside `unpin`, not under the citekey: both are ways of LEAVING the pin,
+   one back to the graph and one over to the board */
+#pin-actions { display: flex; align-items: center; gap: 10px; }
+#pin-panel .boardlink {
+  color: var(--accent); text-decoration: none; font-size: 11px;
+  border-bottom: 1px solid transparent; padding-bottom: 1px;
+  touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+}
+#pin-panel .boardlink:hover { border-bottom-color: var(--accent); }
+#pin-panel .boardlink[hidden] { display: none; }
 
 #legend {
   position: absolute;

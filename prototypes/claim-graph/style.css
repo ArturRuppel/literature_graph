@@ -195,6 +195,15 @@ svg#graph { display: block; }
 }
 #panel ul { margin: 4px 0; padding-left: 16px; }
 #panel li { margin: 2px 0; font-size: 11px; }
+/* the handoff: last in the panel, because it is what you do AFTER reading the claim — and set
+   apart by a rule, since everything above it is a fact and this is an action */
+#panel .p-board {
+  display: inline-block; margin-top: 12px; padding-top: 10px;
+  border-top: 1px solid var(--line); width: 100%;
+  font-size: 11.5px; font-weight: 600; color: var(--broad); text-decoration: none;
+  touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+}
+#panel .p-board:hover { text-decoration: underline; }
 
 .zoombar {
   position: absolute; bottom: 14px; right: 14px; z-index: 20;

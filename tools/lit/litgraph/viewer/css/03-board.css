@@ -83,14 +83,17 @@
   .cauth{display:none;padding:4px 11px 6px;font-size:9px;color:var(--faint)}
   .cauth .star{color:var(--floor)}
   .cauth .anum{color:var(--faint);opacity:.7;font-style:italic}
-  /* the abstract: on desktop it lives in the hover tip; on touch (no hover) it shows inline in
-     the open card instead (revealed by the coarse-pointer media query below) */
+  /* the abstract: inline in the open card, everywhere. It used to be touch-only, on the theory
+     that desktop read it in the hover tip — but that tip shows a curated paper's PDF thumbnail
+     and only ever carried an abstract for an uncurated stub (cockpit.showTip), so on desktop
+     the text was written to the DOM and reachable by nothing. */
   .cabs{display:none;padding:0 11px 8px;font-size:10px;color:var(--dim);line-height:1.4}
   /* the venue line, expanded stubs only: a curated paper has no `journal` field at all
      (SCHEMA §3 — the venue lives in the citekey), so this has nothing to say on one */
   .cbib{display:none;padding:0 11px 8px;font-size:9px;color:var(--faint);font-style:italic}
   .card.open .cyr{display:inline-block}
   .card.open .ctitle,.card.open .cauth{display:block}
+  .card.open .cabs{display:block}
   .card.open .cbib{display:block}
   /* the aim card's punchline. A paper's card is a bibliography record — its citekey identifies it
      and the title can wait for the open state. An aim has no such handle: `@fluid-solid-switch`

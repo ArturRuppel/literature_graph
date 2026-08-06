@@ -163,9 +163,7 @@ function showBroad(slug){
   const el=document.getElementById(`card-${SYNTH}:${slug}`);
   if(!broadHost[slug]||!el){ if(board.scrollTop) board.scrollTop=0; return; }
   el.scrollIntoView({block:"center"});
-  el.classList.remove("found"); void el.offsetWidth;
-  el.classList.add("found");
-  setTimeout(()=>el.classList.remove("found"),1800);
+  flash(el);
 }
 // Reconcile cols[0]. The curated list is a FIXED population — every key landingKeys() names is
 // present from boot and never leaves, so this only ever adds what a fresh graph brought in (a

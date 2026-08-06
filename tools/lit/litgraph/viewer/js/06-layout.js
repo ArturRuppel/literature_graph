@@ -127,13 +127,20 @@ function broadCard(slug,level,rung){
 // all, just the card it always was; a box with one member in it would be chrome around a fact.
 const famFolded=new Set();   // roots whose rungs are folded to their titles (default: all of them)
 let famSeeded=false;         // …seeded once, so a fold the reader opened survives every rebuild
+// "the thing you asked for is HERE": a brief ring, on every mark the board can be sent to (a card,
+// a broad node, a slice row). One implementation because four places want the identical gesture —
+// the search box, a library row, a shown claim and the ?goto= handoff — and a jump that flashed
+// differently depending on which door you came through would read as four different events.
+function flash(el){
+  el.classList.remove("found"); void el.offsetWidth;      // restart a flash still running
+  el.classList.add("found");
+  setTimeout(()=>el.classList.remove("found"),1800);
+}
 function scrollToBroad(slug){
   const el=document.getElementById(`card-${SYNTH}:${slug}`);
   if(!el) return;
   el.scrollIntoView({behavior:"smooth",block:"center"});
-  el.classList.remove("found"); void el.offsetWidth;      // restart a flash still running
-  el.classList.add("found");
-  setTimeout(()=>el.classList.remove("found"),1800);
+  flash(el);
 }
 // `seen` is the cycle guard the rest of this file carries for the same reason (see computeBroadTiers):
 // a hot-reloaded DRIVE window can hold YAML the build would have rejected, and a `leads_to` cycle

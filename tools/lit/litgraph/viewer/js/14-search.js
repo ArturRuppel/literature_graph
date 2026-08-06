@@ -103,9 +103,7 @@ function gotoPaper(key){
   }
   redraw();                                              // the column may have grown; edges re-anchor
   el.scrollIntoView({behavior: "smooth", block: "center"});
-  el.classList.remove("found"); void el.offsetWidth;     // restart the flash if it's still running
-  el.classList.add("found");
-  setTimeout(() => el.classList.remove("found"), 1800);
+  flash(el);
 }
 function runSearch(term){                                 // called by a tag chip → search that tag
   if(!searchInput) return;
@@ -440,7 +438,10 @@ if(!DRIVE && !PDFWIN && !MOBILE_CURATE) (function(){
     paint();                                     // the pane just lost width (or height, in portrait)
   });
   addEventListener("keydown", e => { if(e.key === "Escape" && isOpen()) closeLib(); });
-  if(new URLSearchParams(location.search).get("view") === "library") openLib();
+  // …but a ?goto= names a destination on the BOARD (17-handoff), and it wins: a handoff that
+  // landed behind the library pane would look like a handoff that did nothing.
+  const q = new URLSearchParams(location.search);
+  if(q.get("view") === "library" && !q.get("goto")) openLib();
 })();
 
 board.addEventListener("scroll",redraw);

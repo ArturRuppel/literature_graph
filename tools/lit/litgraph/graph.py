@@ -14,24 +14,41 @@ from .topics import Topic, load_topics, validate_topics
 
 _yaml = YAML(typ="safe")
 
-# The one specific trap worth naming on parse failure: a sharpened cross-paper ref
-# (`Key2026Journal:c4`) left unquoted inside a flow sequence. store.py's round-trip writer
-# now quotes these itself (see store._quote_sharpened_refs), but a hand-edited file can still
-# hit this — and when it does, ruamel's own message ("could not find expected ':'" or similar,
-# at the *next* token) points nowhere near the fix. The lookbehind/lookahead require the ref
-# to sit directly between `[`/`,`/whitespace and `,`/`]` with nothing else adjacent, which is
-# exactly what an unquoted flow-sequence element looks like; a quoted ref has a `"` in that
-# position instead and never matches, and a bare local id (no `:`) never matches either.
-_UNQUOTED_SHARPENED_REF = re.compile(
-    r"(?<=[\[,\s])([A-Z][A-Za-z]*\d{4}[A-Za-z][A-Za-z0-9]*:[cqmtk]\d+)(?=[,\]])"
+# The one specific trap worth naming: a sharpened cross-paper ref (`Key2026Journal:c4`, or a
+# programme `@aim:c1`) left unquoted inside a flow sequence. In flow context a plain scalar may
+# not carry a `:`, and `@` is a reserved indicator — so both forms are malformed YAML that
+# ruamel reports at the *next* token, pointing nowhere near the fix. store.py's round-trip
+# writer quotes these itself (store._quote_sharpened_refs), but a hand-edited file still can.
+#
+# Detection is anchored on the *field*, not on adjacency: a ref-carrying key whose value opens a
+# flow sequence on the same line, then bare refs inside those brackets only. The looser earlier
+# form — "a ref between [,whitespace and ,]" — also matched ordinary prose ("this,
+# Lin2026arxivcornellUniv:c1, Rizzi…" in a note, a `# Children: A2011Pnas:m1, …` comment), which
+# was harmless while this only ran on an already-failing parse but is not once it gates a healthy
+# build. A multi-line flow sequence is deliberately not chased: under-reporting costs a worse
+# error message, over-reporting would reject a good file.
+_REF_FIELD_FLOW = re.compile(
+    r"^\s*(?:grounded_in|leads_to|corroborates|contradicts|answers|discriminates|enabled_by)"
+    r"\s*:\s*\[([^\]]*)\]"
+)
+_BARE_SHARPENED_REF = re.compile(
+    r"""(?<!["'\w])(@?[A-Za-z][A-Za-z0-9-]*\d{0,4}[A-Za-z0-9-]*:[cqmtk]\d+)(?!["'\w])"""
 )
 
 
 def _unquoted_sharpened_ref_hint(path: Path, text: str) -> str | None:
-    """If `text` contains the specific trap above, name every offending line; else None so
-    the caller falls back to ruamel's own (generic, but still file-named) message."""
-    hits = [(n, m.group(1)) for n, line in enumerate(text.splitlines(), start=1)
-            for m in _UNQUOTED_SHARPENED_REF.finditer(line)]
+    """Name every unquoted sharpened ref sitting in a ref field's flow sequence, or None.
+
+    Run *before* parsing, not only on failure: ruamel >= 0.19 relaxed flow-scalar parsing and
+    accepts `[Key2026Journal:c4]`, so the version that raises is no longer the only version in
+    play. A file written under the newer parser then aborts the build under the older one —
+    which is the mismatch this whole message exists to explain. Checking unconditionally holds
+    every environment to the stricter reading, so a file that loads in dev loads in production.
+    """
+    hits = [(n, m.group(1))
+            for n, line in enumerate(text.splitlines(), start=1)
+            if (flow := _REF_FIELD_FLOW.match(line))
+            for m in _BARE_SHARPENED_REF.finditer(flow.group(1))]
     if not hits:
         return None
     detail = "; ".join(
@@ -52,16 +69,23 @@ def load_yaml(path: Path) -> dict:
     than the round-trip parser `store.py` writes with. In particular a sharpened cross-paper
     ref inside a flow sequence — `corroborates: [Key2026Journal:c4]` — round-trips fine but
     is rejected here, because in flow context a plain scalar may not carry a `:`. Quote it
-    (`["Key2026Journal:c4"]`) and both agree. The mismatch is why this message matters —
-    and why, on failure, we scan for that exact shape before falling back to ruamel's message:
-    a curator staring at "could not find expected ':'" has no idea what to fix; a curator
-    staring at the offending ref and line does."""
+    (`["Key2026Journal:c4"]`) and both agree. The mismatch is why this message matters: a
+    curator staring at "could not find expected ':'" has no idea what to fix; a curator
+    staring at the offending ref and line does.
+
+    That scan runs *ahead* of the parse rather than in the failure path, because "the parser
+    rejects it" stopped being a reliable trigger: ruamel >= 0.19 accepts the unquoted form and
+    ruamel < 0.19 does not, so which environment you are in decides whether the file is legal.
+    Checking first makes the answer the same everywhere — the stricter one — instead of letting
+    a file curated under a new ruamel abort the build under an old one."""
     text = path.read_text()
+    hint = _unquoted_sharpened_ref_hint(path, text)
+    if hint:
+        raise BuildError(hint)
     try:
         return _yaml.load(text) or {}
     except YAMLError as e:
-        hint = _unquoted_sharpened_ref_hint(path, text)
-        raise BuildError(hint if hint else f"{path}: {e}") from e
+        raise BuildError(f"{path}: {e}") from e
 
 
 _LOCAL = re.compile(r"^[cqmtk]\d+$")    # c claim · q question · m method · t test · k capability

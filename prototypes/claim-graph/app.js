@@ -34,6 +34,19 @@
   const sliceKey = (paper, id) => paper + SEP + id;
   const broadKey = (slug) => 'b' + SEP + slug;
 
+  // ---- the handoff back to the board ----------------------------------
+  // Under `lit serve` this page is /views/<slug>/ and the board is at the root; standalone
+  // (serve.py on 8002) there is nothing above it, so the link is omitted rather than pointing
+  // at a 404 — the same gate as the "← board" door at the foot of this file.
+  //
+  // What travels is the node's own name in the schema's spelling: `Citekey:sid` for a slice (a
+  // sharpened ref, SCHEMA §3), the bare slug for a broad node. The board resolves it against its
+  // own payload (viewer/js/17-handoff), so this view knows nothing about how the board finds
+  // things — which is what keeps the two trees disjoint.
+  const SERVED = location.pathname.startsWith('/views/');
+  const boardLink = (spec) => SERVED
+    ? `<a class="p-board" href="/?goto=${encodeURIComponent(spec)}">open on the board →</a>` : '';
+
   const svgNS = 'http://www.w3.org/2000/svg';
   const $ = (id) => document.getElementById(id);
 
@@ -565,6 +578,7 @@
         <div class="p-row"><b>slice</b> <code>${s.id}</code></div>
         <div class="p-row"><b>rank</b> ${RANKS.rank.has(key) ? RANKS.rank.get(key) : 'unfloored (local depth ' + RANKS.localDepth.get(key) + ')'}</div>
         ${s.answers.length ? `<div class="p-row"><b>answers</b> ${s.answers.join(', ')} (local)</div>` : ''}
+        ${boardLink(s.paper + ':' + s.id)}
       `;
     } else {
       const b = MODEL.broad.get(key);
@@ -577,6 +591,7 @@
         <div class="p-row"><b>evidence meter</b> corroborate ${b.meter.s} · contradict ${b.meter.c}</div>
         <div class="p-row"><b>slug</b> <code>${b.slug}</code></div>
         <div class="p-row"><b>rank</b> ${RANKS.rank.has(key) ? RANKS.rank.get(key) : 'unfloored'}</div>
+        ${boardLink(b.slug)}
       `;
     }
     $('panel').classList.add('open');

@@ -55,6 +55,10 @@
     0%{border-color:var(--floor);box-shadow:0 0 0 2px var(--floor),0 6px 20px rgba(181,130,47,.28)}
     100%{border-color:var(--line);box-shadow:0 0 0 0 transparent}}
   .card.found{animation:foundflash 1.7s ease-out}
+  /* the same flash on a single ROW, for a ?goto= that named a slice rather than a paper (17-handoff):
+     the card is the wrong unit there — an open card is a wall of claims and the handoff pointed at
+     exactly one of them. A row carries no border of its own, so what shows is the ring. */
+  .slice.found{animation:foundflash 1.7s ease-out}
 
   /* curation-in-progress review lens (serve only) */
   #hud .wip{display:inline-flex;align-items:center;gap:6px;cursor:pointer;

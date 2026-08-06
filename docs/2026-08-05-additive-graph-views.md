@@ -140,7 +140,8 @@ without being asked.**
 
 Hover gives title/authors/year/journal; click pins a paper and dims to its neighbourhood; a
 paper's citekey is the handoff seam back to the board (`gotoPaper()` equivalent — for now, just
-print the citekey where it can be copied).
+print the citekey where it can be copied). *(Built 2026-08-06: the citekey field stayed, for
+copying into a terminal, and the pin panel grew a real door beside it — §4.2.)*
 
 ## 3. View B — the claim graph (`prototypes/claim-graph/`, port 8002)
 
@@ -440,6 +441,45 @@ row. That is the one control worth pinning: the merge is only an improvement on 
 switching reading costs no scroll to find it. `reset view` is pulled up beside the thing it
 resets. Layout keys off width; tap-target sizing keys off `(pointer:coarse)` separately, since a
 narrow desktop window still has a mouse and does not need 20px checkboxes.
+
+### 4.2 The handoff — `?goto=`
+
+**Date:** 2026-08-06. §2 left the seam back to the board as a placeholder ("for now, just print the
+citekey where it can be copied"), and a view you can only leave by the front door is half a door.
+The other half is one query parameter:
+
+```
+?goto=Park2015NatMater        a paper       → scroll-and-flash, minting a stub's card if needed
+?goto=Park2015NatMater:c3     a slice       → …and open the card, drill to that row, flash it
+?goto=tissue-behaviour-…      a broad node  → hoist its papers, scroll, flash
+```
+
+Three decisions hold it together.
+
+**The board's existing gestures ARE the handoff.** `gotoPaper()` and `showBroad()` are called
+unchanged, so arriving from a view and finding the same thing by name leave the board in the same
+state, and there is no second notion of *go there* to drift from the first. What the handoff adds
+is the slice case, because the views are slice-centric and the board's own surfaces are not: no
+existing door names a claim.
+
+**Kind is resolved by asking the payload, never by spelling.** A citekey and a broad slug are told
+apart by which table owns the name. Pattern-matching `Author2020Venue` against `a-kebab-slug` works
+today and breaks on the first name that isn't shaped like its neighbours — and the failure would be
+a silent jump to the wrong kind of thing. `Citekey:sid` is the schema's own spelling for a
+sharpened ref (SCHEMA §3), so the URL says what the YAML says.
+
+**Naming a claim opens the card; naming a paper does not.** A claim you cannot see is not a
+handoff, so the slice case focuses the card and forces the drill path down to the row (an aim's
+outline otherwise keeps it folded). A paper keeps the meaning that gesture has always had in the
+search box and the library. Where the paper is real and the row is not — a slice renamed since the
+link was made — the board lands on the paper rather than refusing; where the whole name is unknown
+it says so in the search dropdown, because silence is indistinguishable from a jump that landed
+off-screen.
+
+Gated exactly like the `← board` door: the link appears only under `/views/`, since standalone
+(ports 8001–8003) there is no board above the page to hand off to. Same tab, for the reason §4.1
+gives. `?goto=` also outranks `?view=library` — a handoff that landed behind the library pane would
+look like a handoff that did nothing.
 
 ## 5. Deliberately not decided
 

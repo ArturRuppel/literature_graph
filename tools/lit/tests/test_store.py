@@ -57,6 +57,48 @@ def test_write_quote_loc_round_trips_and_preserves_comments(tmp_path):
     assert "quote_loc" not in next(s for s in doc["claims"] if s["id"] == "c1")  # only the target changed
 
 
+def test_rewriting_an_existing_quote_loc_keeps_the_comment_that_follows_it(tmp_path):
+    # The --force path. quote_loc is the last key of a slice, so the curator's section header for
+    # the NEXT slice is attached by ruamel to the end of this block (the `rects` sequence's
+    # ca.end). Replacing the mapping wholesale dropped the node carrying it, so a repo-wide
+    # `lit locate --force` silently deleted curation reasoning while reporting only quote_locs
+    # written. Re-locating must be lossless: same comments, and an unchanged location a no-op.
+    (tmp_path / "curated").mkdir(parents=True)
+    p = tmp_path / "curated" / "Chen2021Sys.yaml"
+    p.write_text(
+        'title: "Batching"\n'
+        "type: original\n"
+        "claims:\n"
+        "  - id: c1\n"
+        '    text: "throughput rises"\n'
+        '    quote: "throughput increased monotonically"\n'
+        "    quote_loc:\n"
+        "      page: 1\n"
+        "      rects:\n"
+        "        - [0.1, 0.2, 0.5, 0.23]\n"
+        "  # ── Pass-2 borrowed framing (intro citation walls) ──\n"
+        "  - id: c2\n"
+        '    text: "latency grows"\n'
+        '    quote: "median latency grew"\n')
+    before = p.read_text()
+
+    # re-locating to the SAME place must not touch the file at all
+    store.write_quote_loc(tmp_path, "Chen2021Sys", "c1", 1, [[0.1, 0.2, 0.5, 0.23]])
+    assert p.read_text() == before
+
+    # and re-locating to a NEW place must move only the numbers, keeping the header
+    store.write_quote_loc(tmp_path, "Chen2021Sys", "c1", 4,
+                          [[0.3, 0.4, 0.6, 0.43], [0.3, 0.44, 0.5, 0.47]])
+    text = p.read_text()
+    assert "# ── Pass-2 borrowed framing (intro citation walls) ──" in text
+    from ruamel.yaml import YAML
+    doc = YAML(typ="safe").load(text)
+    c1 = next(s for s in doc["claims"] if s["id"] == "c1")
+    assert c1["quote_loc"] == {"page": 4, "rects": [[0.3, 0.4, 0.6, 0.43], [0.3, 0.44, 0.5, 0.47]]}
+    # the comment still separates c1 from c2 — it did not drift onto the wrong slice
+    assert text.index("id: c1") < text.index("borrowed framing") < text.index("id: c2")
+
+
 def test_write_quote_loc_lands_immediately_after_quote(tmp_path):
     # quote_loc must sit right after `quote`, not at the tail of the mapping (behind whatever
     # other keys the slice happens to carry) — that tail position is exactly what let a

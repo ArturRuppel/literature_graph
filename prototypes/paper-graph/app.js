@@ -11,6 +11,15 @@ const SVG_NS = "http://www.w3.org/2000/svg";
 const NODE_MIN_R = 5;
 const NODE_MAX_R = 30;
 
+/* Under `lit serve` this page is /views/<slug>/ and the board sits at the root; standalone
+   (serve.py on 8001) there is nothing above it. Both ways back — the door in the header and
+   the per-paper handoff in the pin panel — are gated on this rather than pointing at a 404. */
+const SERVED = location.pathname.startsWith("/views/");
+/* The handoff itself: the board resolves ?goto= against its own payload (viewer/js/17-handoff),
+   so a citekey is the whole message. Same tab, like the ← board door beside it — the reader
+   asked to leave, and on a phone a new tab is a room with no way out. */
+const boardHref = (spec) => "/?goto=" + encodeURIComponent(spec);
+
 // ---------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------
@@ -680,6 +689,12 @@ function showPinPanel(n) {
   bits.push(info.curated ? `curated · pass ${info.pass}/4` : "stub");
   document.getElementById("pin-meta").textContent = bits.join(" · ");
   document.getElementById("pin-citekey").value = info.id;
+  // The citekey is the seam: the field is for copying it into a terminal, the link for taking it
+  // to the board. A stub gets the link too — "a big empty ring is the next paper to curate" is
+  // this view's headline reading, and the board mints a landing card for a stub on demand.
+  const go = document.getElementById("pin-board");
+  go.href = boardHref(info.id);
+  go.hidden = !SERVED;
   document.getElementById("pin-panel").classList.remove("hidden");
 }
 
@@ -867,12 +882,11 @@ main().catch((err) => {
   setStatus("error: " + err.message);
 });
 
-/* Under `lit serve` this page is /views/<slug>/ and the board sits at the root;
-   standalone (serve.py) there is nothing above it, so the link stays hidden
-   rather than pointing at a 404. On a phone this is the whole of the way back:
-   the board's menu opens views in the same tab on touch, so the back gesture
-   works too, but a visible door beats a remembered gesture. */
-if (location.pathname.startsWith('/views/')) {
+/* The way back (see SERVED at the top): standalone there is no board above this page, so the
+   link stays hidden rather than pointing at a 404. On a phone this is the whole of the way
+   back — the board's menu opens views in the same tab on touch, so the back gesture works too,
+   but a visible door beats a remembered gesture. */
+if (SERVED) {
   const back = document.getElementById('back');
   if (back) { back.href = '/'; back.hidden = false; }
 }

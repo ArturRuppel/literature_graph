@@ -289,6 +289,64 @@ def test_locate_quote_covers_a_hyphenated_line_break(tmp_path):
     assert fitz.open(p)[0].search_for("mechanostructural coupling") == []  # search_for alone can't
 
 
+def test_segments_splits_authored_joins_and_sup_markers():
+    from litgraph.serve import _segments
+    # an authored [...] elision is a boundary: the halves are separated in the PDF
+    assert _segments("the first half here [...] and the second half here") == [
+        "the first half here", "and the second half here"]
+    # a <sup> citation marker is one too — the PDF's text layer carries the numerals inline,
+    # so neither keeping nor dropping the markup yields a contiguous match
+    assert _segments("focal adhesion<sup>30-32</sup> , thereby indicating something") == [
+        "focal adhesion", ", thereby indicating something"]
+    # a plain contiguous quote is unchanged (one segment, matched exactly as before)
+    assert _segments("one plain contiguous sentence") == ["one plain contiguous sentence"]
+    # fragments too short to fingerprint are dropped rather than searched …
+    assert _segments("a long enough leading segment here [...] of") == [
+        "a long enough leading segment here"]
+    # … unless that leaves nothing, in which case the whole anchor still gets its one attempt
+    assert _segments("of") == ["of"]
+
+
+def test_locate_quote_unions_the_rects_of_a_joined_quote(tmp_path):
+    # a [...] join has NO contiguous match, so the whole-anchor matcher failed on every page and
+    # the old resolver fell through to the fragment backoff — boxing only the leading run and
+    # silently dropping the half of the sentence that carries the claim
+    from litgraph.serve import locate_quote
+    p = tmp_path / "joined.pdf"
+    with fitz.open() as doc:
+        pg = doc.new_page()
+        pg.insert_text((72, 100), "Even where no backbone permeates")
+        pg.insert_text((72, 140), "the tissue self-organizes a tension network")
+        doc.save(str(p))
+    q = "Even where no backbone permeates [...] the tissue self-organizes a tension network"
+    loc = locate_quote(p, q)
+    assert loc and loc["page"] == 0
+    assert len(loc["rects"]) == 2                     # BOTH segments boxed, not just the first
+    page = fitz.open(p)[0]
+    w, h = page.rect.width, page.rect.height
+    covered = " ".join(page.get_textbox(fitz.Rect(r[0] * w, r[1] * h, r[2] * w, r[3] * h))
+                       for r in loc["rects"])
+    assert "backbone" in covered and "tension network" in covered
+
+
+def test_locate_quote_prefers_the_page_carrying_the_most_segments(tmp_path):
+    # quote_loc holds ONE page, so a join straddling a page break cannot be fully represented.
+    # The bulk of the quote wins; a stranded segment contributes nothing rather than dragging
+    # the highlight onto a page the reader is not looking at.
+    from litgraph.serve import locate_quote
+    p = tmp_path / "split.pdf"
+    with fitz.open() as doc:
+        one = doc.new_page()
+        one.insert_text((72, 100), "the leading claim segment sits here")
+        one.insert_text((72, 140), "and a second segment joins it here")
+        two = doc.new_page()
+        two.insert_text((72, 100), "a lone trailing segment over here")
+        doc.save(str(p))
+    loc = locate_quote(p, "the leading claim segment sits here [...] and a second segment joins "
+                          "it here [...] a lone trailing segment over here")
+    assert loc and loc["page"] == 0 and len(loc["rects"]) == 2
+
+
 def test_search_finds_every_occurrence_including_across_a_line_break(tmp_path):
     # the find bar's matcher IS the quote resolver's, so a hyphenation seam and a line break are
     # invisible to it — and unlike the resolver it must return every occurrence, in document order

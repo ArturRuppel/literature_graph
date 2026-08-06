@@ -106,7 +106,7 @@ function paperCard(key, level){
     } else {
       if (p.authors) body += `<div class="cauth">`
         + (p.cited ? shortAuthLine(p.authors) : authLine(p.authors)) + `</div>`;
-      if (p.abs) body += `<div class="cabs">${p.abs}</div>`;   // shown inline only on touch (CSS); desktop reads it in the hover tip
+      if (p.abs) body += `<div class="cabs">${p.abs}</div>`;   // revealed inline by .card.open (CSS), desktop and touch alike — the hover tip carries the PDF thumbnail, not this
     }
     body += `<div class="slices"></div>`;   // filled by renderSlices from the drill state
   }

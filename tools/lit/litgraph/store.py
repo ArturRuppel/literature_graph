@@ -251,6 +251,39 @@ def _loc_cm(page: int, rects: list[list[float]]):
     return loc
 
 
+def _update_quote_loc_in_place(existing, loc) -> bool:
+    """Rewrite an existing `quote_loc` mapping's values *without replacing the node*.
+
+    `quote_loc` is normally the last key of a slice, so the curator's section header introducing
+    the NEXT slice ("# ── Pass-2 borrowed framing (intro citation walls) ──") is attached by
+    ruamel to the end of this block — concretely to the `rects` sequence's `ca.end`, that being
+    the last node before it. Assigning `slice_map["quote_loc"] = <fresh CommentedMap>` therefore
+    drops the comment along with the node carrying it: `lit locate --force` over the repo deleted
+    a few hundred lines of curation reasoning while reporting only that it had written
+    quote_locs. Load/dump alone is byte-identical — that one assignment was the whole leak.
+
+    Transplanting the salvaged CommentToken onto the replacement does not work: the token keeps
+    the line/column of the document it was parsed from, and the emitter silently declines to
+    place it. Keeping the original objects and swapping only their *contents* sidesteps the
+    question — the comment never moves, so nothing has to know where it belongs.
+
+    Returns False when the existing value isn't the shape we expect (hand-written scalar, missing
+    `rects`), leaving the caller to fall back to plain assignment.
+    """
+    if not (hasattr(existing, "get") and hasattr(existing.get("rects"), "__setitem__")):
+        return False
+    existing["page"] = loc["page"]
+    rects = existing["rects"]
+    rects[:] = loc["rects"]              # same CommentedSeq object, new contents
+    # Per-index comments inside the old rects list would now point at rows that no longer exist.
+    # There are normally none (the block is machine-written), but a stale index is how a comment
+    # ends up welded to the wrong rect, so drop any that fell off the end.
+    stale = [i for i in getattr(existing["rects"].ca, "items", {}) if isinstance(i, int) and i >= len(rects)]
+    for i in stale:
+        del existing["rects"].ca.items[i]
+    return True
+
+
 def _place_quote_loc(slice_map, loc) -> None:
     """Set `quote_loc` on `slice_map`, positioned right after `quote` rather than appended at
     the tail of the mapping.
@@ -265,7 +298,8 @@ def _place_quote_loc(slice_map, loc) -> None:
     re-`locate` doesn't churn the diff.
     """
     if "quote_loc" in slice_map:
-        slice_map["quote_loc"] = loc
+        if not _update_quote_loc_in_place(slice_map["quote_loc"], loc):
+            slice_map["quote_loc"] = loc
         return
     if "quote" in slice_map:
         idx = list(slice_map).index("quote")

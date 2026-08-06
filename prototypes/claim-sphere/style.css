@@ -302,6 +302,16 @@ sphere-view {
 /* with nothing selected the citekey slot is empty — without this it still
    paints its own little grey tile */
 .sel-meta code:empty { display: none; }
+/* the handoff, under the key it hands off: an action among facts, so it gets its own line. The
+   accent is the chrome's door colour — `.back` already wears it — and the "red means exactly one
+   thing" rule (§3.3) governs the figure, where no link ever appears. */
+.sel-go {
+  display: block; margin-top: 8px; font-size: 11.5px; font-weight: 700;
+  color: var(--accent); text-decoration: none;
+  touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+}
+.sel-go:hover { text-decoration: underline; }
+.sel-go[hidden] { display: none; }
 
 /* ── narrow screens ───────────────────────────────────────────────────────────
    Two axes, deliberately separate. Layout keys off width (a 296px settings
