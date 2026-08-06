@@ -542,10 +542,17 @@ class _Handler(BaseHTTPRequestHandler):
         n = int(self.headers.get("Content-Length", 0))
         return json.loads(self.rfile.read(n) or b"{}")
 
-    # POSTs that change state on the host: two write into the data repo, one spawns a process.
-    # /resolve and /focus are absent deliberately — the first is a pure function of a PDF, the
-    # second moves an in-memory pointer that dies with the server.
-    _MUTATING = frozenset({"/quote_loc", "/active", "/term"})
+    # What a mirror must refuse: /quote_loc writes curated/*.yaml, which is *synced* content —
+    # an edit there survives only until the next push overwrites it. /term spawns a process.
+    #
+    # /active is deliberately NOT here, though it writes too. It writes config.toml, which every
+    # sync excludes precisely because it is host-local, so a mirror's worklist is its own and
+    # nothing clobbers it. The in-progress zone is viewer state, not library content, and being
+    # able to shuffle it from the couch is most of why the mirror exists.
+    #
+    # /resolve and /focus are absent for a different reason: the first is a pure function of a
+    # PDF, the second moves an in-memory pointer that dies with the server.
+    _MUTATING = frozenset({"/quote_loc", "/term"})
 
     def do_POST(self) -> None:  # noqa: N802 (http.server API)
         path = unquote(urlparse(self.path).path)

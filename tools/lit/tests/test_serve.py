@@ -854,17 +854,28 @@ def ro_srv(repo):
     s.server_close()
 
 
-def test_read_only_refuses_every_endpoint_that_changes_the_host(ro_srv, repo):
-    """Two write the repo, one spawns a process. A mirror is one `git pull` from losing any
-    local edit, so the write must be refused rather than made and then clobbered."""
+def test_read_only_refuses_writes_to_synced_content_and_process_spawns(ro_srv, repo):
+    """A mirror's curated/ is overwritten by the next push, so a write there is a lie — refuse
+    it rather than accept it and lose it. /term spawns a process and has no business on a host
+    nobody is sitting at."""
     before = (repo / "curated" / "Chen2021Sys.yaml").read_text()
     for path, payload in (("/quote_loc", {"citekey": "Chen2021Sys", "slice_id": "c1",
                                           "page": 0, "rects": [[1, 1, 2, 2]]}),
-                          ("/active", {"citekey": "Chen2021Sys", "active": True}),
                           ("/term", {"citekey": "Chen2021Sys", "attach": False})):
         status, _ = post(ro_srv, path, payload)
         assert status == 405, path
     assert (repo / "curated" / "Chen2021Sys.yaml").read_text() == before
+
+
+def test_read_only_still_moves_papers_in_and_out_of_the_worklist(ro_srv, repo):
+    """config.toml is host-local — every sync excludes it — so the mirror's in-progress zone is
+    its own and no push can clobber it. Curating from the couch is most of the point."""
+    status, body = post(ro_srv, "/active", {"citekey": "Chen2021Sys", "active": True})
+    assert status == 200 and body["ok"] and "Chen2021Sys" in body["active"]
+    assert "Chen2021Sys" in (repo / "config.toml").read_text()
+
+    status, body = post(ro_srv, "/active", {"citekey": "Chen2021Sys", "active": False})
+    assert status == 200 and "Chen2021Sys" not in body["active"]
 
 
 def test_read_only_still_reads_and_still_resolves_quotes(ro_srv):
