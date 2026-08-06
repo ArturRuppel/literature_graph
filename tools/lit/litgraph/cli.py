@@ -128,6 +128,9 @@ def main(argv: list[str] | None = None) -> int:
     p_srv.add_argument("--pdf-dir", default=None,
                        help="dir holding <citekey>.pdf files "
                             "(default: config.toml pdf_dir, else <root>/pdfs)")
+    p_srv.add_argument("--read-only", action="store_true",
+                       help="refuse the endpoints that write the repo or spawn an agent "
+                            "(for a mirror serving a checkout it does not author)")
 
     p_foc = sub.add_parser("focus", help="aim a running `lit serve` PDF pane at a quote "
                                          "(curation: mark a passage in the human's view)")
@@ -357,7 +360,8 @@ def main(argv: list[str] | None = None) -> int:
             print(f"error: {e}", file=sys.stderr)
             return 1
         try:
-            serve(cfg.root, pdf_dir, host=args.host, port=args.port)
+            serve(cfg.root, pdf_dir, host=args.host, port=args.port,
+                  read_only=args.read_only)
         except OSError as e:
             print(f"error: {e}", file=sys.stderr)
             return 1

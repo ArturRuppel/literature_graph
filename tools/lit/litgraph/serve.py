@@ -29,6 +29,7 @@ import re
 import shlex
 import shutil
 import subprocess
+import threading
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -187,13 +188,54 @@ def _data_version(root: Path) -> int:
     return latest
 
 
+def _source_version(root: Path, pdf_dir: Path) -> tuple[int, int]:
+    """Everything `payload_dict` reads, as a cheap (max mtime ns, file count) fingerprint.
+
+    Wider than `_data_version`, which covers only what the cockpit card watches: the payload
+    also comes from claims|questions|methods/, topics/, programme/aims/, config.toml's active
+    list, and the `.md` full text quotes are polished against. Keying a cache on the narrow
+    version would serve a stale graph after a broad-claim edit — silently, which is the worst
+    way to be wrong about a graph.
+
+    The count rides along because a deletion *lowers* the max mtime, so mtime alone would call
+    a shrunken repo unchanged. ~600 stats, a millisecond, against a rebuild costing a second."""
+    latest, n = 0, 0
+    globs = [(root / d, "*.yaml") for d in
+             ("curated", "claims", "questions", "methods", "topics")]
+    globs.append((root / "programme" / "aims", "*.yaml"))
+    globs.append((pdf_dir, "*.md"))
+    paths = [root / "stubs.yaml", root / "config.toml"]
+    for d, pat in globs:
+        try:
+            paths.extend(d.glob(pat))
+        except OSError:
+            pass          # a missing optional dir just contributes nothing
+    for p in paths:
+        try:
+            latest, n = max(latest, p.stat().st_mtime_ns), n + 1
+        except OSError:
+            pass          # removed mid-glob: the next request restats and settles
+    return latest, n
+
+
 class _Server(ThreadingHTTPServer):
     daemon_threads = True
 
     def __init__(self, address, root: Path, pdf_dir: Path, term_cmd: list[str] | None = None,
-                 agent_cmd: tuple[list[str], Path] | None = None):
+                 agent_cmd: tuple[list[str], Path] | None = None, read_only: bool = False):
         self.root = Path(root)
         self.pdf_dir = Path(pdf_dir)
+        # A mirror serves a checkout it does not own — one `git pull` away from having any local
+        # edit clobbered. Read-only refuses the three endpoints that change state on the host
+        # rather than letting them write into a tree that will be overwritten.
+        self.read_only = read_only
+        # the built graph.json body, memoized against `_source_version`. `lit serve` rebuilds
+        # from YAML on every request by design — that is what makes edit-and-refresh work — but
+        # an unchanged repo rebuilding is pure waste, and on a small always-on host it is the
+        # difference between an instant refresh and a visible pause. The lock keeps a cold cache
+        # from being rebuilt once per concurrent request.
+        self._payload_cache: tuple[tuple[int, int], str] | None = None
+        self._payload_lock = threading.Lock()
         # argv prefix that opens a new terminal WINDOW running a command (e.g. ["kitty", "-e"]),
         # or None when no emulator was found. Curation's terminal is a real OS window, not an
         # embedded pane — POST /term spawns one per paper.
@@ -270,8 +312,20 @@ class _Handler(BaseHTTPRequestHandler):
                                       include_aims=include_aims, views=_available_views())
 
     def _payload(self) -> str:
-        """`_payload_dict` serialized — the graph.json body served at `/` and `/graph.json`."""
-        return json.dumps(self._payload_dict(), ensure_ascii=False)
+        """`_payload_dict` serialized — the graph.json body served at `/` and `/graph.json`.
+
+        Memoized on `_source_version`: a refresh with no edit behind it reuses the string, an
+        edit rebuilds. Only this path caches. The preview routes call `_payload_dict` directly
+        and stay uncached — they hand the dict to `isolate`, which is free to mutate it, and a
+        shared cached dict would leak one preview's edits into the next request."""
+        version = _source_version(self.server.root, self.server.pdf_dir)
+        with self.server._payload_lock:
+            cached = self.server._payload_cache
+            if cached is not None and cached[0] == version:
+                return cached[1]
+            body = json.dumps(self._payload_dict(), ensure_ascii=False)
+            self.server._payload_cache = (version, body)
+            return body
 
     def do_GET(self) -> None:  # noqa: N802 (http.server API)
         path = unquote(urlparse(self.path).path)
@@ -488,8 +542,16 @@ class _Handler(BaseHTTPRequestHandler):
         n = int(self.headers.get("Content-Length", 0))
         return json.loads(self.rfile.read(n) or b"{}")
 
+    # POSTs that change state on the host: two write into the data repo, one spawns a process.
+    # /resolve and /focus are absent deliberately — the first is a pure function of a PDF, the
+    # second moves an in-memory pointer that dies with the server.
+    _MUTATING = frozenset({"/quote_loc", "/active", "/term"})
+
     def do_POST(self) -> None:  # noqa: N802 (http.server API)
         path = unquote(urlparse(self.path).path)
+        if self.server.read_only and path in self._MUTATING:
+            return self._send(HTTPStatus.METHOD_NOT_ALLOWED, "text/plain; charset=utf-8",
+                              f"read-only server: {path} is disabled\n".encode())
         try:
             if path == "/resolve":
                 body = self._read_json()
@@ -581,10 +643,11 @@ class _Handler(BaseHTTPRequestHandler):
 
 def make_server(root: Path, pdf_dir: Path, host: str = "127.0.0.1",
                 port: int = 0, term_cmd: list[str] | None = None,
-                agent_cmd: tuple[list[str], Path] | None = None) -> _Server:
+                agent_cmd: tuple[list[str], Path] | None = None,
+                read_only: bool = False) -> _Server:
     """Bind (port 0 = ephemeral) but don't serve yet — the caller runs serve_forever()."""
     return _Server((host, port), root=root, pdf_dir=pdf_dir, term_cmd=term_cmd,
-                   agent_cmd=agent_cmd)
+                   agent_cmd=agent_cmd, read_only=read_only)
 
 
 # Terminal emulators tried in order, with the argument that makes each run a command in a fresh
@@ -676,18 +739,26 @@ def attach_terminal(term_cmd: list[str], session: str) -> subprocess.Popen:
         raise RuntimeError(f"could not open the curation terminal: {exc}") from exc
 
 
-def serve(root: Path, pdf_dir: Path, host: str = "127.0.0.1", port: int = 8000) -> None:
+def serve(root: Path, pdf_dir: Path, host: str = "127.0.0.1", port: int = 8000,
+          read_only: bool = False) -> None:
     """Serve until interrupted, announcing the URL. Raises OSError if the port is taken. Curation
     opens three real OS windows (card · PDF · terminal); the browser opens the first two itself and
     asks the server (POST /term) for the third. Phone uses the same endpoint to spawn the agent
-    detached while keeping card + PDF together, so Switchboard is useful even without an emulator."""
-    term = terminal_cmd()
-    agent = switchboard_cmd()
-    srv = make_server(root, pdf_dir, host=host, port=port, term_cmd=term, agent_cmd=agent)
+    detached while keeping card + PDF together, so Switchboard is useful even without an emulator.
+
+    `read_only` is the mirror's mode: a host serving a checkout it does not author. It refuses the
+    state-changing POSTs and skips discovering a terminal and Switchboard entirely, so the viewer
+    is told there is no curation cockpit rather than offering buttons that 405."""
+    term = None if read_only else terminal_cmd()
+    agent = None if read_only else switchboard_cmd()
+    srv = make_server(root, pdf_dir, host=host, port=port, term_cmd=term, agent_cmd=agent,
+                      read_only=read_only)
     bound = srv.server_address
     print(f"serving {Path(root).resolve()} at http://{bound[0]}:{bound[1]}/")
     print(f"PDFs from {Path(pdf_dir).resolve()} — Ctrl-C to stop")
-    if term and agent:
+    if read_only:
+        print("  read-only — curation endpoints disabled")
+    elif term and agent:
         print(f"  curation terminal: Switchboard agent in {Path(term[0]).name}")
     else:
         missing = "terminal emulator" if not term else "Switchboard CLI"

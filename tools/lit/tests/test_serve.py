@@ -705,15 +705,17 @@ from litgraph import cli
 
 def test_cli_serve_wires_root_port_and_pdf_dir(repo, monkeypatch):
     calls = {}
-    monkeypatch.setattr(cli, "serve", lambda root, pdf_dir, host, port: calls.update(
-        root=Path(root), pdf_dir=Path(pdf_dir), host=host, port=port))
+    monkeypatch.setattr(cli, "serve", lambda root, pdf_dir, host, port, read_only: calls.update(
+        root=Path(root), pdf_dir=Path(pdf_dir), host=host, port=port, read_only=read_only))
     rc = cli.main(["serve", "--root", str(repo), "--host", "100.64.0.1", "--port", "0"])
     assert rc == 0
     assert calls == {"root": repo, "pdf_dir": repo / "pdfs",
-                     "host": "100.64.0.1", "port": 0}
+                     "host": "100.64.0.1", "port": 0, "read_only": False}
     rc = cli.main(["serve", "--root", str(repo), "--pdf-dir", str(repo / "elsewhere")])
     assert (rc == 0 and calls["pdf_dir"] == repo / "elsewhere"
             and calls["host"] == "127.0.0.1" and calls["port"] == 8000)
+    rc = cli.main(["serve", "--root", str(repo), "--read-only"])
+    assert rc == 0 and calls["read_only"] is True
 
 
 def test_cli_focus_posts_to_running_server(srv, capsys):
@@ -838,3 +840,69 @@ def test_the_hud_carries_the_aims_pill(srv):
     body = get(srv, "/")[2]
     assert b'id="aims"' in body and b'id="aimPanel"' in body
     assert b'aims.json' in body
+
+
+# ── the mirror: read-only mode and the payload cache ──────────────────────────────────────
+
+@pytest.fixture()
+def ro_srv(repo):
+    """A server in mirror mode — serving a checkout it does not author."""
+    s = make_server(repo, repo / "pdfs", read_only=True)
+    threading.Thread(target=s.serve_forever, daemon=True).start()
+    yield s
+    s.shutdown()
+    s.server_close()
+
+
+def test_read_only_refuses_every_endpoint_that_changes_the_host(ro_srv, repo):
+    """Two write the repo, one spawns a process. A mirror is one `git pull` from losing any
+    local edit, so the write must be refused rather than made and then clobbered."""
+    before = (repo / "curated" / "Chen2021Sys.yaml").read_text()
+    for path, payload in (("/quote_loc", {"citekey": "Chen2021Sys", "slice_id": "c1",
+                                          "page": 0, "rects": [[1, 1, 2, 2]]}),
+                          ("/active", {"citekey": "Chen2021Sys", "active": True}),
+                          ("/term", {"citekey": "Chen2021Sys", "attach": False})):
+        status, _ = post(ro_srv, path, payload)
+        assert status == 405, path
+    assert (repo / "curated" / "Chen2021Sys.yaml").read_text() == before
+
+
+def test_read_only_still_reads_and_still_resolves_quotes(ro_srv):
+    """The point of the mirror is browsing: the graph, the PDFs and quote geometry all work."""
+    assert get(ro_srv, "/")[0] == 200
+    assert get(ro_srv, "/pdf/Chen2021Sys.pdf")[0] == 200
+    status, loc = post(ro_srv, "/resolve", {"citekey": "Chen2021Sys", "quote": "fixture paper"})
+    assert status == 200 and loc["page"] == 0
+
+
+def test_read_only_offers_no_curation_cockpit(repo):
+    """No terminal, no agent — the viewer shouldn't render buttons that would 405."""
+    s = make_server(repo, repo / "pdfs", read_only=True)
+    assert s.term_cmd is None and s.agent_cmd is None
+
+
+def test_the_payload_is_rebuilt_once_until_a_source_changes(srv, repo, monkeypatch):
+    """`lit serve` rebuilds from YAML per request by design; an *unchanged* repo rebuilding is
+    pure waste, and on a small always-on host it is a visible pause on every refresh."""
+    from litgraph import endpoints
+    builds = []
+    real = endpoints.payload_dict
+    monkeypatch.setattr(endpoints, "payload_dict",
+                        lambda *a, **k: (builds.append(1), real(*a, **k))[1])
+    assert get(srv, "/")[0] == 200 and len(builds) == 1
+    assert get(srv, "/graph.json")[0] == 200 and len(builds) == 1   # served from the cache
+
+    f = repo / "claims" / "batching-adds-latency.yaml"
+    f.write_text(f.read_text())                      # touch a *broad* claim, not curated/
+    assert get(srv, "/")[0] == 200 and len(builds) == 2
+
+    # a file can appear *older* than everything already there, so the count has to be part of
+    # the key — max mtime alone would call this repo unchanged. `.md` full text is the safe
+    # lever: quote polishing falls back to the raw anchor, so adding/removing one can't fail
+    # validation and muddy what the test is actually measuring.
+    md = repo / "pdfs" / "Chen2021Sys.md"
+    md.write_text("fixture paper\n")
+    os.utime(md, (0, 0))
+    assert get(srv, "/")[0] == 200 and len(builds) == 3
+    md.unlink()                                      # …and a deletion lowers the max mtime
+    assert get(srv, "/")[0] == 200 and len(builds) == 4
