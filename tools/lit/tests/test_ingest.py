@@ -209,7 +209,7 @@ def test_reference_list_falls_back_to_the_printed_dois(workspace, monkeypatch):
                     for i, d in enumerate(printed))
           # journal footer repeats the focal DOI inside the section — must not self-cite
           + f"Cite this article as Cold Spring Harb Perspect Biol 2026. doi:{focal_doi}\n")
-    monkeypatch.setattr("litgraph.ingest.to_markdown", lambda p: md)
+    monkeypatch.setattr("litgraph.ingest.to_markdown_report", lambda p: (md, ()))
 
     # Crossref carries the focal metadata but only a DOI-less reference -> referenced_dois empty.
     cr = _crossref_focal(focal_doi, [], venue="Cold Spring Harb Perspect Biol", year=2026)
@@ -223,8 +223,8 @@ def test_reference_list_falls_back_to_the_printed_dois(workspace, monkeypatch):
 
 def test_fulltext_fallback_stays_off_when_an_api_carries_refs(workspace, monkeypatch):
     root, pdf = workspace
-    monkeypatch.setattr("litgraph.ingest.to_markdown",
-                        lambda p: "## REFERENCES\n\n- X. 2020. T. J 1: 1. doi:10.9999/decoy\n")
+    monkeypatch.setattr("litgraph.ingest.to_markdown_report",
+                        lambda p: ("## REFERENCES\n\n- X. 2020. T. J 1: 1. doi:10.9999/decoy\n", ()))
     r = ingest(str(pdf), root=root, openalex=_openalex(), crossref=_crossref())
     assert r.refs_from_fulltext is False
     assert len(r.stubs_added) == 3                    # the OpenAlex list, not the decoy
@@ -303,7 +303,7 @@ def test_reference_scan_reuses_the_stored_markdown(workspace, monkeypatch):
     def boom(_path):
         raise AssertionError("re-extracted the PDF instead of reading the stored .md")
 
-    monkeypatch.setattr("litgraph.ingest.to_markdown", boom)
+    monkeypatch.setattr("litgraph.ingest.to_markdown_report", boom)
     cr = _crossref_focal(focal_doi, [], venue="Cold Spring Harb Perspect Biol", year=2025)
     # citekey must land on the stored stem for the reuse to kick in
     monkeypatch.setattr("litgraph.ingest.make_citekey",
@@ -340,7 +340,7 @@ def test_abstract_falls_back_to_the_full_text(workspace, monkeypatch):
             "and for both cell lines. We conclude that the two routes cannot be separated by "
             "junction perturbation alone, which is how the field has been reading these data.")
     md = f"## LETTER\n\n## A Title\n\n## Abstract\n\n{body}\n\n## Introduction\n\nOther text here.\n"
-    monkeypatch.setattr("litgraph.ingest.to_markdown", lambda p: md)
+    monkeypatch.setattr("litgraph.ingest.to_markdown_report", lambda p: (md, ()))
 
     r = ingest(str(pdf), root=root, openalex=_openalex_without_abstract(), crossref=_crossref())
 
@@ -358,9 +358,9 @@ def test_abstract_from_metadata_skips_the_fallback(workspace, monkeypatch):
 
     def record(path):
         calls.append(path)
-        return "## A Title\n\nfull text\n"
+        return "## A Title\n\nfull text\n", ()
 
-    monkeypatch.setattr("litgraph.ingest.to_markdown", record)
+    monkeypatch.setattr("litgraph.ingest.to_markdown_report", record)
 
     r = ingest(str(pdf), root=root, openalex=_openalex(), crossref=_crossref())
 
@@ -371,7 +371,8 @@ def test_abstract_from_metadata_skips_the_fallback(workspace, monkeypatch):
 def test_warns_when_no_abstract_can_be_found_anywhere(workspace, monkeypatch):
     """Silence is the bug being fixed: a curated file with no abstract must say so."""
     root, pdf = workspace
-    monkeypatch.setattr("litgraph.ingest.to_markdown", lambda p: "## A Title\n\ncolumns interleaved\n")
+    monkeypatch.setattr("litgraph.ingest.to_markdown_report",
+                        lambda p: ("## A Title\n\ncolumns interleaved\n", ()))
 
     r = ingest(str(pdf), root=root, openalex=_openalex_without_abstract(), crossref=_crossref())
 

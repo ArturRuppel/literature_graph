@@ -220,6 +220,28 @@ def test_validate_answers_must_target_a_question():
     validate({"P1": ok, "Stub2019Conf": stub}, _B)   # no raise
 
 
+def test_validate_kind_coherence_resolves_the_target_not_its_id_prefix():
+    """Local ids are curator-assigned and have drifted past SCHEMA §3's `^[cqm]\\d+$`: the
+    library uses `oq*` for an open question and `b*` for a borrowed claim. Kind coherence
+    reads the resolved target's kind, so those cross-paper edges are legal — which is what
+    the meta read draws (an open question closes when some paper's claim `answers` it) —
+    while a genuine kind mismatch is still caught, now by kind rather than by spelling."""
+    src = _paper("P2", Slice(id="c1", kind="claim", text="the answer",
+                             answers=["P1:oq1"], contradicts=["P1:b4"]))
+    tgt = _paper("P1",
+                 Slice(id="oq1", kind="question", text="an open question"),
+                 Slice(id="b4", kind="claim", text="a borrowed claim"))
+    validate({"P1": tgt, "P2": src}, _B)          # no raise
+
+    # and the mismatch is still an error, reported as a kind and not as a prefix
+    bad = _paper("P2", Slice(id="c1", kind="claim", text="x", answers=["P1:b4"]))
+    with pytest.raises(BuildError, match="is a claim, not a question"):
+        validate({"P1": tgt, "P2": bad}, _B)
+    bad2 = _paper("P2", Slice(id="c1", kind="claim", text="x", corroborates=["P1:oq1"]))
+    with pytest.raises(BuildError, match="is a question, not a claim"):
+        validate({"P1": tgt, "P2": bad2}, _B)
+
+
 def test_validate_lateral_must_target_a_claim_or_container():
     p = _paper("P1",
                Slice(id="q1", kind="question", text="?"),

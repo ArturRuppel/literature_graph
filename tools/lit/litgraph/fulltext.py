@@ -10,7 +10,62 @@ import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+import pymupdf
 import pymupdf4llm
+from pymupdf4llm.helpers import document_layout as _pmu_layout
+from pymupdf4llm.helpers import utils as _pmu_utils
+
+# pymupdf4llm's layout FLAGS omit TEXT_CID_FOR_UNKNOWN_UNICODE, which MuPDF's own get_text()
+# default (TEXTFLAGS_TEXT) sets. Without it, a PDF whose fonts are subsetted with a Custom
+# encoding and no ToUnicode CMap — routine in pre-2005 publisher PDFs — extracts as U+FFFD for
+# nearly every glyph: Trappe2001Nature came out 88% replacement characters and was silently
+# written to the library as an unreadable .md. The flag makes MuPDF fall back to the glyph's
+# CID when it cannot resolve a Unicode value, which recovers the real characters. Set on both
+# helper modules because to_markdown reads whichever module-level FLAGS its path goes through.
+for _mod in (_pmu_utils, _pmu_layout):
+    _mod.FLAGS |= pymupdf.TEXT_CID_FOR_UNKNOWN_UNICODE
+
+# The same legacy PDFs recover their characters but not their *encoding*: the Advent/Type-1C
+# fonts Nature used around 2001 sit "fi" at 0xAE, "fl" at 0xAF, "=" at 0x88, an en dash at 0xB1
+# and an em dash at 0xD0, so correctly-extracted text still reads "®xed", "re¯ects", "B \x88 0"
+# and "139±141". These are glyph-slot collisions, not damage — the mapping is one-to-one and
+# recoverable, unlike the fused words `_artifacts` only flags. Repaired rather than warned
+# because a curator cannot quote "®xed" into the graph and have it mean anything.
+#
+# Deliberately NOT in this table: this family also sits "." at ":" and "×" at "3", so the same
+# PDFs render numbers as "0:053" and "1:5 3 10". Those slots collide with characters that occur
+# legitimately on every page, so no context-free substitution is safe. Numeric quotes from such
+# a paper stay mangled and must be checked against the PDF by eye — see `legacy_glyph_damage`.
+LEGACY_GLYPHS = {"\u00ae": "fi", "\u00af": "fl", "\x88": "=", "\u00b1": "\u2013", "\u00d0": "\u2014"}
+# Signatures no correctly-encoded paper produces: a C1 control character in running text, or a
+# registered-trademark sign welded to a lowercase letter ("®xed"). A real ® follows a name and
+# is followed by space or punctuation, and a real ± by a digit or space — so gating on these two
+# keeps the repair off the 117 papers in the library that extract cleanly.
+_LEGACY_MARK = re.compile(r"\x88|\u00ae(?=[a-z])|\u00af(?=[a-z])")
+# What the repair cannot reach, for the warning: a digit-colon-digit decimal, or a bare "3" being
+# used as a multiplication sign between numbers.
+_LEGACY_MATH = re.compile(r"\d:\d|\d\s3\s\d")
+
+
+def is_legacy_encoded(text: str) -> bool:
+    """True if `text` shows the pre-2005 publisher-font glyph-slot collisions LEGACY_GLYPHS fixes."""
+    return bool(_LEGACY_MARK.search(text))
+
+
+def repair_legacy_glyphs(text: str) -> tuple[str, tuple[str, ...]]:
+    """`(repaired, residual)` — legacy glyph slots mapped back to the characters they render as,
+    plus samples of the mangling the table deliberately leaves alone (decimals read as colons,
+    multiplication signs read as "3") for the caller to warn about.
+
+    One pass, because the two halves cannot be split: repairing removes the very signature that
+    tells us the text is legacy-encoded, so the residual damage has to be sampled first. A no-op
+    returning `(text, ())` on every normally-encoded PDF, so it is safe to call on any text."""
+    if not is_legacy_encoded(text):
+        return text, ()
+    residual = tuple(dict.fromkeys(_LEGACY_MATH.findall(text)))[:5]
+    for slot, real in LEGACY_GLYPHS.items():
+        text = text.replace(slot, real)
+    return text, residual
 
 
 def _normalize(md: str) -> str:
@@ -23,8 +78,9 @@ def _normalize(md: str) -> str:
     return md.strip() + "\n"
 
 
-def to_markdown(pdf_path: str) -> str:
-    """Whole-PDF Markdown, normalized for verbatim-quote fidelity.
+def to_markdown_report(pdf_path: str) -> tuple[str, tuple[str, ...]]:
+    """`(markdown, residual)` — whole-PDF Markdown, normalized for verbatim-quote fidelity, plus
+    any legacy-encoding damage left unrepaired (see `repair_legacy_glyphs`) for the caller to warn on.
 
     `use_ocr=False` because pymupdf4llm's layout path defaults it *on* and decides per page,
     via a bundled model, whether to run tesseract. That costs us both ways: it needs tesseract
@@ -34,7 +90,13 @@ def to_markdown(pdf_path: str) -> str:
     notice and handle, not to silently guess at.
     """
     raw = pymupdf4llm.to_markdown(pdf_path, show_progress=False, use_ocr=False)
-    return _normalize(raw)
+    repaired, residual = repair_legacy_glyphs(raw)
+    return _normalize(repaired), residual
+
+
+def to_markdown(pdf_path: str) -> str:
+    """Whole-PDF Markdown, normalized for verbatim-quote fidelity. See `to_markdown_report`."""
+    return to_markdown_report(pdf_path)[0]
 
 
 # Author-supplied keyword line: `Keywords: a, b, c`, `Key words: …`, a markdown-header

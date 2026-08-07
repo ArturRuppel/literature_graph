@@ -27,7 +27,7 @@ from pathlib import Path
 
 import fitz  # pymupdf — a litgraph hard dependency
 
-from .fulltext import _normalize
+from .fulltext import _normalize, repair_legacy_glyphs
 
 JOIN = "[...]"          # authored non-contiguous marker in a stored quote (SCHEMA §6.4)
 JOIN_DISPLAY = " […] "  # how a join reads in the polished text
@@ -204,7 +204,12 @@ def _fold(text: str) -> str:
     PDF word-geometry matcher uses to *place* a quote_loc in the first place (pdfview.fold)
     — the two should agree on what "the same text" means. NFKD alone already expands the named
     ligatures (they carry a compatibility decomposition), the explicit table is just insurance for
-    any that a given Unicode version doesn't decompose that way."""
+    any that a given Unicode version doesn't decompose that way.
+
+    The legacy repair runs for the same reason it runs in `pdfview.fold`: this fold compares a
+    quote against text pulled straight from the PDF, which on a pre-2005 publisher PDF still
+    carries the raw glyph slots that ingest already repaired in the `.md`."""
+    text = repair_legacy_glyphs(text)[0]
     for lig, expansion in _LIGATURES.items():
         text = text.replace(lig, expansion)
     text = unicodedata.normalize("NFKD", text)

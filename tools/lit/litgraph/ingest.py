@@ -8,7 +8,7 @@ from pathlib import Path
 from . import pdf as pdfmod
 from . import store
 from .citekey import _norm_doi, make_citekey
-from .fulltext import extract_abstract, extract_reference_dois, to_markdown
+from .fulltext import extract_abstract, extract_reference_dois, to_markdown_report
 from .model import Author, CuratedPaper, Stub, Work, map_type
 from .roles import resolve_roles
 from .sources.crossref import Crossref
@@ -124,7 +124,7 @@ def _reference_text(pdf_path: str, citekey: str) -> str:
     stored = Path(pdf_path).with_name(f"{citekey}.md")
     if stored.is_file():
         return stored.read_text()
-    return to_markdown(pdf_path)
+    return to_markdown_report(pdf_path)[0]  # residual is warned about on the .md-writing path
 
 
 def _prefer_casing(local: str, canonical: str | None) -> str | None:
@@ -247,10 +247,11 @@ def ingest(
         # with no abstract and no complaint is how four papers reached the in-progress worklist
         # missing one, so every branch here says what happened.
         markdown: str | None = None
+        residual: tuple[str, ...] = ()
         if paper.abstract:
             report.abstract_source = report.metadata_source
         else:
-            markdown = to_markdown(pdf_path)
+            markdown, residual = to_markdown_report(pdf_path)
             hit = extract_abstract(markdown, families)
             if hit is None:
                 report.warnings.append(
@@ -284,7 +285,15 @@ def ingest(
             report.fulltext_path = str(Path(pdf_path).with_name(f"{citekey}.md"))
         else:
             if markdown is None:  # not already extracted for the abstract fallback above
-                markdown = to_markdown(str(md_source))
+                markdown, residual = to_markdown_report(str(md_source))
+            # Reported here rather than at extraction so it fires on both paths: the abstract
+            # fallback above may have done the pymupdf4llm pass already.
+            if residual:
+                report.warnings.append(
+                    "legacy publisher-font encoding: ligatures and dashes were repaired, but "
+                    "decimal points read as colons and multiplication signs as '3' "
+                    f"({', '.join(repr(s) for s in residual)}) — check any numeric quote "
+                    "against the PDF by eye")
             report.fulltext_path = str(store.write_fulltext(md_source, citekey, markdown, dry_run=False))
 
     added, deduped = store.merge_stubs(root, stubs, dry_run=dry_run)

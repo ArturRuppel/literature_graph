@@ -15,6 +15,8 @@ from pathlib import Path
 
 import fitz  # pymupdf — a litgraph hard dependency
 
+from .fulltext import repair_legacy_glyphs
+
 PREVIEW_WIDTH = 552  # px (2x the ~276px tooltip box — crisp on retina, still tiny)
 PAGE_WIDTH = 1600    # px — the widest rung: a desktop dock at full zoom
 _MAX_PX = 4_000_000  # cap rasterized pixels (oversized-mediabox guard)
@@ -159,7 +161,14 @@ def fold(s: str) -> str:
     dropping whitespace, hyphens and punctuation. That is what lets a match survive a line break,
     a hyphenation seam or an ``ﬁ`` ligature, none of which the reader can see in the text. It also
     makes matching substring-wise (``cell`` is inside ``excellent``) and drops non-Latin script
-    entirely, so a query of only Greek folds to nothing."""
+    entirely, so a query of only Greek folds to nothing.
+
+    Legacy glyph slots are repaired first (:func:`fulltext.repair_legacy_glyphs`). The ``.md`` a
+    quote was welded from has that repair applied at ingest, but the PDF this fold matches against
+    still carries the raw slots — without it a quote containing "fixed" folds to ``fixed`` on one
+    side and ``xed`` on the other (``®`` has no NFKD decomposition, so it is dropped as
+    punctuation), and every quote_loc on such a paper would silently fail to place."""
+    s = repair_legacy_glyphs(s)[0]
     return re.sub(r"[^0-9a-z]+", "", unicodedata.normalize("NFKD", s).lower())
 
 

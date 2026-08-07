@@ -161,3 +161,34 @@ def test_reference_dois_rejoin_breaks_but_stop_at_a_word_boundary():
     assert _stitch_doi("10.1101/x.a041794 originally published online") == "10.1101/x.a041794"
     assert _stitch_doi("not a doi at all") is None
     assert _stitch_doi("") is None
+
+
+# --- legacy publisher-font encoding (pre-2005 PDFs) ---------------------------------------
+
+def test_legacy_glyph_repair_maps_the_slots_and_reports_what_it_cannot():
+    from litgraph.fulltext import repair_legacy_glyphs
+    # Real Trappe2001Nature text: "fi"/"fl" sit at 0xAE/0xAF, "=" at 0x88, an en dash at 0xB1.
+    raw = "the plateau modulus at fc \x88 0:053 is ®xed and re¯ects f 139±141 at 1:5 3 10"
+    out, residual = repair_legacy_glyphs(raw)
+    assert "fixed" in out and "reflects" in out
+    assert "= 0" in out and "139–141" in out
+    # The two collisions with legitimate characters are left alone, and reported instead.
+    assert "0:053" in out and " 3 " in out
+    assert residual and any(":" in s for s in residual)
+
+
+def test_legacy_glyph_repair_is_a_no_op_on_normally_encoded_text():
+    from litgraph.fulltext import repair_legacy_glyphs
+    # A real ® follows a name and is followed by space/punctuation; a real ± precedes a digit.
+    clean = "Matrigel® was used; strain was 5.2 ± 0.3% at a 1:1 ratio, 3 replicates."
+    assert repair_legacy_glyphs(clean) == (clean, ())
+
+
+def test_both_folds_agree_across_the_legacy_repair():
+    """The `.md` is repaired at ingest but the PDF still holds the raw slots, so a quote must
+    fold identically from either side — otherwise every quote_loc on such a paper fails to place."""
+    from litgraph.pdfview import fold
+    from litgraph.quotes import _fold
+    assert fold("®xed") == fold("fixed")
+    assert fold("re¯ects") == fold("reflects")
+    assert _fold("the ®eld") == _fold("the field")

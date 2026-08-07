@@ -413,19 +413,22 @@ def validate(papers: dict[str, Paper], broad: dict[str, BroadNode],
             local_ids.add(s.id)
 
     broad_slugs = set(broad)
+    # Global slice registry, so a *sharpened* ref's kind can be resolved rather than guessed
+    # from its id prefix (see _resolve_slice). Built once, not per container.
+    by_gid = {f"{ck}:{t.id}": t for ck, c in containers.items() for t in c.slices}
     for ck, c in containers.items():
         local_ids = {s.id for s in c.slices}
         by_id = {t.id: t for t in c.slices}
         for s in c.slices:
             # Authoring-site rules first: they hold whether or not the ref resolves, and
             # their messages point at the right fix.
-            _check_programme_kinds(ck, s, by_id)
+            _check_programme_kinds(ck, s, by_id, by_gid)
             for field_name in _EDGE_FIELDS:
                 for r in getattr(s, field_name):
                     if not _ref_resolves(r, local_ids, broad_slugs, containers):
                         raise BuildError(
                             f"{ck}:{s.id} {field_name} -> dangling ref {r!r}")
-            _check_kinds(ck, s, broad, by_id)
+            _check_kinds(ck, s, broad, by_id, by_gid)
 
     _validate_broad_ladder(broad)
 
@@ -462,12 +465,34 @@ def _validate_broad_ladder(broad: dict[str, BroadNode]) -> None:
         walk(slug, [])
 
 
-def _target_id(ref: str, kind: str) -> str:
-    """The slice-id part of a local/sharpened ref (its kind is readable off the prefix)."""
-    return ref.split(":", 1)[1] if kind == "sharpened" else ref
+def _resolve_slice(ref: str, kind: str, by_id: dict[str, Slice],
+                   by_gid: dict[str, Slice]) -> Slice | None:
+    """The Slice a local/sharpened ref points at; None for any other ref form.
+
+    Kind coherence reads the *resolved target's* kind, never the id's prefix. Local ids are
+    curator-assigned and the vocabulary has drifted past SCHEMA §3's `^[cqm]\\d+$`: six papers
+    use `b*` for a borrowed claim and `oq*` for an open question, which is informative
+    authoring, not an error. Sniffing the prefix made `answers` and the laterals reject exactly
+    the cross-paper edges the meta read exists to draw (CURATION.md: an open question "closes on
+    its own the day some paper's claim `answers` it") — while `leads_to`, ten lines up, resolved
+    its target properly and accepted the same ids. One rule, one implementation.
+
+    None means "no slice to read a kind off": a container wildcard or broad slug (never a
+    slice), or a sharpened ref whose slice is not present — which _ref_resolves permits,
+    since it checks only that the *container* exists. That is deliberate for a stub (the
+    wildcard sharpens ahead of curation: `answers: [Stub2019Conf:q1]` is authored before
+    Stub2019Conf has any slices) and it also means a typo'd id passes unchecked. Unchanged
+    either way — the prefix sniff could not tell those apart either — so callers skip on None
+    rather than treating it as a kind mismatch."""
+    if kind == "local":
+        return by_id.get(ref)
+    if kind == "sharpened":
+        return by_gid.get(ref)
+    return None
 
 
-def _check_programme_kinds(ck: str, s: Slice, by_id: dict[str, Slice]) -> None:
+def _check_programme_kinds(ck: str, s: Slice, by_id: dict[str, Slice],
+                           by_gid: dict[str, Slice]) -> None:
     """The programme-only half of kind coherence (programme design §9.1–9.4)."""
     for field_name in ("discriminates", "enabled_by"):
         if getattr(s, field_name) and s.kind != "test":
@@ -494,19 +519,21 @@ def _check_programme_kinds(ck: str, s: Slice, by_id: dict[str, Slice]) -> None:
             "separates nothing is plain grounding — author it as that claim's "
             "`grounded_in: " + s.id + "` instead")
     for r in s.discriminates:
-        kind = classify_ref(r)
-        if kind in ("local", "sharpened") and not _target_id(r, kind).startswith("c"):
-            raise BuildError(f"{ck}:{s.id} discriminates -> {r!r} does not target a claim")
+        target = _resolve_slice(r, classify_ref(r), by_id, by_gid)
+        if target is not None and target.kind != "claim":
+            raise BuildError(f"{ck}:{s.id} discriminates -> {r!r} is a {target.kind}, "
+                             "not a claim")
     for r in s.enabled_by:
         kind = classify_ref(r)
         if kind not in ("local", "sharpened"):
             raise BuildError(f"{ck}:{s.id} enabled_by -> {r!r} must name a capability slice")
-        if not _target_id(r, kind).startswith("k"):
+        target = _resolve_slice(r, kind, by_id, by_gid)
+        if target is None or target.kind != "capability":
             raise BuildError(f"{ck}:{s.id} enabled_by -> {r!r} is not a capability")
 
 
 def _check_kinds(ck: str, s: Slice, broad: dict[str, BroadNode],
-                 by_id: dict[str, Slice]) -> None:
+                 by_id: dict[str, Slice], by_gid: dict[str, Slice]) -> None:
     """SCHEMA §6.6 kind coherence, structurally: `leads_to` targets a same-kind broad slug
     *or* a same-kind local slice (a same-paper generalization ladder — a specific claim
     laddering up into a broader local claim). A cross-paper ref here has no home (it would
@@ -539,16 +566,20 @@ def _check_kinds(ck: str, s: Slice, broad: dict[str, BroadNode],
         if kind == "broad" and broad[r].kind != "broad question":
             raise BuildError(f"{ck}:{s.id} answers -> {r!r} is a {broad[r].kind}, "
                              "not a question")
-        if kind in ("local", "sharpened") and not _target_id(r, kind).startswith("q"):
-            raise BuildError(f"{ck}:{s.id} answers -> {r!r} does not target a question")
+        target = _resolve_slice(r, kind, by_id, by_gid)
+        if target is not None and target.kind != "question":
+            raise BuildError(f"{ck}:{s.id} answers -> {r!r} is a {target.kind}, "
+                             "not a question")
     for field_name in ("corroborates", "contradicts"):
         for r in getattr(s, field_name):
             kind = classify_ref(r)
             if kind == "broad" and broad[r].kind != "broad claim":
                 raise BuildError(f"{ck}:{s.id} {field_name} -> {r!r} is a "
                                  f"{broad[r].kind}, not a claim")
-            if kind in ("local", "sharpened") and not _target_id(r, kind).startswith("c"):
-                raise BuildError(f"{ck}:{s.id} {field_name} -> {r!r} does not target a claim")
+            target = _resolve_slice(r, kind, by_id, by_gid)
+            if target is not None and target.kind != "claim":
+                raise BuildError(f"{ck}:{s.id} {field_name} -> {r!r} is a "
+                                 f"{target.kind}, not a claim")
     if s.floor_flag and s.kind != "claim":
         raise BuildError(f"{ck}:{s.id} floor: true is only valid on a claim (SCHEMA §6.6)")
 
