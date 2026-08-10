@@ -14,6 +14,23 @@ def test_classify_ref_forms():
     assert classify_ref("buffering-has-costs") == "broad"
 
 
+def test_classify_ref_borrowed_and_open_prefixes():
+    """`b` (borrowed claim) and `oq` (open question) are canonical local ids (SCHEMA §3).
+
+    `oq` is the one that can go wrong: two characters, and a bare kebab-case word is exactly
+    what a broad slug looks like, so an alternation testing the single-char class first would
+    silently reclassify every open question as a broad node -- a dangling ref at build time."""
+    assert classify_ref("b1") == "local"
+    assert classify_ref("b12") == "local"
+    assert classify_ref("oq1") == "local"
+    assert classify_ref("oq10") == "local"
+    assert classify_ref("Petridou2021Cell:oq3") == "sharpened"
+    assert classify_ref("Petridou2021Cell:b7") == "sharpened"
+    # still a slug when it is not prefix+number
+    assert classify_ref("open-questions") == "broad"
+    assert classify_ref("boundary-stiffness") == "broad"
+
+
 def test_classify_ref_venueless_citekey():
     """Books and monographs carry no venue segment; they are still containers, not slugs."""
     assert classify_ref("Weaire2000") == "container"
@@ -333,11 +350,11 @@ def test_build_graph_example():
     # c1 grounds in m1 -> grounded + original
     assert by_id["c1"].grounded is True and by_id["c1"].borrowed is False
     assert by_id["c1"].color == "grounded"
-    # c4 grounds in a citation -> borrowed
-    assert by_id["c4"].borrowed is True and by_id["c4"].color == "borrowed"
-    # q2 answered (c4 answers it), q1 open
-    assert by_id["q2"].answered is True
-    assert by_id["q1"].answered is False
+    # b1 grounds in a citation -> borrowed; the prefix agrees, but is not what computes it
+    assert by_id["b1"].borrowed is True and by_id["b1"].color == "borrowed"
+    # q1 answered (b1 answers it), oq1 open
+    assert by_id["q1"].answered is True
+    assert by_id["oq1"].answered is False
     # top-altitude claims become the head (no outgoing leads_to) -- c3 has only contradicts
     assert p.head  # non-empty
     # broad-claim meter (example: 2 support via Chen c1 + Kumar c1 leads_to, 1 contradict via Chen c3)

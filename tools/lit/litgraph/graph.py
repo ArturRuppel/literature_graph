@@ -32,7 +32,7 @@ _REF_FIELD_FLOW = re.compile(
     r"\s*:\s*\[([^\]]*)\]"
 )
 _BARE_SHARPENED_REF = re.compile(
-    r"""(?<!["'\w])(@?[A-Za-z][A-Za-z0-9-]*\d{0,4}[A-Za-z0-9-]*:[cqmtk]\d+)(?!["'\w])"""
+    r"""(?<!["'\w])(@?[A-Za-z][A-Za-z0-9-]*\d{0,4}[A-Za-z0-9-]*:(?:oq|[bcqmtk])\d+)(?!["'\w])"""
 )
 
 
@@ -88,7 +88,13 @@ def load_yaml(path: Path) -> dict:
         raise BuildError(f"{path}: {e}") from e
 
 
-_LOCAL = re.compile(r"^[cqmtk]\d+$")    # c claim · q question · m method · t test · k capability
+_LOCAL = re.compile(r"^(?:oq|[bcqmtk])\d+$")    # c claim · b borrowed claim · q question ·
+                                        # oq open question · m method · t test · k capability.
+                                        # `b`/`oq` are the curator's reading (SCHEMA §3) and are
+                                        # never read by the resolver: kind coherence asks the
+                                        # resolved target's kind, so b3 and c3 validate alike.
+                                        # `oq` is two chars, so it must alternate ahead of the
+                                        # class or "oq1" would only ever match as a broad slug.
 _CITEKEY = re.compile(r"^[A-Z][A-Za-z]*\d{4}")  # <Family><Year>[<Venue>]; no $ — venue varies in
                                                 # length, and books/monographs carry none at all
                                                 # (Weaire2000, Torquato2001). Broad slugs are
@@ -98,7 +104,7 @@ _CITEKEY = re.compile(r"^[A-Z][A-Za-z]*\d{4}")  # <Family><Year>[<Venue>]; no $ 
 
 @dataclass
 class Slice:
-    id: str                         # "c1" | "q2" | "m3" | "t1" | "k1"
+    id: str                         # "c1" | "b1" | "q2" | "oq1" | "m3" | "t1" | "k1"
     kind: str                       # "claim" | "question" | "method" | "test" | "capability"
     text: str
     grounded_in: list[str] = field(default_factory=list)
@@ -473,10 +479,10 @@ def _resolve_slice(ref: str, kind: str, by_id: dict[str, Slice],
                    by_gid: dict[str, Slice]) -> Slice | None:
     """The Slice a local/sharpened ref points at; None for any other ref form.
 
-    Kind coherence reads the *resolved target's* kind, never the id's prefix. Local ids are
-    curator-assigned and the vocabulary has drifted past SCHEMA §3's `^[cqm]\\d+$`: six papers
-    use `b*` for a borrowed claim and `oq*` for an open question, which is informative
-    authoring, not an error. Sniffing the prefix made `answers` and the laterals reject exactly
+    Kind coherence reads the *resolved target's* kind, never the id's prefix. That separation
+    is what let `b*` (borrowed claim) and `oq*` (open question) become canonical in SCHEMA §3
+    without touching validation: the prefix is the curator's reading, so `b3` and `c3` are one
+    kind and must validate alike. Sniffing the prefix made `answers` and the laterals reject exactly
     the cross-paper edges the meta read exists to draw (CURATION.md: an open question "closes on
     its own the day some paper's claim `answers` it") — while `leads_to`, ten lines up, resolved
     its target properly and accepted the same ids. One rule, one implementation.

@@ -17,7 +17,7 @@ West2015Sigmod:                      # contradicts target of Chen2021Sys:c3
   doi: 10.0000/synth.west2015
   type: original
 
-Patel2017Vldb:                       # grounded_in by Chen2021Sys:c4 (borrowed claim)
+Patel2017Vldb:                       # grounded_in by Chen2021Sys:b1 (borrowed claim)
   title: "Memory bandwidth limits in analytical pipelines"
   year: 2017
   doi: 10.0000/synth.patel2017

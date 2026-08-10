@@ -24,11 +24,14 @@ methods:
 
 questions:
   - id: q1
-    text: "Does throughput saturate at large batch sizes?"
-    leads_to: [q-resource-scheduling]       # open: nothing answers it
-  - id: q2
     text: "What sets the latency floor of a pipeline?"
-    # answered by c4 (emergent)
+    # a question the paper set out to answer -> plain `q`; answered by b1 (emergent)
+  - id: oq1
+    text: "Does throughput saturate at large batch sizes?"
+    leads_to: [q-resource-scheduling]       # raised and left open -> `oq` (SCHEMA §3). The id is
+                                            # what THIS paper left open; the emergent `open` flag
+                                            # is what the library still has open. Nothing answers
+                                            # it, so here the two agree.
 
 claims:
   - id: c1
@@ -47,9 +50,12 @@ claims:
     quote: "the model yields saturating throughput for batch sizes beyond the service-rate knee"
     grounded_in: [c1, m2]                    # derivation: measured trend + model
     contradicts: [West2015Sigmod, throughput-scales-with-batching]
-  - id: c4
+  - id: b1
     text:  "Memory bandwidth sets the latency floor of a pipeline."
     quote: "consistent with Patel et al., bandwidth-bound stages dominated the latency floor"
-    grounded_in: [Patel2017Vldb]             # grounds in a citation container -> borrowed
+    grounded_in: [Patel2017Vldb]             # grounds in a citation container -> borrowed, and
+                                             # the `b` prefix says the curator read it that way.
+                                             # The generator computes `borrowed` from this ref
+                                             # alone -- it never looks at the prefix.
     leads_to:    [buffering-has-costs]
-    answers:     [q2]
+    answers:     [q1]

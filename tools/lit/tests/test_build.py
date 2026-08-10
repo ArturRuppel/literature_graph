@@ -24,12 +24,12 @@ def test_to_json_dict_shape():
     assert c1["up"] == ["m1"]          # c1 builds on the floor m1 (substructure)
     m1 = next(s for s in p["slices"] if s["id"] == "m1")
     assert m1["up"] == []              # the floor builds on nothing local (grounds in a citation)
-    assert all(ref.startswith(("c", "q", "m")) and ":" not in ref
-               for s in p["slices"] for ref in s["up"])   # local refs only
+    assert all(ref.startswith(("c", "b", "q", "oq", "m")) and ":" not in ref
+               for s in p["slices"] for ref in s["up"])   # local refs only (SCHEMA §3)
     # the weld (exact quote) and answers edges ride along for the viewer's drill-down
     assert c1["quote"].startswith("throughput increased monotonically")
-    c4 = next(s for s in p["slices"] if s["id"] == "c4")
-    assert c4["answers"] == ["q2"]
+    b1 = next(s for s in p["slices"] if s["id"] == "b1")
+    assert b1["answers"] == ["q1"]
     m1_q = next(s for s in p["slices"] if s["id"] == "m1")["quote"]
     assert m1_q is None                                   # methods' quotes are optional
     assert any(g["via"] == "m1" for g in p["grounds"])          # grounds -> left
@@ -50,7 +50,7 @@ def test_to_json_dict_shape():
     assert {"key": "Chen2021Sys", "tid": "c2", "sign": "contra", "via": "c2"} in k["lateral"]
     # cross-paper answers edges are emitted separately (local ones nest via slice "answers")
     assert k["ans"] == [{"key": "Lopez2019Arch", "tid": "q1", "via": "c2"}]
-    assert p["ans"] == []                                 # Chen's c4->q2 answer is local
+    assert p["ans"] == []                                 # Chen's b1->q1 answer is local
     # inverted grounds: Lopez's builds-on lists Chen (m2 grounds in Lopez2019Arch:m2)
     lo = d["papers"]["Lopez2019Arch"]
     assert lo["builds"] == [{"key": "Chen2021Sys", "tid": "m2", "via": "m2"}]

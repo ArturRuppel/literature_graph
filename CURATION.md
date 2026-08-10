@@ -123,13 +123,27 @@ authors *claim* and how they *position* it; the data that backs each claim waits
 
 | you find | it becomes |
 |---|---|
-| the sharpened question(s) and their **hierarchy** | **Question** slices; hierarchy = `leads_to` a broader question (`questions/<slug>.yaml`) |
-| the questions the paper **raises and leaves open** — "future work," "it remains unclear whether," "an open question is" (mostly discussion) | **open Question** slices (`questions:`), each **welded to the verbatim sentence that raises it** (a `quote`, exactly like a claim — the `text` is your interrogative rephrasing, the `quote` the declarative source) so it's verifiable and findable in the PDF; but **left floating** as edges go — no `answers`, no anchor to the finding that provoked them; openness is emergent (no incoming `answers`). *Go looking for these:* the birds-eye "what does this paper leave unanswered" is easy to miss when reading for what the authors claim |
-| framing sentences sitting on citation walls (mostly intro) | **borrowed Claim** slices — `grounded_in` the cited papers (a citation, not a floor); emergently "restatements" (CONCEPT §6.1) |
-| the authors' headline insights (mostly discussion) | **Claim** slices at high altitude — the paper's contribution; `grounded_in` a method floor (or a premise claim, for a theory claim) |
+| the sharpened question(s) and their **hierarchy** | **Question** slices, `q1`, `q2` …; hierarchy = `leads_to` a broader question (`questions/<slug>.yaml`) |
+| the questions the paper **raises and leaves open** — "future work," "it remains unclear whether," "an open question is" (mostly discussion) | **open Question** slices (`questions:`), **id `oq1`, `oq2` …**, each **welded to the verbatim sentence that raises it** (a `quote`, exactly like a claim — the `text` is your interrogative rephrasing, the `quote` the declarative source) so it's verifiable and findable in the PDF; but **left floating** as edges go — no `answers`, no anchor to the finding that provoked them. *Go looking for these:* the birds-eye "what does this paper leave unanswered" is easy to miss when reading for what the authors claim |
+| framing sentences sitting on citation walls (mostly intro) | **borrowed Claim** slices, **id `b1`, `b2` …** — `grounded_in` the cited papers (a citation, not a floor); restatements (CONCEPT §6.1) |
+| the authors' headline insights (mostly discussion) | **Claim** slices at high altitude, `c1`, `c2` … — the paper's contribution; `grounded_in` a method floor (or a premise claim, for a theory claim) |
 | **methods named in the body but not the abstract** (the intro's "we measured … with", the discussion's model) | new **Method** floor slices, and coarse `grounded_in` on the Pass-1 claims sharpened to point at them — the abstract rarely names every technique; the rest surface here (their DAG + provenance still wait for Pass 4) |
 | an insight positioned against prior work | `corroborates` / `contradicts` on that claim (lateral) |
 | the broad claims **≥2 claims** ladder up into | `claims/<slug>` `leads_to` targets — **look before creating**; a single child gets no broad twin |
+
+**Two of the ids carry your reading (SCHEMA §3).** Pass 2 is where `b` and `oq` first appear,
+because pass 2 is the pass that produces borrowed claims and open questions. `b` = "this is a
+restatement off a citation wall," `c` = "this is the paper's own." `oq` = "the paper raises this
+and walks away," `q` = "the paper set out to answer this." **Each prefix counts separately** —
+`c1 b1 c2 c3 b2` down the file, in reading order — so a claim keeps its id when a later pass adds
+slices around it. If you cannot decide between `b` and `c`, that hesitation is usually the
+signal that the sentence is doing two jobs and wants splitting into two slices.
+
+The prefix is a *label on your judgement*, not a substitute for the edges: a `b*` claim still
+needs its citations in `grounded_in` — the generator computes "borrowed" from those, and reads
+no prefix anywhere. Where the two disagree, chase it. And an `oq` that a later paper answers
+**keeps its `oq` id** — the id says what this paper left open, the emergent flag says what the
+library still has open, and those are meant to come apart.
 
 **Map the walls (cheap-complete).** Anchoring each citation wall to one borrowed claim is the
 cheapest way to give many stubs an edge at once: **every paper the authors cite behind the
@@ -185,8 +199,9 @@ Threaded through [`curated/Chen2021Sys.yaml`](example/) — see the data root:
   `grounded_in: [Bench2016Tools]`) and `m2` (the queueing model, `grounded_in: [m1]` — a model
   layered on the measurement). A headline result becomes `c1`, `grounded_in: [m1]`.
 - **Pass 2 (framing), a context sentence** *"…memory bandwidth bounds the latency floor of a
-  pipeline"* → borrowed claim `c4`, `grounded_in: [Patel2017Vldb]` — one sentence pulls a stub
-  into the frontier (no floor → a restatement) and `answers: [q2]`. Consensus that generalizes
+  pipeline"* → borrowed claim `b1`, `grounded_in: [Patel2017Vldb]` — one sentence pulls a stub
+  into the frontier (no floor → a restatement) and `answers: [q1]`. The open question the paper
+  walks away from is `oq1`, welded but unwired. Consensus that generalizes
   gets a `leads_to`: `c1` → `throughput-scales-with-batching`, which earns its broad claim once
   a second paper (`Kumar2020Net:c1`) shares it (≥2 children).
 - **Pass 3 (results)** sharpens each claim's `grounded_in` to the exact methods

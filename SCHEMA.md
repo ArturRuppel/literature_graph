@@ -75,7 +75,7 @@ repo** it lives at the deployment's root (e.g. `literature/`), with the real PDF
 | Id | Form | Source |
 |---|---|---|
 | **citekey** | `<Family><Year><Venue>` CamelCase, e.g. `Chen2021Sys`; `a/b/c` suffix for same-DOI collisions. `Venue` = ISO-4 abbreviation (+ override map for brand names like `eLife`). Also names the PDF and its `.md` | filename stem of a `curated/` file, **or** a key in `stubs.yaml` |
-| **slice (local)** | `c1`, `c2` … (claims) / `q1`, `q2` … (questions) / `m1`, `m2` … (methods) — unique within its paper file. **No `a`/`ca` split** — "original vs borrowed" is emergent (§7), not encoded in the id | hand-assigned |
+| **slice (local)** | `c1`, `c2` … (the paper's **own** claims) / `b1`, `b2` … (**borrowed** claims — restatements off a citation wall) / `q1`, `q2` … (the questions the paper **sets out to answer**) / `oq1`, `oq2` … (**open** questions it raises and leaves) / `m1`, `m2` … (methods) — unique within its paper file. Each prefix carries its **own counter**, numbered in reading order when the file is written, so the sequences interleave down the file. **Ids are stable handles** — other files weld to `<citekey>:<id>` — so a slice reclassified later *swaps its prefix and keeps its number* (`c4` → `b4`), leaving a gap in the c-sequence rather than renumbering a file the library already points into. The prefix records the **curator's reading of what the paper does with the slice**; it does not replace §7, which stays emergent and is what the generator computes with — see the note below | hand-assigned |
 | **slice (global)** | `<citekey>:<local>`, e.g. `Chen2021Sys:c1` | composed by the generator |
 | **broad claim / question / Method** | kebab-case `<slug>`, globally unique | filename stem in `claims/`, `questions/`, `methods/` |
 
@@ -83,12 +83,28 @@ repo** it lives at the deployment's root (e.g. `literature/`), with the real PDF
 
 | form | refers to | in an edge, means |
 |---|---|---|
-| `m3`, `c2`, `q1` | a **local slice** in the same file | the precise slice |
+| `m3`, `c2`, `b5`, `q1`, `oq2` | a **local slice** in the same file | the precise slice |
 | `throughput-scales-with-batching` | a **broad** `claims/`·`questions/`·`methods/` slug | the shared node |
 | `West2015Sigmod` | a **container** (curated or stub) | the wildcard — "some slice in here, not yet resolved" (CONCEPT §2) |
 | `West2015Sigmod:c3` | a **sharpened** cross-paper slice | the precise slice, once that paper is curated |
 
 The generator resolves every ref into an edge and **fails the build on a dangling reference** (§6).
+
+**Why an authored prefix *and* an emergent property.** `b`/`oq` are the **curator's reading**;
+§7's `original vs borrowed` and `open vs answered` are **computed from the edges**. They answer
+different questions and the generator never reads the prefix — kind coherence (§6.6) resolves the
+target and asks *its* kind, so a `b3` and a `c3` validate identically. Keeping both is deliberate:
+
+- In the ordinary case they agree, and the prefix is just the agreement made **visible in the
+  diff** — the unit a human accepts or rejects is a YAML hunk, and `b7` says "restatement, judge
+  it as one" without tracing every ref in `grounded_in` first.
+- Where they **disagree**, that is a finding, not an error. A `b*` claim whose `grounded_in`
+  reaches no container means the wall was never mapped; a `c*` claim that computes as borrowed
+  means the curator read a result as the paper's own that its own citations say is not.
+- For questions they are *expected* to diverge, permanently. `oq` records what **this paper**
+  left open at publication; `open` records whether the **library** has since answered it. When a
+  later paper's claim `answers` it, the question closes and **keeps its `oq` id** — the id is
+  history, the flag is state. The viewer's "open questions" bucket reads the flag, not the prefix.
 
 ---
 
@@ -241,8 +257,8 @@ one is resolved live). `lit build`'s static artifact ignores it.
 
 | property | rule |
 |---|---|
-| **open vs answered** (question) | answered iff some claim `answers` it |
-| **original vs borrowed** (claim) | borrowed iff its `grounded_in` reaches a **container/citation** (cross-paper) rather than a floor — a restatement (CONCEPT §6.1) |
+| **open vs answered** (question) | answered iff some claim `answers` it. *Independent of the `oq` prefix, deliberately* — the prefix is what the paper left open, this flag is what the library still has open (§3) |
+| **original vs borrowed** (claim) | borrowed iff its `grounded_in` reaches a **container/citation** (cross-paper) rather than a floor — a restatement (CONCEPT §6.1). The `b` prefix is the curator's *reading* of the same thing; a disagreement between them is a finding to chase, not a build error (§3) |
 | **grounded vs plausible** (claim) | grounded iff its `leads-to` chain reaches a **floor** (a measurement method, or an axiom); else it dangles on reasoning |
 | **evidence balance** (claim) | count incoming `corroborates` vs `contradicts` |
 | **floor** (slice) | a slice whose own grounding bottoms out — a measurement method (grounding only in its source paper), or an `floor: true` axiom. *Models are methods that are **not** floors* — they `grounded_in` the methods below them (CONCEPT §7) |

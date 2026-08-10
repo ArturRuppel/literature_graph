@@ -49,7 +49,7 @@ from litgraph.sources.openalex import OpenAlex
 _PDF_NAME = re.compile(r"^[A-Za-z0-9]+\.pdf$")
 _PNG_NAME = re.compile(r"^[A-Za-z0-9]+\.png$")
 _CITEKEY = re.compile(r"^[A-Za-z0-9]+$")
-_SLICE_ID = re.compile(r"^[cqm]\d+$")
+_SLICE_ID = re.compile(r"^(?:oq|[bcqm])\d+$")   # SCHEMA §3; `oq` alternates ahead of the class
 _PAGE_REQ = re.compile(r"^/page/([A-Za-z0-9]+)/(\d+)\.(png|jpg)$")
 _WORDS_REQ = re.compile(r"^/words/([A-Za-z0-9]+)/(\d+)\.json$")
 _PAGES_REQ = re.compile(r"^/pages/([A-Za-z0-9]+)\.json$")

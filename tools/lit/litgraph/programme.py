@@ -39,10 +39,15 @@ def _is_programme(ref: str) -> bool:
 
 
 def _target_kind(ref: str) -> str:
-    """The slice kind a local/sharpened ref names, read off its id prefix."""
+    """The slice kind a local/sharpened ref names, read off its id prefix (SCHEMA §3).
+
+    `b` (borrowed claim) and `oq` (open question) are the *same kinds* as `c` and `q` — the
+    prefix records the curator's reading, not a kind — so they map together. `oq` is two
+    characters and must be tested before the single-character lookup."""
     tail = ref.split(":", 1)[1] if ":" in ref else ref
-    return {"c": "claim", "q": "question", "m": "method",
-            "t": "test", "k": "capability"}.get(tail[:1], "")
+    prefix = "oq" if tail.startswith("oq") else tail[:1]
+    return {"c": "claim", "b": "claim", "q": "question", "oq": "question",
+            "m": "method", "t": "test", "k": "capability"}.get(prefix, "")
 
 
 # --- emergent properties ----------------------------------------------------
