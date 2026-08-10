@@ -89,7 +89,11 @@ def load_yaml(path: Path) -> dict:
 
 
 _LOCAL = re.compile(r"^[cqmtk]\d+$")    # c claim · q question · m method · t test · k capability
-_CITEKEY = re.compile(r"^[A-Z][A-Za-z]*\d{4}[A-Za-z]")  # <Family><Year><Venue>; no $ — venue varies in length
+_CITEKEY = re.compile(r"^[A-Z][A-Za-z]*\d{4}")  # <Family><Year>[<Venue>]; no $ — venue varies in
+                                                # length, and books/monographs carry none at all
+                                                # (Weaire2000, Torquato2001). Broad slugs are
+                                                # lowercase kebab-case, so the leading [A-Z] is
+                                                # what separates the two forms.
 
 
 @dataclass

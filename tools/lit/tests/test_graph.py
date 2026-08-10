@@ -14,6 +14,15 @@ def test_classify_ref_forms():
     assert classify_ref("buffering-has-costs") == "broad"
 
 
+def test_classify_ref_venueless_citekey():
+    """Books and monographs carry no venue segment; they are still containers, not slugs."""
+    assert classify_ref("Weaire2000") == "container"
+    assert classify_ref("Torquato2001") == "container"
+    assert classify_ref("Weaire2000:c1") == "sharpened"
+    # the leading capital is the discriminator — a kebab-case slug carrying a year stays broad
+    assert classify_ref("jamming-is-not-just-cool-2000") == "broad"
+
+
 from litgraph.graph import load_repo, Paper, Slice
 
 EXAMPLE = Path(__file__).resolve().parents[3] / "example"
