@@ -14,16 +14,7 @@ the rate limiter; never flood. A half-finished graph is a normal, valid state.**
 3. [CURATION.md](CURATION.md) — the reading protocol: the four-pass sweep that turns a
    paper's full text into its proposed local subgraph. *How* a paper is read in.
 4. [tools/lit/](tools/lit/) — the `lit` CLI, self-contained (package, tests, spec).
-   Design spec: [tools/lit/docs/2026-06-25-litgraph-ingest-design.md](tools/lit/docs/2026-06-25-litgraph-ingest-design.md).
 5. [example/](example/) — a small worked library on the lean slice model (SCHEMA v2).
-6. [docs/2026-06-25-visualization-design.md](docs/2026-06-25-visualization-design.md) —
-   *future* direction for showing the graph: the **recursive container view** (+ reference
-   mockups in `docs/mockups/`). Not yet built.
-7. [docs/2026-08-02-programme-graph-design.md](docs/2026-08-02-programme-graph-design.md) —
-   the **programme graph**: the same slice model extended from *what is known* to *what is
-   proposed*. Two extra kinds (**Test · Capability**), two extra edges (`discriminates` ·
-   `enabled_by`), one extra container (the **aim**, under `programme/aims/`), and one extra
-   ref form (the `@aim` sigil). Model + `lit programme` are built; no viewer.
 
 ## Mental model (the 30-second version)
 
@@ -46,6 +37,11 @@ the rate limiter; never flood. A half-finished graph is a normal, valid state.**
   answers *what papers do I have on X*. A statement that can be **false** is a claim; a
   heading you cannot disagree with is a topic. Topics are never edge targets, and nothing in
   the graph derives from them (SCHEMA §9).
+- **One extension:** the **programme graph** models what is *proposed* rather than what is
+  known — two extra kinds (**Test · Capability**), two extra edges (`discriminates` ·
+  `enabled_by`), the **aim** as container (`programme/aims/`), the `@aim` ref sigil, and a
+  pure-ordering **narrative** layer (`programme/narrative/`) that linearizes aims into a
+  grant's sections, carrying no edges and deriving nothing.
 
 ## Conventions this repo enforces
 
@@ -63,233 +59,104 @@ the rate limiter; never flood. A half-finished graph is a normal, valid state.**
 
 ## Tools
 
-- **`lit ingest <pdf>`** — initialize a paper's bibliographic skeleton: writes
-  `curated/<citekey>.yaml` (metadata + authors), one deduped `stubs.yaml` entry per
-  citation (DOI-anchored via OpenAlex), and an AI-parsable `<citekey>.md` full text beside
-  the (renamed) PDF. **Non-interactive**: an agent runs it, then agent + human review the
-  written YAML together. Use `--dry-run` to preview without writing/renaming. It does *not*
-  extract the claim/question/method slices — that's the curation step (CURATION.md). Ingest also
-  writes each stub's `authors` + `journal` (the bib OpenAlex already returns per reference), which
-  the viewer shows on hover. The focal **`abstract`** comes from OpenAlex/Crossref when they have
-  one and **from the paper's own full text when they don't** — Springer Nature and Elsevier
-  deposit no abstract to Crossref and OpenAlex mirrors Crossref there, so `abstract_inverted_index`
-  is null for most of the Nature family and all of Cell Press. The report's `abstract:` line names
-  the source (`openalex` · `fulltext:heading` · `fulltext:byline`), and every uncertain outcome
-  warns: a **`byline`** fill took an *unlabelled* lead paragraph and wants a look at the PDF, and
-  a paper where nothing anchored gets no abstract and says so. It never guesses — see
-  `fulltext.extract_abstract` for why a wrong abstract is worse than a missing one.
-- **`lit abstracts`** — the same move for papers **already on disk**: fills `abstract` on every
-  curated paper missing one, read from its stored `<citekey>.md` (no network). `--dry-run` reports
-  without writing; bare citekeys restrict the sweep. Never overwrites an abstract already there.
-  Run once, review the diff, commit. What it *can't* anchor it names rather than inventing.
-- **`lit enrich`** — backfill `authors` + `journal` onto **existing** `stubs.yaml` entries from
-  OpenAlex (by DOI), for stubs ingested before those fields existed. One batched query; only fills
-  gaps unless `--force`; `--dry-run` reports without writing. Run once, review the diff, commit.
-  (Abstracts are *not* stored — `lit serve` fetches a stub's abstract live on hover; SCHEMA §4 Stub.)
-- **`lit build`** — build the static graph viewer: reads the data repo's YAML, computes the
-  graph + emergent properties (SCHEMA §7), and emits a self-contained `dist/index.html`
-  (the paper-centric column view) plus `graph.json`. Open the HTML directly; no server.
-  Validation fails the build on a dangling ref or a curated/stub citekey collision (SCHEMA §6).
-  The viewer's HUD carries a **paper-finding search box** (title · author · journal · year · tag,
-  curated + stubs) — client-side, so it works in the static artifact offline.
-  Next to the width slider it carries the **board zoom** — its own slider, plus ctrl/⌘-wheel over
-  the board and the bare `+` `−` `0` keys; remembered in `localStorage`, and clicking the `100%`
-  readout puts it back. The track is **log-spaced over 1/3 … 3**, so 100% sits exactly mid-track
-  and half sits as far from it as double (zoom multiplies; a linear track would crush the whole
-  zoom-out half into a fifth of the bar). Same shape as the width slider because the gesture is
-  the same — you sweep until the board looks right — but they are not the same thing:
-  **width** re-lays-out a card's text, **zoom** is a *camera* — one `scale()`
-  on `#stage`, so nothing re-wraps and the picture you had learned survives the move. Zoomed out
-  the board stops being readable and becomes a **map** (which column fans where, whether a hoisted
-  claim actually gathered anything) — the question you have on a paper with 58 cards, and one the
-  500px column could never answer. The edge overlay lives on the same stage, so redraw() is the one
-  place that converts glass pixels back into stage pixels (÷ BZ); every scroll-anchoring site is
-  untouched, which is why this is a transform and not CSS `zoom`.
-  **An edge is in one of four states, decided in one place** (`edgeVis`): *lit* (incident on a pin or
-  the hover), *scaffolding* (faint, 0.2), a *ghost* (0.07), or *not drawn*. It used to be decided in five
-  places written at different times, so the board's answer to "why is that arrow there and that one not"
-  depended on which relation you were looking at. **Nothing in it reads a gesture** — every input is
-  current state (what is open, what is pinned, where the anchors are), so the same board draws the same
-  arrows however you got there, and an expand or a collapse moves the edge layer because it moved the
-  state. (`fold to graph`, the band's `show statements`, a per-slice fold and showing a claim each leave
-  a path set byte-identical to a full `rebuild()`.) Three questions: **is there an honest place to draw it**
-  (geometry — both ends fell back to their cards, or an intra-card rung has a node scrolled out: off),
-  and if it isn't lit, **is it scaffolding at all**. The second has *two* clauses, kept apart because
-  they are different arguments and neither subsumes the other: an edge whose ends **don't fit on the
-  glass at once** is a line leaving the screen, not faint structure (with four papers open, 155 of the
-  187 cross-card arcs ran further than a screen and the worst ran 17,500 px — that clause was simply
-  missing, and it is most of the mess); and an edge touching the **synthesis band** stays dark until you
-  ask, because every paper throws one and the fan only ever said "many things generalize". Legibility is
-  measured on the glass, so it is zoom-aware for free — zoom out until both ends fit and the edge comes
-  back — and it tests the *distance* between anchors, never their position, so no arrow flickers under a
-  scroll. Third, **are both ends open?** An arrow between two slice rows you can see says which claim
-  rests on which; an arrow dying on the closed border of a card says only "something in here", because
-  you have not opened the thing it lands on. Not the same statement, so not the same ink — the second is
-  a **ghost**. With three papers open that is 43 of the 193 resting arrows, every one running into a shut
-  card; open it and those edges sharpen to scaffolding, close it and they fade back, exactly. "Open" is a
-  class check (`endOpen`) and not "did the row rect resolve" — the latter also goes null for a row merely
-  scrolled sideways, which would make the whole layer shimmer under a scroll.
-  **There is a way out, and it is visible.** A pin names a *row*, and is dropped the moment that row
-  leaves the board (`pinLive`): a pin used to outlive the card being collapsed, leaving arrows lit from
-  an endpoint you couldn't see and no row left to click to release them — expand a run of claims,
-  collapse them, and the arrows stayed. The HUD's **`clear arrows · N`** (or bare **`c`**) releases every
-  pinned row and every shown claim at once; it carries the count, and it is absent when there is nothing
-  held. The landing column's **`clear`** is the same release plus the stubs you summoned by name — a
-  summoned stub is a search result, not an arrow — and both go through one function so they cannot
-  disagree. Clicking empty board space still thaws row pins; it is the quick one, no longer the only one.
-  Deliberately **not** on `Escape`, which already dismisses the library, the walk, the views menu and
-  the search box.
-  **A stub expands too — to its bib record, not to slices it hasn't got.** Click one and it reveals
-  the four things `stubs.yaml` actually stores: title, byline (short form — an uncited paper is on
-  screen as a reference, not as an entry to read end to end), venue and year. It uses the curated
-  card's own classes, so the two card kinds cannot drift apart visually, and the same expansion runs
-  on a **source-stack row**, which is where most stubs really stand: `Oswald2017JPhysDApplPhys` folds
-  55 uncurated sources into one `▸ 55 sources` wall, and before this a wall was 55 bare citekeys.
-  The state (`stubOpen`) is keyed by **citekey, not by card id** like `open` — a stub has no slices,
-  no drill and no per-column role, so the same uncited paper standing in two places is one
-  bibliography record and there is nothing instance-specific for its renderings to disagree about
-  (which is also why eviction does *not* prune it: dismissing a summoned card must not fold a wall
-  row on the other side of the board). One thing an expanded stub does *not* carry is its abstract,
-  which is fetched live and belongs to the hover tip — so the **citekey stays the tip's handle** in
-  both card and row, and on touch, where there is no hover, tapping the key reads the abstract while
-  tapping anywhere else expands. An expanded stub is an **open end** for `edgeVis`: an arrow into a
-  stub can only ever anchor on the card border, and once the border names the paper it lands on, that
-  arrow says something, so it stops being a ghost.
-  **The board hides nothing pending a click.** The landing column lists **every curated paper** in
-  `ORDER`'s pass ranking (plus a tail of cards for the uncurated papers a lateral / `answers` edge
-  points at, so those arrows have an anchor), and the **synthesis band** gives every broad claim /
-  question / method a card, always.
-  **The band is containerized: one box per ladder root.** A broad claim's `leads_to` ladder is drawn
-  as *containment* — the root's card heads the box and everything laddering into it nests inside,
-  recursively — because a family is a container of narrower claims exactly as a paper is a container
-  of slices. So the ladder is visible standing still: the rung **arrows are gone**, since geometry
-  now says what they said (they were suppressed at rest anyway, which is why the ladder used to read
-  as invisible). 45 broad nodes → 5 family boxes + 11 singletons today. Each box carries a
-  `fold to titles` / `show statements` bar (the paper card's `.sbar` idiom one scale up) and **lands
-  folded**: the band is a map, and a map shows names — the statement is the row's hover text, never
-  removed. A claim with **two parents** nests under the first its `leads_to` names and leaves a
-  `↗ reference row` under the others (never a duplicate card), with the crossing kept as one drawn
-  edge. **Clicking a broad claim shows it**: its *box* goes to the top of the synthesis column and
-  every paper asserting it to the top of the curated list. Each hoisted paper says which claim it
-  answers to, which is what keeps two gathered blocks apart. Clicking again releases but leaves the
-  order — nothing snaps back under you; the column header's **`clear`** (present only when there is
-  something to release) puts every shown claim away at once.
-  (Two reversals worth knowing, both in `docs/2026-08-03-topics-and-claim-altitudes.md`. §6: the band
-  and the landing column once *hid* what you had not clicked — reversed, because **hoisting places
-  the reader's attention, so hiding only made the rest of the graph unmentionable.** §6.1: what
-  replaced it sorted the band into **altitude columns**, which rendered a derived scalar instead of
-  the authored relation and sprayed each family across the board — reversed by containment, which
-  **adds a boundary and subtracts nothing**. Do not re-introduce either by treating a long column as
-  the problem: length is not the defect, unstructured length is.)
-  Browsing the **other** ~3.8k entries is still the **library** view's job — the board's flat list
-  is the curated set, not the bibliography.
-  The HUD's **`walk`** button (or `w`) swaps the board for **the walk** — one focus, one relation,
-  an indented tree, **no drawn edges at all** (design: `docs/2026-08-03-the-walk-design.md`). One or
-  the other, never both; `Escape` or `← board` returns. The board superimposes five differently
-  shaped relations on one canvas and stops being readable on exactly the papers curated hardest
-  (58 cards / 89 edges on `Hohmann2022Cellsa`); the walk shows one at a time under a depth and
-  sibling budget, so the mess is structurally impossible. Its **first tab is `contains`** — a
-  **roster**, not a walk: every claim, question and method in the paper, **uncapped and unfolded**,
-  each with its weld quote, filterable by kind. Every other tab is a *relation*, so a slice that
-  participates in none is unreachable there; the roster is the only **complete** view, and it flags
-  those slices **`unwired`** (64 of 532 today). This is the view to sift a paper in.
-- **`lit serve`** — the same viewer over loopback HTTP, for a curation session: the graph is
-  rebuilt from the YAML on every refresh (edit → refresh; a broken edit returns the
-  validation error and the server survives), and the tooltip gains a first-page preview of the
-  `<citekey>.pdf` files in `pdf_dir` (config.toml, else `<root>/pdfs`).
-  **Two surfaces** (design: `docs/2026-07-09-cockpit-redesign-in-progress-zone.md`, windowed by
-  `docs/2026-07-28-curation-windows.md`):
-  - *Browse view* — the graph, plus one **collapsible PDF viewer** docked right, toggled by the
-    header's **📄 PDF** pill. **The pill is the only thing that opens it** — opening a card is
-    reading the graph, not a request for a PDF across half the screen. Clicking a quote-slice
-    *aims* the viewer whether or not it is open (a shut dock just remembers the aim), so the next
-    📄 lands on that claim's highlight; with nothing aimed yet the pill opens the focused paper at
-    page 1. Open, hovering a quote-slice aims it at that claim's citation — the
-    **whole PDF** as a lazily-rendered scroll of pages, opened on the highlight, with a real
-    scrollbar, a live page indicator, and a pan / text-select toolbar (drag to
-    pan, or select & copy the page's real text via a transparent word overlay). The location comes
-    from a stored `quote_loc` (SCHEMA §6) when present, else resolved live.
-    Its **zoom is its own** — a slider in the titlebar, ⌘/ctrl-wheel over the page, or
-    the bare `+` `−` `0` keys while the pointer is on it (in a PDF-only window they are always its,
-    since there is no board there to mean instead). It shares nothing with the board's: a page at
-    200% beside a board at 60% is the ordinary way to curate. Fit-width is the floor, and the zoom
-    is **remembered across mounts** — aiming at the next quote is not a request to stand back up,
-    and the new page opens on its highlight at the distance you were already reading from
-    (`showQuote` centres the whole highlight, clamped to keep the quote's *opening line* in frame
-    once the zoom makes it wider than the pane). The dock's titlebar
-    carries a **⧉ detach** button that pops the PDF into its **own OS window** (`index.html?detached=1`,
-    for a second monitor); the same hover keeps aiming it via a `lit-pdf` BroadcastChannel, and the
-    **📄 PDF** pill re-docks it. Detaching reclaims the graph's full width.
-  - *Curation session* — **right-click a curated card → "Curate this paper"** *moves* it out of the
-    graph onto the **"in progress · N"** worklist (`[curation] active` in config.toml). The pill
-    opens a picker; selecting a paper performs the whole transition in **one click**: the current
-    graph window becomes the **card** (`preview.html?key=…&drive=1`, its isolated subgraph,
-    hot-reloading on a YAML edit), the **paper** opens as the click's one browser popup
-    (`index.html?focus=1`), and the server opens a **terminal** running that paper's persistent
-    Claude session. The PDF is aimed by polling the focus wire so `lit focus` and the card's
-    quote-clicks both steer it. The window manager tiles them; there is no in-page split. The terminal is a
-    native emulator (`kitty`, `wezterm`, … — first found, or `$LIT_TERMINAL`) spawned by the
-    server via `POST /term`, so it's a *real* terminal with full keybindings and scrollback;
-    with no emulator installed you get the two browser windows and start the session yourself.
-    The card window carries the walk too, as a **`contents`** HUD button (or `w`): its paper's
-    full roster, standing on that paper with the library rail dropped (one paper is the whole
-    subgraph). Clicking a quote there POSTs the weld to the focus wire like any card row, so it
-    aims the paper window; and the card's hot-reload re-indexes it, so a slice the agent has just
-    written appears in the roster without a refresh. This is where you check that a pass wrote
-    what it claimed to.
-    Finishing runs both ways: the picker row's **✓**, or the card window's own HUD button
-    **✓ finish curation**, which drops the paper off the worklist and turns that window back
-    into the graph (the PDF and terminal windows are left open). Leaving *without* finishing is
-    the card's **← graph** button: it navigates back to the browse view and leaves `[curation]
-    active` alone, so the paper is still on the "in progress" pill and one click re-enters its
-    card — finishing is a statement about the paper, not the only door out of the window.
-  Serve-only; a static `lit build` keeps the pill/toggle hidden and stays the shareable artifact.
-  A third HUD pill, **"aims · N"**, indexes `programme/aims/` (via `/aims.json`) with each aim's
-  assumption and at-risk-test counts; a row opens that aim's card at `/preview.html?key=@<slug>`
-  in a new tab. `/graph.json` stays paper-only, so the landing board is untouched by the
-  programme layer — and a repo with no `programme/` tree never shows the pill.
-- **`lit curate <citekey>`** / **`lit curate --done <citekey>`** — the same move from the terminal:
-  add (or remove) a curated paper to the in-progress worklist. Drives the same `[curation] active`
-  that the right-click move and the "in progress" pill share.
-- **`lit tag <citekey> [tags…]`** — add / remove / list a curated paper's **`tags`**: free-form
-  curator labels (a container filter axis like `type`, SCHEMA §4 — no evidential weight, curated-only).
-  Bare `lit tag <citekey>` lists; `--remove` drops the given tag(s). Round-trips the one YAML file
-  (comments survive). Tags are searchable in the viewer, and clicking a tag chip on a card searches it.
-  `--suggest` proposes tags from the paper's **author-keyword line** (scraped + kebab-cased from the
-  full text) — a **Pass-1** step (CURATION.md): it prints candidates and a ready `lit tag` command and
-  **writes nothing**, so the curator gates which land in the filter axis.
-- **`lit topics`** — report the **topic axis** (SCHEMA §9): keyword containers over the `tags`
-  vocabulary, so papers stay findable as it grows. Bare prints the tree with papers reached and
-  keywords owned; `lit topics <slug>` lists one topic's papers; **`--orphans`** is the one that
-  matters — unfiled tags (on a paper, in no topic), dead keywords (in a topic, on no paper) and
-  stranded papers, the three signals that keep the layer from rotting behind the tagging
-  (`--strict` exits non-zero for CI). Run it after a tagging session. Topics are **not graph**:
-  never an edge target, membership derived from tags alone, nothing on a paper names one.
-- **`lit focus <citekey> [--quote "…"]`** — aim a running `lit serve` session's **paper window** at
-  a quote (my hand during curation): resolves the quote and re-aims the PDF. The card window's
-  quote-clicks drive the same wire, so agent and human stay in one truth.
-- **`lit locate`** — resolve every curated quote's place in its PDF (full-coverage word-
-  geometry match) and store it as `quote_loc` in the YAML: run once, review the diff, commit.
-  `--force` re-resolves quotes that already have a location; `--dry-run` reports without writing.
-- **`lit preview <citekey>`** / **`lit preview --scratch <file>`** — render **one paper's**
-  local subgraph *in isolation* (its slices + every edge, cross-paper endpoints as stub
-  chips / synthesis band) via the same viewer `lit build` ships, so it can't drift. Fed a
-  scratch YAML (real `curated/` schema), it renders a **proposition before it's tokenized** —
-  the curation loop's "show it as it'll look" step (CURATION.md). Also flags non-verbatim
-  quotes at proposition time. Emits a self-contained `dist/preview.html`. Also renders an
-  **aim** — `lit preview '@<slug>'`, or `--scratch` an aim-schema YAML under an `@` key, so
-  the same propose-before-tokenizing loop works on *proposed* work. An aim's card swaps the
-  entry groups from a paper's rhetoric (novel / borrowed / open) to a programme's
-  (hypotheses & rivals · assumptions · established · speculation · tests · capabilities), a
-  load-bearing claim carries its blast radius as a badge, and drilling a test opens what it
-  separates (`discriminates`), what it needs (`enabled_by`) and the methods under it.
-- **`lit programme`** — report the **programme graph**'s emergent state (design doc §8): the
-  **load-bearing assumptions ranked by blast radius** (claims with dependents, no test aimed
-  at them, and no grounding in the literature — the thing a hostile reviewer finds first),
-  plus speculation, tests at risk from an unevidenced capability, aspirational capabilities,
-  open questions and orphans. Reads `programme/aims/*.yaml`; silent on a repo without one.
-  `--strict` exits non-zero when anything is flagged, for CI. Terminal only — every payoff
-  lands without the viewer.
+Every command has `--help`; this section is the *invariant* each one carries, not its
+manual. Viewer behaviour is specified in [docs/](docs/) — see the design index below.
+
+**Getting papers in**
+
+- **`lit ingest <pdf>`** — writes the bibliographic skeleton: `curated/<citekey>.yaml`
+  (metadata + authors), one deduped `stubs.yaml` entry per citation (DOI-anchored via
+  OpenAlex), and an AI-parsable `<citekey>.md` full text beside the renamed PDF.
+  **Non-interactive, and it does *not* extract slices** — that is curation (CURATION.md).
+  `--dry-run` previews. The `abstract` comes from OpenAlex/Crossref, else from the paper's
+  own full text (Springer Nature and Elsevier deposit none, so it is null for most of the
+  Nature family and all of Cell Press). **It never guesses**: an unanchored abstract is
+  left missing and said so, because a wrong abstract is worse than none
+  (`fulltext.extract_abstract`).
+- **`lit abstracts`** / **`lit enrich`** — backfills for papers already on disk: abstracts
+  onto curated papers from their stored `.md` (no network), authors + journal onto stubs
+  from OpenAlex. Both only fill gaps, both have `--dry-run`. Run once, review the diff,
+  commit.
+
+**Curating**
+
+- **`lit preview <citekey>`** / **`--scratch <file>`** — render one paper's local subgraph
+  in isolation, through the viewer `lit build` ships, so it cannot drift. Fed a scratch
+  YAML it renders **a proposition before it is tokenized** — the curation loop's "show it
+  as it'll look" step — and flags non-verbatim quotes at proposition time. Also renders an
+  **aim** (`lit preview '@<slug>'`), so the same loop works on proposed work.
+- **`lit curate <citekey>`** / **`--done`** — move a paper on/off the in-progress worklist
+  (`[curation] active` in config.toml). Same state the viewer's right-click and "in
+  progress" pill drive.
+- **`lit focus <citekey> [--quote "…"]`** — aim a running `lit serve` session's paper
+  window at a quote. The card window's quote-clicks drive the same wire, so agent and
+  human stay on one truth.
+- **`lit locate`** — resolve every curated quote's place in its PDF (full-coverage
+  word-geometry match) and store it as `quote_loc`. Derived, never hand-authored; additive,
+  never affects graph structure. `--force` re-resolves, `--dry-run` reports.
+
+**Organizing**
+
+- **`lit tag <citekey> [tags…]`** — add / remove / list a paper's `tags`: free-form curator
+  labels, a container filter axis like `type` (SCHEMA §4) — no evidential weight,
+  curated-only. Round-trips the one YAML file, comments intact. `--suggest` proposes tags
+  from the author-keyword line and **writes nothing**, so the curator gates what lands.
+- **`lit topics`** — report the topic axis (SCHEMA §9). **`--orphans`** is the one that
+  matters: unfiled tags, dead keywords and stranded papers — the three signals that stop
+  the layer rotting behind the tagging. `--strict` exits non-zero for CI. Run it after a
+  tagging session.
+- **`lit programme`** — report the programme graph's emergent state: **load-bearing
+  assumptions ranked by blast radius** (dependents, no test aimed at them, no grounding —
+  what a hostile reviewer finds first), plus speculation, tests at risk from an unevidenced
+  capability, aspirational capabilities, open questions, orphans. `--strict` for CI.
+  Terminal only — every payoff lands without the viewer.
+
+**Viewing**
+
+- **`lit build`** — the static, shareable artifact: reads the YAML, computes emergent
+  properties (SCHEMA §7), emits a self-contained `dist/index.html` + `graph.json`. **The
+  build is the validator** — a dangling ref or a curated/stub citekey collision fails it
+  (SCHEMA §6). Client-side search, so it works offline.
+- **`lit serve`** — the same viewer over loopback for a curation session: the graph rebuilds
+  from the YAML on every refresh, and a broken edit returns the validation error without
+  killing the server. Adds what a static file cannot — the docked PDF viewer, the curation
+  session (card + paper + terminal windows), the aims pill, live stub abstracts. Anything
+  serve-only stays hidden in `lit build`.
+
+### Design index — where viewer behaviour is actually specified
+
+Do not re-derive these from the code, and do not re-litigate them without reading the
+reversal each one records.
+
+| Doc | Specifies |
+|---|---|
+| [2026-08-05-edge-visibility.md](docs/2026-08-05-edge-visibility.md) | the four edge states (*lit · scaffolding · ghost · not drawn*) decided in one place, `edgeVis`; why nothing in it reads a gesture; pin release (`pinLive`, `clear arrows`) |
+| [2026-08-03-topics-and-claim-altitudes.md](docs/2026-08-03-topics-and-claim-altitudes.md) | the synthesis band as **containment**, one box per ladder root. §6 and §6.1 record two reversals — hiding-until-clicked, and altitude columns. **Length is not the defect; unstructured length is.** |
+| [2026-08-03-the-walk-design.md](docs/2026-08-03-the-walk-design.md) | the walk: one focus, one relation, no drawn edges. `contains` is a **roster**, the only complete view, and it flags `unwired` slices |
+| [2026-07-09-cockpit-redesign-in-progress-zone.md](docs/2026-07-09-cockpit-redesign-in-progress-zone.md) + [2026-07-28-curation-windows.md](docs/2026-07-28-curation-windows.md) | the two surfaces: browse view with the docked/detachable PDF, and the one-click curation session |
+| [2026-08-02-programme-graph-design.md](docs/2026-08-02-programme-graph-design.md) | the programme graph and its narrative layer |
+| [2026-08-05-additive-graph-views.md](docs/2026-08-05-additive-graph-views.md) · [2026-07-19-tags-and-search-design.md](docs/2026-07-19-tags-and-search-design.md) · [2026-06-25-visualization-design.md](docs/2026-06-25-visualization-design.md) | view composition, tags/search, and the original (still unbuilt) recursive container view |
+
+### Not yet in a design doc
+
+Two viewer behaviours are specified nowhere but here. When either gets a doc, cut it from
+this file and add a row above.
+
+**The programme lane.** Aims and the narrative that orders them (`programme/narrative/`)
+ride in `/graph.json` in their own fixed **"programme" lane**, left of the landing column
+(`viewer/js/18-programme.js`). The landing column's own pass/year sort (`order`) is built
+from papers alone and stays untouched. A repo with no `programme/` tree shows no lane and
+no **"aims · N"** pill (which indexes `programme/aims/` via `/aims.json`, carrying each
+aim's assumption and at-risk-test counts; a row opens that aim's card at
+`/preview.html?key=@<slug>`).
+
+**Board zoom.** It is a *camera* — one
+`scale()` on `#stage`, so nothing re-wraps and a learned picture survives the move —
+distinct from the width slider, which re-lays-out card text. The track is **log-spaced over
+1/3 … 3** so 100% sits mid-track and half sits as far from it as double. Zoomed out the
+board stops being readable and becomes a **map**. `redraw()` is the one place that converts
+glass pixels back to stage pixels (÷ BZ); this is a transform, not CSS `zoom`, so every
+scroll-anchoring site is untouched.
 
 ## Curating a paper
 
@@ -311,3 +178,5 @@ dump:
   from `config.toml`.
 - Dev: Python. Tests are **offline & deterministic** (recorded OpenAlex/Crossref fixtures +
   saved PDF-text snippets) — no live network in the test suite.
+- **When a viewer decision gets made, it goes in a `docs/` design doc, not here.** This file
+  is orientation; `docs/` is the record. That boundary is why this section is short.
