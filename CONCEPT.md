@@ -21,8 +21,8 @@ never to flood. A half-finished graph is a normal, valid state.
 ## 1. Leverage, don't rebuild — plain text in git is the source of truth
 
 - **PDFs live outside git, in an external dir.** The heavy stuff — the PDFs — sits in a
-  plain directory the human owns, named by config (exactly like `sdgl.toml` points at
-  `/gaia/...` and `/home/aruppel/Data/`). Never committed; the human supplies them and
+  plain directory the human owns, named by config (an absolute path outside the repo —
+  a mounted share, a local data dir). Never committed; the human supplies them and
   nothing scrapes. *(An earlier draft used Zotero as the backend; it was dropped — too
   much overhead, a sandbox/API to fight, for virtually no gain once the semantic layer
   lives in our own YAML.)*

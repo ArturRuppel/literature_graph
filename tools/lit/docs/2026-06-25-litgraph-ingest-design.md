@@ -12,8 +12,8 @@ the full-text file to the standardized citekey** (`Ruppel2023eLife.pdf` / `.md`)
 **not** extract affirmations or questions — that is the AI-curation step (CONCEPT §12), a
 separate future tool.
 
-Validated end-to-end against the real target
-`/home/aruppel/Literature/Ruppel_et_al_2023_Force_propagation_eLife.pdf`
+Validated end-to-end against a real target,
+`<pdf_dir>/Ruppel_et_al_2023_Force_propagation_eLife.pdf`
 (DOI `10.7554/eLife.83588`).
 
 ---
@@ -224,8 +224,8 @@ PDF text/marker fixtures and recorded API JSON make every unit testable offline.
 
 ```toml
 root    = "."                      # holds curated/, stubs.yaml
-pdf_dir = "/home/aruppel/Literature"
-mailto  = "artur@ruppel.pro"       # OpenAlex/Crossref polite pool
+pdf_dir = "/path/to/Literature"
+mailto  = "you@example.org"        # OpenAlex/Crossref polite pool
 ```
 
 ---
