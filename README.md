@@ -96,6 +96,21 @@ Everything runs through the `lit` CLI.
   the sentence highlighted, and clicking pins a scrollable viewer over the whole
   document.
 
+- **`lit locate`**: resolve every curated quote's place in its PDF and store it
+  as `quote_loc` in the YAML. Run once, review the diff, commit.
+- **`lit preview <citekey>`**: render one paper's local subgraph in isolation,
+  through the same viewer `lit build` ships. Fed a scratch YAML, it renders a
+  proposition before it is committed: the curation loop's "show it as it will
+  look" step, which also flags any non-verbatim quote.
+
+Smaller commands round out the loop: `lit focus` aims a running `lit serve` PDF
+pane at a quote, `lit enrich` and `lit abstracts` backfill stub metadata and
+abstracts onto papers ingested before those fields existed, `lit tag` edits a
+paper's tags, `lit topics` reports the topic axis (including `--orphans` for
+dead keywords and unfiled tags), `lit programme` reports the programme graph's
+emergent state, and `lit curate` moves a paper in or out of the in-progress
+worklist. Every one of them has `--help`.
+
 ## Install the viewer on a phone
 
 `lit serve` ships a web app manifest and dedicated iOS/Android icons. Serve it
@@ -109,12 +124,6 @@ lit serve --host "$(tailscale ip -4)" --root /path/to/your/library
 The installed app launches standalone with its own LitGraph icon. The service
 must remain reachable to browse PDFs and use live curation features; the static
 `lit build` output also carries the manifest and icons for HTTPS hosting.
-- **`lit locate`**: resolve every curated quote's place in its PDF and store it
-  as `quote_loc` in the YAML. Run once, review the diff, commit.
-- **`lit preview <citekey>`**: render one paper's local subgraph in isolation,
-  through the same viewer `lit build` ships. Fed a scratch YAML, it renders a
-  proposition before it is committed: the curation loop's "show it as it will
-  look" step, which also flags any non-verbatim quote.
 
 ## Curating a paper
 

@@ -1,10 +1,9 @@
-# Literature — a semantically rich bibliography
+# litgraph — the model
 
-**Status:** concept (data model converged; interface is a separate design challenge)
-**Date:** 2026-06-25
+**Status:** model converged and implemented; the `lit` CLI ingests, curates, builds and serves
+**Model since:** 2026-06-25 · **Last revised:** 2026-08-13
 
-A knowledge graph over the scientific literature, built *into* an electronic lab
-notebook. You read a
+A knowledge graph over the scientific literature. You read a
 paper, and the claims, questions and methods inside it become curated, linkable nodes —
 each welded to its source with an exact quote. Claims roll up from paper-specific and
 granular toward broad and general, so the graph doubles as a living, evidence-backed
@@ -27,9 +26,9 @@ never to flood. A half-finished graph is a normal, valid state.
   much overhead, a sandbox/API to fight, for virtually no gain once the semantic layer
   lives in our own YAML.)*
 - **The source of truth is plain-text YAML in git** — one diffable file per curated
-  paper, holding its claim / question / method slices and edges. This mirrors the repo's
-  philosophy (`experiments.sql` is the diffable form of the DB; derived/heavy artifacts
-  are gitignored). See [SCHEMA.md](SCHEMA.md) for the on-disk layout.
+  paper, holding its claim / question / method slices and edges. A diffable text form is
+  what git versions and a human reviews; the binary index is a derived artifact, gitignored.
+  See [SCHEMA.md](SCHEMA.md) for the on-disk layout.
 - **A generator builds a SQLite graph index + the catalog views** from that YAML. The
   binary graph is a disposable build artifact (gitignored, like `experiments.db`). CI
   can build the published views with **no reference manager present** — no live app or
@@ -60,7 +59,10 @@ The whole model is **slices** and **containers**.
 - **Generality is not a separate layer.** A broad claim is simply a slice high in the
   `leads-to` chain (§4): the granular end is paper-bound with a quote, the broad end is what
   you'd write in a review's intro. **One continuous ladder** — no separate "abstraction"
-  node type, no "topic" type (a topic is just a claim at high altitude).
+  node type. (An early draft folded *topics* into this ladder as "just a claim at high
+  altitude". That was wrong and is retracted: a topic asserts nothing, so every emergent
+  property here is undefined on it. Topics are a **separate keyword axis**, outside the
+  slice graph — SCHEMA §9.)
 - A **stub** is a container with no resolved slices yet — a single **wildcard** standing for
   *"some slice in here, not yet cut."* **Curation = slicing the container** (§5).
 - **`P` is a valid endpoint for any edge whose target-kind it can host.** Aiming an edge at
@@ -70,6 +72,15 @@ The whole model is **slices** and **containers**.
 
 Authors sit **outside** this — a person attached to a container (provenance about who wrote
 it), not a slice.
+
+> **One extension exists.** Everything in this document models what *is known*. The same
+> primitive has been extended to what is *proposed* — a research programme: hypotheses, the
+> tests that would settle them, the capabilities those tests need. It adds two node kinds
+> (**capability**, **test**) and an aim as the container, and it lives beside `curated/`
+> rather than forking the model. Specified in
+> [docs/2026-08-02-programme-graph-design.md](docs/2026-08-02-programme-graph-design.md),
+> worked in [`example/programme/`](example/programme/), reported by `lit programme`. The
+> three-edge core below is untouched by it.
 
 ---
 
@@ -253,14 +264,14 @@ lab-notebook cross-link, §12) — distinct from the literature-internal how-axi
 ## 8. Acquisition — descoped
 
 Because first-class papers are human-curated and **the human supplies the PDF**, the
-"paywalled bulk-fetch via a headless Pasteur browser" problem evaporates for v1:
+paywalled-bulk-fetch problem evaporates for v1:
 
 - **First-class:** drop the PDF into the external dir. No scraping. The paywall is solved
   by the human already having access and choosing what to curate.
 - **Stub:** only ever needs bib metadata, which is open (Crossref / doi2bib) — never
   paywalled. Cheap and automatic.
-- The Pasteur browser becomes an *optional manual convenience* for the moment you promote
-  a stub and want its PDF — not a system to build.
+- Fetching a PDF by hand at the moment you promote a stub is an *optional convenience*,
+  not a system to build.
 
 ---
 
@@ -304,9 +315,15 @@ Because first-class papers are human-curated and **the human supplies the PDF**,
    any single child) — never mint a thin claim that merely echoes one. And one claim is **one
    slice, refined across passes**, never re-extracted per section: generality lives in
    `leads-to` *edges between distinct slices*, never in a slice copied to two altitudes.
-3. **Keep authoring cheap** — the moat the formal academic efforts (nanopublications,
-   ORKG) never had: they died on the cost of hand-authoring rigid RDF triples. Here an AI
-   drafts claims in natural language; the human only curates.
+3. **Keep authoring cheap** — the constraint that killed the formal academic efforts
+   (nanopublications, ORKG): they died on the cost of hand-authoring rigid RDF triples.
+   Here an AI drafts claims in natural language; the human only curates. Note this is
+   *table stakes*, not an advantage — cheap LLM extraction is now what everyone in this
+   space does (§11). What is actually distinctive is downstream of it: the **frontier**
+   (§5) is a reader-side concept a publisher curating its own corpus structurally cannot
+   have; the **quote weld** is enforced as a build-failing validation rule rather than a
+   convention (SCHEMA §6.4); and the **lab-notebook bridge** (§12) connects a claim to the
+   experiment that tests it. The last of those is the durable one.
 4. **Lazy, human-paced frontiers** — citation walking and question capture are selective.
    **Exhaustive citation coverage (every cited paper given an edge) is an *ambition, not a
    requirement*.** Because the model has no bare paper→paper edge — every edge rides a slice
@@ -319,7 +336,9 @@ Because first-class papers are human-curated and **the human supplies the PDF**,
 
 ---
 
-## 11. Prior art (ideas borrowed)
+## 11. Prior art and neighbours
+
+### Ideas borrowed
 
 - **Nanopublications** — atomic assertion + provenance; the model is almost exactly a
   **slice**. *Lesson: adoption died on RDF authoring cost → keep authoring cheap.*
@@ -333,23 +352,54 @@ Because first-class papers are human-curated and **the human supplies the PDF**,
 - **Zotero Better Notes** — markdown notes with claim-to-citation traceability inside
   Zotero; the closest existing thing, just not in *our* interface.
 
+### The 2026 wave — same premise, arrived at independently
+
+Through 2026 several groups converged on this document's starting point: that papers are
+narrative artifacts, and that machines need claims welded to evidence. Read as
+**validation, not competition** — this repo exists because its author needed it, and other
+people building the same thing means the problem was real.
+
+- **MIRA** (`mira.science`) — the closest relative. Questions / claims / evidence / sources
+  as four node types plus typed relations, each record signed by its author.
+- **OpenEval** — Booeshaghi, Luebbert & Pachter, *Science should be machine-readable*
+  (bioRxiv, 2026, `10.64898/2026.01.30.702911`): claim extraction across the eLife corpus,
+  fully automated, benchmarked against human reviewers. The proof that extraction scales.
+- **Mainen / HaaK** — typed propositions and typed logical relations (`A requires B`),
+  with **invalidity propagation**: a floor that fails greys out everything downstream. That
+  view is nearly free here, since `leads-to` is already an acyclic ground → derived DAG, and
+  it is the best idea in this list to steal.
+- **QED Science**, **preprints.ai** — claim trees used for review and validity scoring.
+- **eLife Pathways** — the publisher-side effort connecting several of the above.
+
+Two things follow. First, where those designs keep node types and status fields, this one
+reduced to **one primitive and three edges** with everything else emergent (§13) — that
+reduction is the main thing worth contributing back. Second, litgraph sits **downstream**
+of them: if a machine-readable claim format lands upstream, `lit ingest` becomes "fetch the
+claim tree" instead of "run an extractor over a PDF". So the ingest boundary stays
+importable, and bespoke extraction machinery is deliberately under-invested in.
+
 ---
 
 ## 12. Out of scope / future
 
-- **AI–human curation interface** — the propose/accept rhythm; how a paper's proposed
-  local subgraph is surfaced and accepted/edited/rejected. *A separate design challenge,
-  next.* Direction captured in
-  [docs/2026-06-25-visualization-design.md](docs/2026-06-25-visualization-design.md): a
-  **recursive container view** — collapse cohesive sub-graphs into container nodes, nest
-  containers, drill in; the full slice DAG is the earned *deep* view, not the landing page.
-- **The `protocols/` bridge** — linking a Method to *this lab's own* `protocols/` (the
-  lab-notebook cross-link). The literature-internal how axis itself is now in the core (§7).
-- **Cross-link to experiments** — a claim → an `experiments.db` experiment that tests it;
-  unifies the lab notebook and the literature into one graph.
-- **Additional views** — matrix / comparison (ORKG, Elicit), per-question synthesized answers.
-- **Questions: independent vs anchored nesting** — whether the question DAG stands alone or
-  anchors onto claim altitudes (lean: anchored, shallow). Left open.
+Since resolved, and no longer open questions:
+
+- **AI–human curation interface** — built. The propose/accept rhythm is CURATION.md's
+  pass staircase, and the viewer (`lit build` / `lit serve`, with `lit preview` rendering a
+  proposition before it is committed) is the surface it happens on. Design history in
+  [docs/](docs/), starting with
+  [the visualization design](docs/2026-06-25-visualization-design.md).
+- **Questions: independent vs anchored nesting** — resolved to *independent*: broad
+  questions get their own thin `questions/` files and a claim's `answers` is the only
+  bridge from a question to a claim (SCHEMA §8, still retractable).
+
+Genuinely still out of scope:
+
+- **The lab-notebook bridge** — linking a Method to the curator's own experimental
+  protocols, and a claim to the experiment that tests it. This is the one direction nobody
+  else in the field is building (§11), and it is deliberately not in this repo: it needs a
+  lab notebook on the other end. The literature-internal how-axis is in the core (§7).
+- **Additional views** — matrix / comparison, per-question synthesized answers.
 
 ---
 

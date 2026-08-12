@@ -60,9 +60,17 @@ commit, one readable diff.
   questions/   <slug>.yaml   # thin broad questions
   methods/     <slug>.yaml   # thin broad Methods (≥2 papers)
   topics/      <slug>.yaml   # keyword containers — a paper-discovery axis, NOT graph (§9)
+  programme/   aims/<slug>.yaml · narrative/<slug>.yaml
+                             # the proposed-work extension — separate spec, see below
   stubs.yaml                 # { citekey: bib-metadata } — un-sliced containers
   config.toml                # deployment-local (private): external PDF dir, etc.
 ```
+
+The `programme/` tree is specified separately, in
+[docs/2026-08-02-programme-graph-design.md](docs/2026-08-02-programme-graph-design.md): it
+extends this schema with two node kinds (capability, test) and the aim as a container, for
+modelling *proposed* work rather than published work. Everything else in this document
+covers the literature graph proper.
 
 In the **public repo** this tree lives under [`example/`](example/). In a **private data
 repo** it lives at the deployment's root (e.g. `literature/`), with the real PDF path in
