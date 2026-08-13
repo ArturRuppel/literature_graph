@@ -218,6 +218,7 @@ function syncLanding(){
   document.body.classList.toggle("landing-vacant",!c.keys.size);
 }
 function boot(){
+  renderProgrammeLane();              // aims + narrative (18-programme.js) — static, boot-once
   broadRefresh();                    // tiers + nesting ready before the very first ensureBroadBand()
   const c0=ensureCol(0,"curated papers");
   // delegated, because syncLanding rewrites the header every time the count changes

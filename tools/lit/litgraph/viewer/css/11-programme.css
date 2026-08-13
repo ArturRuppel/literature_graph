@@ -1,0 +1,16 @@
+/* ── the programme lane (js/18-programme.js) ────────────────────────────────────────────────
+   Aim cards in this lane reuse every `.card`/`.card.aim` rule 03-board.css already carries —
+   nothing new needed there. The narrative panel is new: it is deliberately NOT a `.card` the
+   reader can open (a narrative "carries no edges and derives nothing" — programme design §7 —
+   so there is no outline to reveal), just a static read of the file's own structure. */
+.card.narrative{cursor:default}
+.card.narrative:hover{border-color:var(--line)}     /* no hover affordance — nothing to click */
+.nsec{padding:2px 11px 9px}
+.nsechd{font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--faint);
+  padding:7px 0 4px;border-top:1px solid var(--line)}
+.nsec:first-of-type .nsechd{border-top:none}
+.nbullet{padding:3px 0}
+.ntx{font-size:11px;color:var(--ink);line-height:1.4}
+.nrefs{display:flex;flex-wrap:wrap;gap:4px;padding-top:3px}
+.nref{font-size:9px;font-family:monospace;color:var(--dim);background:var(--bg);
+  border:1px solid var(--line);border-radius:5px;padding:1px 5px}

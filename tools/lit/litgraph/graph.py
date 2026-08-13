@@ -27,8 +27,11 @@ _yaml = YAML(typ="safe")
 # was harmless while this only ran on an already-failing parse but is not once it gates a healthy
 # build. A multi-line flow sequence is deliberately not chased: under-reporting costs a worse
 # error message, over-reporting would reject a good file.
+#
+# `refs` (narrative.py: a narrative bullet's citation list) rides along here too — it carries
+# the identical sharpened forms and is exposed to the identical trap, just outside a slice.
 _REF_FIELD_FLOW = re.compile(
-    r"^\s*(?:grounded_in|leads_to|corroborates|contradicts|answers|discriminates|enabled_by)"
+    r"^\s*(?:grounded_in|leads_to|corroborates|contradicts|answers|discriminates|enabled_by|refs)"
     r"\s*:\s*\[([^\]]*)\]"
 )
 _BARE_SHARPENED_REF = re.compile(
@@ -197,6 +200,10 @@ class Graph:
     # It is NOT graph: no edge targets it, no emergent property reads it, and the emit layer
     # ignores it. Membership is derived from paper `tags` on demand — see topics.papers_in.
     topics: dict[str, "Topic"] = field(default_factory=dict)
+    # The narrative axis (programme design §7) rides along the same way, one step further: not
+    # graph either (no edges, nothing emergent reads it), keyed by grant filename stem. Loaded
+    # and validated last in build_graph so deleting it changes nothing above.
+    narrative: dict[str, "Narrative"] = field(default_factory=dict)
 
 
 class BuildError(Exception):
@@ -704,4 +711,12 @@ def build_graph(root) -> Graph:
     # deliberately the last step and touches nothing above it (SCHEMA §9).
     g.topics = load_topics(root)
     validate_topics(g.topics, set(broad))
+    # The narrative axis (programme design §7) loads and validates last of all: it needs the
+    # fully-resolved graph (every paper/aim slice, every broad slug) to check its refs against,
+    # and — like topics — touches nothing above it. Deferred import for the same reason
+    # compute_emergent defers programme.compute: narrative.py imports Graph from this module,
+    # so importing it back at module load time would cycle.
+    from .narrative import load_narratives, validate_narratives
+    g.narrative = load_narratives(root)
+    validate_narratives(g.narrative, g)
     return g

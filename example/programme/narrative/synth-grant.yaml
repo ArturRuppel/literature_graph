@@ -1,0 +1,27 @@
+# Synthetic worked narrative (fully fictional), exercising the narrative layer (programme
+# design §7, extended) against the synthetic aim in ../aims/adaptive-batching.yaml. A
+# narrative is one LINEARIZATION of the programme into a grant's sections — pure ordering,
+# no edges, nothing derived (deleting this file changes nothing `lit build` or `lit
+# programme` compute; only this file's own display in the viewer's programme lane goes with
+# it). The refs below are real (they resolve against this repo's aim + curated papers); the
+# section headlines and bullet prose are placeholders, not proposal content.
+
+title: "Adaptive batching — placeholder application"
+page_budget: 6
+
+sections:
+  - title: "Aim 1 — placeholder headline"
+    bullets:
+      - text: "Placeholder sentence stating the central hypothesis."
+        refs: ["@adaptive-batching:c2"]
+      - text: "Placeholder sentence citing the literature this rests on."
+        refs: ["Chen2021Sys:c1", "throughput-scales-with-batching"]
+      - text: "Placeholder sentence describing the test that would settle it."
+        refs: ["@adaptive-batching:t1"]
+
+  - title: "Feasibility — placeholder headline"
+    bullets:
+      - text: "Placeholder sentence naming the capability this lab already has."
+        refs: ["@adaptive-batching:k1"]
+      - text: "Placeholder connective sentence with nothing to weld yet."
+        refs: []

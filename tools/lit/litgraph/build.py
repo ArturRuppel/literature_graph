@@ -154,6 +154,20 @@ def _aim_json(a: Aim, builds: list[dict]) -> dict:
     }
 
 
+def _narrative_json(g: Graph) -> dict:
+    """The narrative layer (programme design §7, extended — narrative.py), reduced to plain
+    display data: `{grant -> {title, page_budget, sections: [{title, bullets: [{text, refs}]}]}}`.
+    No edges, nothing resolved or computed — a bullet's `refs` rides through as bare strings,
+    exactly as authored. The viewer renders them as inert text beside the aims they order,
+    never as drawn structure: the whole point of this axis (design §7) is that it carries none."""
+    return {grant: {"title": n.title, "page_budget": n.page_budget,
+                    "sections": [{"title": sec.title,
+                                  "bullets": [{"text": b.text, "refs": list(b.refs)}
+                                              for b in sec.bullets]}
+                                 for sec in n.sections]}
+            for grant, n in g.narrative.items()}
+
+
 def _topics_json(g: Graph) -> dict:
     """The topic axis (SCHEMA §9), reduced to what the viewer needs to run a saved search —
     it must never re-walk `broader` itself. `keywords` is the full closure (own + everything
@@ -170,9 +184,14 @@ def _topics_json(g: Graph) -> dict:
 
 def to_json_dict(g: Graph, active: "tuple[str, ...]" = (), cockpit: "dict | None" = None,
                  include_aims: bool = False) -> dict:
-    """Serialize the graph for the viewer. Aims are **off by default**: the landing view is
-    paper-centric (it sorts by pass / year / authors, none of which an aim has), so they
-    would need their own lane there. `lit preview` turns them on to render one aim's card."""
+    """Serialize the graph for the viewer. Aims — and the narrative axis that orders them —
+    are **off by default**: the landing view is paper-centric (it sorts by pass / year /
+    authors, none of which an aim has), so they get their own lane rather than pretending to
+    be papers. `lit build` and `lit serve` turn this on (their own fixed "programme" lane,
+    left of the landing column — see viewer/js/18-programme.js); `lit preview` turns it on to
+    render one aim's card in isolation. One flag for both axes: they are the same "the
+    programme layer" toggle, and a repo with neither carries no cost either way (`g.aims`/
+    `g.narrative` empty → nothing added)."""
     builds = _builds(g)
     curated = {ck: _paper_json(p, builds.get(ck, [])) for ck, p in g.papers.items() if p.curated}
     if include_aims:
@@ -195,6 +214,11 @@ def to_json_dict(g: Graph, active: "tuple[str, ...]" = (), cockpit: "dict | None
     # and `lit serve` alike.
     out = {"papers": curated, "broad": broad, "stubs": stubs, "order": g.order,
            "active": active_curated, "topics": _topics_json(g)}
+    # Narrative rides along with aims (see the flag's docstring above) and only when there is
+    # one: a repo with no programme/narrative/ tree must not grow an empty key, matching every
+    # other optional axis's "absent means absent" contract.
+    if include_aims and g.narrative:
+        out["narrative"] = _narrative_json(g)
     # `cockpit` is serve-only (`lit serve --curate`): its presence flips the viewer into the
     # three-pane curate layout and carries the embedded terminal's port. Absent for static
     # `lit build`, so the shared artifact never sprouts a curate UI or a terminal iframe.
@@ -253,10 +277,15 @@ def render_html(payload: str) -> str:
 
 
 def emit(g: Graph, out: Path) -> None:
-    """Write graph.json and a self-contained index.html (JSON inlined) into `out`."""
+    """Write graph.json and a self-contained index.html (JSON inlined) into `out`.
+
+    `include_aims=True`: `lit build`'s shared artifact carries the programme lane (aims +
+    narrative) alongside the paper board (to_json_dict's own docstring has the reasoning).
+    The paper-centric `order`/landing sort is untouched either way — that list is built from
+    `g.papers` alone and was never a function of this flag."""
     out = Path(out)
     out.mkdir(parents=True, exist_ok=True)
-    payload = json.dumps(to_json_dict(g), ensure_ascii=False)
+    payload = json.dumps(to_json_dict(g, include_aims=True), ensure_ascii=False)
     (out / "graph.json").write_text(payload, encoding="utf-8")
     (out / "index.html").write_text(render_html(payload), encoding="utf-8")
     for name in _PWA_ASSETS:

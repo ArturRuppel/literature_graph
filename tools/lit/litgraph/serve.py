@@ -252,6 +252,7 @@ def _source_version(root: Path, pdf_dir: Path) -> tuple[int, int]:
     globs = [(root / d, "*.yaml") for d in
              ("curated", "claims", "questions", "methods", "topics")]
     globs.append((root / "programme" / "aims", "*.yaml"))
+    globs.append((root / "programme" / "narrative", "*.yaml"))
     globs.append((pdf_dir, "*.md"))
     paths = [root / "stubs.yaml", root / "config.toml"]
     for d, pat in globs:
@@ -344,16 +345,20 @@ class _Handler(BaseHTTPRequestHandler):
             return
         self._send(HTTPStatus.OK, ctype, body_fn(), cache=cache, etag=etag)
 
-    def _payload_dict(self, include_aims: bool = False) -> dict:
+    def _payload_dict(self, include_aims: bool = True) -> dict:
         """graph.json as a dict, rebuilt from the repo's YAML on every request (may raise
         BuildError) — the shared `endpoints.payload_dict`, which the labbook plugin calls too.
 
         The extras are assembled here because only this server has them. Agent creation and
         terminal attachment are separate capabilities: phone curation needs the former but
         deliberately skips the latter; desktop uses both. The alternative renderings live at
-        /views/ and need a server to answer for them. Aims ride along only for the preview
-        routes, so `/graph.json` stays paper-only and the landing board is untouched by the
-        programme layer."""
+        /views/ and need a server to answer for them. Aims (and the narrative axis that orders
+        them) default ON here, same as `lit build` (build.emit): `/graph.json` carries the
+        programme lane's data in its own "papers" entries / "narrative" key, and the paper-
+        centric `order` — the landing column's actual sort — stays exactly as it was, since
+        `graph.order` never reads either axis. The preview routes below pass `include_aims=True`
+        explicitly too, which is now redundant with the default but kept for clarity at the
+        call site: each still means "this route needs the programme layer" on its own terms."""
         cockpit = ({"agent": "Switchboard agent",
                     "terminal": Path(self.server.term_cmd[0]).name if self.server.term_cmd else None}
                    if self.server.agent_cmd else None)

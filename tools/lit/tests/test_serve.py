@@ -887,10 +887,14 @@ def test_preview_rejects_an_unknown_aim(srv):
     assert get(srv, "/preview.html?key=@nope")[0] == 404
 
 
-def test_graph_json_stays_paper_only(srv):
-    """The landing board is untouched by the programme layer — aims live behind the pill."""
+def test_graph_json_carries_the_programme_lane_but_not_the_paper_sort(srv):
+    """Job 2: aims (and the narrative that orders them) now ride in `/graph.json` too, in
+    their own lane (viewer/js/18-programme.js) — but `order`, which drives the landing
+    column's actual pass/year sort, is built from `g.papers` alone and must stay paper-only
+    regardless, exactly as it did before this layer existed."""
     graph = json.loads(get(srv, "/graph.json")[2])
-    assert not [k for k in graph["papers"] if k.startswith("@")]
+    assert "@adaptive-batching" in graph["papers"]
+    assert graph["papers"]["@adaptive-batching"]["aim"] is True
     assert not [k for k in graph["order"] if k.startswith("@")]
 
 

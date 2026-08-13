@@ -26,6 +26,12 @@ function gotoTarget(spec){
   if(!s) return null;
   const i = s.indexOf(":");
   const key = i < 0 ? s : s.slice(0, i), sid = i < 0 ? null : s.slice(i + 1);
+  // An aim lives in PAPERS (18-programme.js) but not in ORDER, and gotoPaper below assumes any
+  // key it's handed belongs in the landing column (col 0) — minting one there for an aim would
+  // plant a programme card among the papers, exactly what the lane split (job 2) exists to
+  // avoid. Falling through to `gotoLost` here reproduces this spec's behaviour from before
+  // aims rode in PAPERS at all: `?goto=@slug` names nothing this handoff can reach.
+  if(PAPERS[key] && PAPERS[key].aim) return null;
   if(PAPERS[key] || STUBS[key]){
     if(!sid) return {kind: "paper", key};
     const p = PAPERS[key];
