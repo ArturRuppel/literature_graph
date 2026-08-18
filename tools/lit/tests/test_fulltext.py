@@ -1,7 +1,9 @@
 """`fulltext.extract_keywords` — author-keyword scrape for the Pass-1 tag proposal, and the
 `lit tag --suggest` CLI surface. Offline: fed saved `.md`-shaped text, no PDF, no network."""
-from litgraph import cli
-from litgraph.fulltext import extract_keywords
+import pymupdf
+
+from litgraph import cli, fulltext
+from litgraph.fulltext import _normalize, extract_keywords
 
 
 def test_inline_colon_comma_separated():
@@ -192,3 +194,73 @@ def test_both_folds_agree_across_the_legacy_repair():
     assert fold("®xed") == fold("fixed")
     assert fold("re¯ects") == fold("reflects")
     assert _fold("the ®eld") == _fold("the field")
+
+
+# --- normalization order: hyphenation joins across a padded line break -----------------------
+# `_normalize` used to join hyphens before stripping trailing whitespace, so a line ending
+# "adhe- \n" slipped past the join. Publisher PDFs never pad there; the text layers of archive
+# scans always do (Townes1955JExpZol: 383 hyphenated breaks, 383 of them padded).
+
+
+def test_hyphenation_joins_across_a_space_padded_line_break():
+    assert _normalize("selective adhe- \nsion of cells") == "selective adhesion of cells\n"
+
+
+def test_hyphenation_still_joins_the_unpadded_publisher_case():
+    assert _normalize("mechano-\nstructural") == "mechanostructural\n"
+
+
+def test_a_dash_ending_a_line_is_not_a_hyphenation():
+    # " -\n" has no word character before the dash, so there is nothing to rejoin.
+    assert _normalize("a clause -\nand its continuation") == "a clause -\nand its continuation\n"
+
+
+# --- recovering the text layer pymupdf4llm drops on archive scans ----------------------------
+
+
+def _text_pdf(path, sentence, lines=40):
+    """A one-page PDF carrying a real text layer big enough to clear `_DOC_TEXT_MIN`."""
+    doc = pymupdf.open()
+    page = doc.new_page(width=600, height=800)
+    for i in range(lines):
+        page.insert_text((20, 20 + 18 * i), sentence, fontsize=9)
+    doc.save(path)
+    return str(path)
+
+
+def test_recover_splices_the_text_layer_where_the_layout_pass_dropped_the_page(tmp_path, monkeypatch):
+    sentence = "The digitizer stored this page as real text under the scan image."
+    pdf = _text_pdf(tmp_path / "scan.pdf", sentence)
+    # what pymupdf4llm does to a page it classifies as a picture: markers, no prose
+    dropped = "**==> picture [1950 x 2924] intentionally omitted <==**\n\n##\n"
+    monkeypatch.setattr(
+        fulltext.pymupdf4llm, "to_markdown",
+        lambda *a, **k: [{"text": dropped}] if k.get("page_chunks") else dropped,
+    )
+    out = fulltext._recover_dropped_pages(pdf, dropped)
+    assert "digitizer stored this page" in out
+    assert "intentionally omitted" not in out
+
+
+def test_recover_leaves_a_healthy_extraction_untouched(tmp_path, monkeypatch):
+    sentence = "A publisher PDF whose text the layout pass extracted perfectly well."
+    pdf = _text_pdf(tmp_path / "clean.pdf", sentence)
+    healthy = (sentence + "\n") * 40
+    # if the gate ever lets a healthy paper through, the chunked call would raise and fail here
+    monkeypatch.setattr(
+        fulltext.pymupdf4llm, "to_markdown",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("healthy paper entered the splice path")),
+    )
+    assert fulltext._recover_dropped_pages(pdf, healthy) == healthy
+
+
+def test_recover_skips_a_pdf_with_no_text_layer_at_all(tmp_path, monkeypatch):
+    doc = pymupdf.open()
+    doc.new_page(width=300, height=400)  # blank: no text to recover
+    pdf = str(tmp_path / "blank.pdf")
+    doc.save(pdf)
+    monkeypatch.setattr(
+        fulltext.pymupdf4llm, "to_markdown",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("entered the splice path")),
+    )
+    assert fulltext._recover_dropped_pages(pdf, "") == ""

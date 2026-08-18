@@ -71,11 +71,65 @@ def repair_legacy_glyphs(text: str) -> tuple[str, tuple[str, ...]]:
 def _normalize(md: str) -> str:
     md = md.replace("­", "").replace("​", "")  # soft hyphen, zero-width space
     md = md.replace("‐", "-")  # unicode hyphen -> ascii
+    # Trailing whitespace goes FIRST, because the hyphenation join below anchors on "-\n" and a
+    # line ending "adhe- \n" would otherwise slip past it. Publisher PDFs put no space there, so
+    # the order never mattered until `_recover_dropped_pages` started admitting the text layers of
+    # scanned archive PDFs, where it is universal: Townes1955JExpZol has 383 hyphenated line-breaks
+    # and every single one carries the space. Reordering is a verified no-op on the 155 papers
+    # extracted before it — none contained a word-hyphen-newline-word for the join to newly reach —
+    # so no existing quote weld moves.
+    md = re.sub(r"[ \t]+\n", "\n", md)
     # Join words split across a line break by hyphenation: "mechano-\nstructural".
     md = re.sub(r"(\w)-\n(\w)", r"\1\2", md)
-    md = re.sub(r"[ \t]+\n", "\n", md)
     md = re.sub(r"\n{3,}", "\n\n", md)
     return md.strip() + "\n"
+
+
+# A page pymupdf4llm rendered as nothing but omitted-picture markers and empty headers: the
+# residue left when its layout pass classified the page as an image and dropped it.
+_PAGE_RESIDUE = re.compile(r"\*\*==>.*?<==\*\*|^#+[ \t]*$", re.MULTILINE)
+_BLANK_PAGE = 40  # chars of residue below which a page counts as "pymupdf4llm gave us nothing"
+_PAGE_TEXT_MIN = 200  # chars in the page's own text layer worth splicing back in
+_DOC_TEXT_MIN = 2000  # below this the PDF has no usable text layer at all; nothing to recover
+_DOC_KEEP = 0.35  # markdown retaining at least this share of the text layer is healthy, hands off
+
+
+def _recover_dropped_pages(pdf_path: str, md: str) -> str:
+    """Splice a scanned page's own text layer back in where pymupdf4llm dropped it.
+
+    Archive scans of pre-1980 papers are a full-page image with the digitizer's OCR stored
+    underneath as real text. pymupdf4llm's layout pass sees the image, classifies the page as a
+    picture, and — correctly refusing to OCR (see `to_markdown_report`) — emits an omitted-picture
+    marker and discards the text with it. The whole paper then lands in the library as a few
+    hundred bytes of markers: Townes1955JExpZol extracted to 603 bytes of a 135,534-character
+    text layer, and sat at pass 0 for weeks looking like a paper that needed OCR. It did not.
+    The OCR was done in the 1990s and is sitting in the file.
+
+    This is not the OCR path and does not weaken the weld: `page.get_text()` reads bytes already
+    stored in the PDF, so it is as deterministic and reproducible as the layout path. What it is
+    not is *faithful* — the digitizer's transcription errors are baked in, and they cluster in
+    display type (running heads, small caps, figure captions) rather than body prose. A quote
+    taken from a heading in such a paper has to be checked against the page image by eye.
+
+    Gated to leave healthy papers untouched byte-for-byte: a document whose markdown already
+    carries its text layer never enters the per-page pass at all, so no existing extraction — and
+    so no existing quote weld — can move underneath it.
+    """
+    doc = pymupdf.open(pdf_path)
+    layer = sum(len(page.get_text().strip()) for page in doc)
+    if layer < _DOC_TEXT_MIN or len(md) >= _DOC_KEEP * layer:
+        return md
+
+    chunks = pymupdf4llm.to_markdown(pdf_path, show_progress=False, use_ocr=False, page_chunks=True)
+    pages = []
+    for page, chunk in zip(doc, chunks):
+        text = chunk["text"]
+        if len(_PAGE_RESIDUE.sub("", text).strip()) < _BLANK_PAGE:
+            layer_text = page.get_text().strip()
+            if len(layer_text) > _PAGE_TEXT_MIN:
+                text = layer_text
+        pages.append(text)
+    return "\n\n".join(pages)
 
 
 def to_markdown_report(pdf_path: str) -> tuple[str, tuple[str, ...]]:
@@ -84,12 +138,16 @@ def to_markdown_report(pdf_path: str) -> tuple[str, tuple[str, ...]]:
 
     `use_ocr=False` because pymupdf4llm's layout path defaults it *on* and decides per page,
     via a bundled model, whether to run tesseract. That costs us both ways: it needs tesseract
-    language data (absent here, and its absence is a hard error, not a skip), and OCR'd text is
-    not reproducible — which would break the verbatim `quote` weld this whole module exists to
-    serve. Publisher PDFs carry a real text layer; a page that genuinely needs OCR is one to
-    notice and handle, not to silently guess at.
+    language data, and OCR'd text is not reproducible — which would break the verbatim `quote`
+    weld this whole module exists to serve. A page that genuinely needs OCR is one to notice and
+    handle, not to silently guess at.
+
+    Publisher PDFs carry a real text layer, and so, it turns out, do archive scans — under the
+    page image, where the layout pass throws it away. `_recover_dropped_pages` puts that back
+    without going near an OCR engine.
     """
     raw = pymupdf4llm.to_markdown(pdf_path, show_progress=False, use_ocr=False)
+    raw = _recover_dropped_pages(pdf_path, raw)
     repaired, residual = repair_legacy_glyphs(raw)
     return _normalize(repaired), residual
 
