@@ -204,7 +204,7 @@ def test_deleting_narrative_leaves_the_graph_byte_identical(tmp_path):
     assert report(g_with) == report(g_without)
 
 
-# --- the emit layer (job 2: the viewer's programme lane) -----------------------
+# --- the emit layer: a narrative is a CARD, and its refs are edges --------------
 
 
 def test_narrative_absent_from_json_by_default():
@@ -214,10 +214,35 @@ def test_narrative_absent_from_json_by_default():
 
 def test_narrative_rides_with_include_aims():
     d = to_json_dict(build_graph(EXAMPLE), include_aims=True)
-    assert "synth-grant" in d["narrative"]
-    n = d["narrative"]["synth-grant"]
-    assert n["page_budget"] == 6
-    assert n["sections"][0]["bullets"][0]["refs"] == ["@adaptive-batching:c2"]
+    assert "~synth-grant" in d["narrative"]          # `~` sigil, as an aim carries `@`
+    n = d["narrative"]["~synth-grant"]
+    assert n["narr"] is True and n["cur"] is True and n["type"] == "narrative"
+    assert n["budget"] == 6
+    assert [s["title"] for s in n["sections"]][0] == "Aim 1 — placeholder headline"
+
+
+def test_a_bullet_is_a_slice_and_its_section_orders_it():
+    """The narrative's only structure is which section a sentence stands in — bullets have no
+    edges to each other — so `sections` carries slice ids and the slices carry the prose."""
+    n = to_json_dict(build_graph(EXAMPLE), include_aims=True)["narrative"]["~synth-grant"]
+    ids = [s["id"] for s in n["slices"]]
+    assert ids == ["s1b1", "s1b2", "s1b3", "s2b1", "s2b2"]
+    assert n["sections"][0]["bullets"] == ["s1b1", "s1b2", "s1b3"]
+    assert n["slices"][0]["text"] == "Placeholder sentence stating the central hypothesis."
+    assert n["slices"][0]["kind"] == "bullet"
+
+
+def test_bullet_refs_become_the_ordinary_edges():
+    """The change this axis' rendering turns on: a ref is a drawn edge, not an inert chip.
+    Container and sharpened refs are `grounds` (the card to the left), broad slugs are `cons`
+    (the synthesis band) — the exact split every paper and aim already emits."""
+    n = to_json_dict(build_graph(EXAMPLE), include_aims=True)["narrative"]["~synth-grant"]
+    assert {"key": "@adaptive-batching", "tid": "c2", "via": "s1b1"} in n["grounds"]
+    assert {"key": "Chen2021Sys", "tid": "c1", "via": "s1b2"} in n["grounds"]
+    assert n["cons"] == [{"slug": "throughput-scales-with-batching", "via": "s1b2"}]
+    # a bullet with nothing behind it emits no edge and says so on its own row
+    assert [s["nref"] for s in n["slices"]] == [1, 2, 1, 1, 0]
+    assert not [g for g in n["grounds"] if g["via"] == "s2b2"]
 
 
 def test_narrative_key_omitted_when_repo_has_none(tmp_path):

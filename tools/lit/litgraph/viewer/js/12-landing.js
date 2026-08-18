@@ -212,13 +212,15 @@ function syncLanding(){
   // `clear` appears only when there is state to release (a shown claim, a summoned stub). On the
   // resting column it would be a button that does nothing, which is worse than no button.
   let n=0; for(const k of c.keys) if(PAPERS[k]) n++;
-  if(hd) hd.innerHTML=`curated papers · ${n}`
+  // On a PROPOSAL page this column is not a library at all — it is the proposal itself, the
+  // introduction with its aims under it (preview.isolate_proposal). Naming it "curated papers"
+  // there would be a third rendering of a fact the page contradicts on sight.
+  if(hd) hd.innerHTML=(PROPOSAL?`the proposal`:`curated papers · ${n}`)
     +(shownBroad.size||landedStuck.size?`<span class="hd-clear">clear</span>`:"");
   c.el.classList.toggle("vacant",!c.keys.size);         // an empty repo, or a preview of one paper
   document.body.classList.toggle("landing-vacant",!c.keys.size);
 }
 function boot(){
-  renderProgrammeLane();              // aims + narrative (18-programme.js) — static, boot-once
   broadRefresh();                    // tiers + nesting ready before the very first ensureBroadBand()
   const c0=ensureCol(0,"curated papers");
   // delegated, because syncLanding rewrites the header every time the count changes

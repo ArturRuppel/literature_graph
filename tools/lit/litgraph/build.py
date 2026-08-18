@@ -154,18 +154,58 @@ def _aim_json(a: Aim, builds: list[dict]) -> dict:
     }
 
 
+def _narrative_card_json(grant: str, n) -> dict:
+    """A narrative (programme design §7, extended — narrative.py) serialized into the SAME card
+    shape a paper or an aim gets, keyed `~<grant>`.
+
+    It used to be a display-only blob — `{sections: [{bullets: [{text, refs}]}]}` — that the
+    viewer drew as a static panel with each bullet's refs as inert chips. The chips were the
+    defect. A bullet's citations are the one thing a reader wants to *follow*, and a chip is a
+    dead end everywhere else in this viewer draws an arrow. So a **bullet becomes a slice** and
+    its **refs become the ordinary `grounds` / `cons` edges** every other container emits; that
+    alone is enough for the narrative to read the way a paper's card reads — open it, and each
+    sentence has arrows running to the cards it rests on.
+
+    This is a rendering decision, not a schema one, and the design's §7 invariant is untouched:
+    the shape is built here at emit time, never enters `g.papers` / `g.broad` / `g.aims`, and
+    nothing emergent reads it. Deleting programme/narrative/ still leaves the computed graph
+    byte-identical (tests/test_narrative.py holds exactly that).
+
+    `sections` survives beside `slices` as pure ordering — which bullets stand under which
+    headline. That IS the narrative's content (it is a linearization), and a support DAG has
+    nowhere to put it: the bullets have no edges to each other at all.
+    """
+    slices, grounds, cons, sections = [], [], [], []
+    for i, sec in enumerate(n.sections, 1):
+        ids = []
+        for j, b in enumerate(sec.bullets, 1):
+            sid = f"s{i}b{j}"
+            ids.append(sid)
+            slices.append({"id": sid, "kind": "bullet", "text": b.text, "color": "narrative",
+                           "is_floor": False, "grounded": bool(b.refs), "borrowed": False,
+                           "answered": False, "up": [], "gen": [], "quote": None, "qd": None,
+                           "loc": None, "answers": [], "nref": len(b.refs)})
+            for r in b.refs:
+                if classify_ref(r) == "broad":
+                    cons.append({"slug": r, "via": sid})
+                else:                                   # container | sharpened (local is invalid)
+                    key, _, tid = r.partition(":")
+                    grounds.append({"key": key, "tid": tid or None, "via": sid})
+        sections.append({"title": sec.title, "bullets": ids})
+    return {
+        "cur": True, "narr": True, "pass": None, "type": "narrative", "year": None,
+        "title": n.title or grant, "authors": [], "tags": [], "note": None, "abs": None,
+        "head": [], "budget": n.page_budget, "sections": sections,
+        "slices": slices, "grounds": grounds, "lateral": [], "cons": cons,
+        "ans": [], "builds": [],
+    }
+
+
 def _narrative_json(g: Graph) -> dict:
-    """The narrative layer (programme design §7, extended — narrative.py), reduced to plain
-    display data: `{grant -> {title, page_budget, sections: [{title, bullets: [{text, refs}]}]}}`.
-    No edges, nothing resolved or computed — a bullet's `refs` rides through as bare strings,
-    exactly as authored. The viewer renders them as inert text beside the aims they order,
-    never as drawn structure: the whole point of this axis (design §7) is that it carries none."""
-    return {grant: {"title": n.title, "page_budget": n.page_budget,
-                    "sections": [{"title": sec.title,
-                                  "bullets": [{"text": b.text, "refs": list(b.refs)}
-                                              for b in sec.bullets]}
-                                 for sec in n.sections]}
-            for grant, n in g.narrative.items()}
+    """`{"~<grant>": card}` — the narrative layer as cards (see _narrative_card_json). Keyed with
+    the `~` sigil for the same reason an aim is keyed with `@`: one namespace for everything a
+    card can be, and a glance at a key says which kind it names."""
+    return {f"~{grant}": _narrative_card_json(grant, n) for grant, n in g.narrative.items()}
 
 
 def _topics_json(g: Graph) -> dict:
@@ -186,12 +226,17 @@ def to_json_dict(g: Graph, active: "tuple[str, ...]" = (), cockpit: "dict | None
                  include_aims: bool = False) -> dict:
     """Serialize the graph for the viewer. Aims — and the narrative axis that orders them —
     are **off by default**: the landing view is paper-centric (it sorts by pass / year /
-    authors, none of which an aim has), so they get their own lane rather than pretending to
-    be papers. `lit build` and `lit serve` turn this on (their own fixed "programme" lane,
-    left of the landing column — see viewer/js/18-programme.js); `lit preview` turns it on to
-    render one aim's card in isolation. One flag for both axes: they are the same "the
-    programme layer" toggle, and a repo with neither carries no cost either way (`g.aims`/
-    `g.narrative` empty → nothing added)."""
+    authors, none of which an aim has), so they are not papers and must not stand among them.
+
+    With the flag on they ride in the payload but claim **no place on the board**: `order` is
+    built from papers alone, so nothing puts a programme card in the landing column. They are
+    reached by asking for them — the HUD's programme pill opens one aim, or a whole proposal
+    (`preview.isolate_proposal`), on its own page. That is a reversal: they used to render as a
+    standing "programme lane" left of the landing column, which put a grant's argument in front
+    of a reader who came to browse the literature. See docs/2026-08-02-programme-graph-design.md.
+
+    One flag for both axes — they are the same "the programme layer" toggle — and a repo with
+    neither carries no cost either way (`g.aims`/`g.narrative` empty → nothing added)."""
     builds = _builds(g)
     curated = {ck: _paper_json(p, builds.get(ck, [])) for ck, p in g.papers.items() if p.curated}
     if include_aims:

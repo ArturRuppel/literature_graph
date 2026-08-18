@@ -14,6 +14,16 @@ function findCardLevel(key,near){
 // cards land in one contiguous block per opened card rather than mixed in by year. See placeInCol.
 function expandCard(level,key,p,grp){
   const cid=`card-${level}:${key}`;
+  // A PROGRAMME container (an aim, a narrative) does not auto-reveal what it grounds in. A paper
+  // cites a dozen sources, so opening each one on the exact cited finding is the whole payoff —
+  // you see what it took from them without a click. A proposal cites the library: the CNRS
+  // introduction alone grounds 37 sentences in 54 curated papers, and auto-revealing all of them
+  // turned the grounds column into a wall of open cards you had to scroll past to find any one
+  // paper. So these land COLLAPSED, as a scannable list of citekeys, and expand on click through
+  // the same gesture every card on the board uses (cardClick). Nothing is lost by waiting: the
+  // edge anchors on the card border until the card is open and then sharpens to the cited row,
+  // which is the behaviour `edges` (01-state.js) is built around.
+  const prog=!!(p.aim||p.narr);
   // LEFT — grounds spawn the previous generation. Curated sources get their own card; a
   // sharpened ref (tid) reveals the specific source slice there and anchors the edge on
   // it. Uncurated sources fold into one collapsed "▸ N sources" stack (citation-wall
@@ -22,7 +32,7 @@ function expandCard(level,key,p,grp){
   (p.grounds||[]).forEach(g=>{
     if(!PAPERS[g.key]){ wall.push(g); return; }
     addPaper(level-1,g.key,"grounds ←",grp);
-    if(g.tid) reveal(`${level-1}:${g.key}`,g.tid);
+    if(g.tid&&!prog) reveal(`${level-1}:${g.key}`,g.tid);
     addEdge({cardId:`card-${level-1}:${g.key}`,sid:g.tid||null},{cardId:cid,sid:g.via},"leads");
   });
   if(wall.length){
@@ -39,7 +49,7 @@ function expandCard(level,key,p,grp){
       return;
     }
     const tl=findCardLevel(l.key,level);
-    if(l.tid&&PAPERS[l.key]) reveal(`${tl}:${l.key}`,l.tid);
+    if(l.tid&&PAPERS[l.key]&&!prog) reveal(`${tl}:${l.key}`,l.tid);
     addEdge(from,{cardId:`card-${tl}:${l.key}`,sid:l.tid||null},l.sign);
   });
   // ANSWERS — cross-paper claim→question: like lateral, never spawns a column. The target
@@ -53,7 +63,7 @@ function expandCard(level,key,p,grp){
       return;
     }
     const tl=findCardLevel(a.key,level);
-    if(a.tid&&PAPERS[a.key]) reveal(`${tl}:${a.key}`,a.tid);
+    if(a.tid&&PAPERS[a.key]&&!prog) reveal(`${tl}:${a.key}`,a.tid);
     addEdge(from,{cardId:`card-${tl}:${a.key}`,sid:a.tid||null},"answers");
   });
   // RIGHT — the papers that build on this one (inverted grounds) spawn the next
@@ -80,7 +90,7 @@ function reveal(id,sid){
   if(!p) return;
   // A paper's card renders every slice, so opening it IS the reveal — there is no path to
   // force. Only an aim's outline still hides a slice behind a fold.
-  if(!p.aim&&!p.cited) return;
+  if(!p.aim) return;
   const dep={};
   p.slices.forEach(s=>{
     (s.up||[]).forEach(u=>{ (dep[u]=dep[u]||[]).push(s.id); });

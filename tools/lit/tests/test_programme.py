@@ -315,9 +315,11 @@ def test_preview_aim_keeps_its_literature_cross_links():
     assert {"key": "Chen2021Sys", "tid": "m1", "via": "k1"} in mini["papers"][AIM]["grounds"]
 
 
-def test_preview_aim_keeps_a_curated_source_as_a_trimmed_card():
+def test_preview_aim_keeps_a_curated_source_as_a_whole_card():
     """An aim's sources are its argument, not a citation wall: a curated source stays a real
-    card carrying exactly the slices the aim cites — never a bare citekey chip."""
+    card — never a bare citekey chip. It is the WHOLE card the main board draws, with `cited`
+    marking the slices this aim points at; it used to be trimmed to those slices alone, back
+    when every one of these cards opened automatically (viewer/js/07-expand.js)."""
     from litgraph.build import to_json_dict
     from litgraph.preview import build_preview_graph, isolate
 
@@ -328,9 +330,10 @@ def test_preview_aim_keeps_a_curated_source_as_a_trimmed_card():
     assert "Chen2021Sys" not in mini["stubs"]          # promoted out of the citation wall
     src = mini["papers"]["Chen2021Sys"]
     assert src["title"] and src["cur"] is True         # a real card, bibliography intact
-    assert src["cited"] == [s["id"] for s in src["slices"]]
-    assert "m1" in src["cited"]                        # what's cited, and only what's cited
-    assert len(src["slices"]) < len(full["papers"]["Chen2021Sys"]["slices"])
+    # the same paper as everywhere else, minus nothing — one rendering of one paper
+    assert src["slices"] == full["papers"]["Chen2021Sys"]["slices"]
+    assert "m1" in src["cited"]                        # …and what this aim takes from it, marked
+    assert set(src["cited"]) < {s["id"] for s in src["slices"]}
     # a neighbour is evidence for the focal card, not a generation of its own
     assert src["grounds"] == [] and src["lateral"] == [] and src["cons"] == []
     assert mini["order"] == [AIM]                      # …and it stays out of the landing column

@@ -14,10 +14,10 @@ function passCircle(pass){
 }
 function authLine(a){return a.map(([n, pos, corr]) =>
   corr ? `<span class="star">${n}*</span>` : n).join(' · ');}
-// A cited source is on screen as evidence, not as a bibliography record: it opens automatically
-// beside the focal card, so a 25-name byline is 25 lines of noise between the reader and the
-// claim. Compact to the ends of the byline — which is how the paper gets cited anyway — keeping
-// the corresponding-author mark. Under six names it is already short enough to print in full.
+// An uncited stub is on screen as a reference, not as a bibliography entry to be read end to end,
+// so a 25-name byline is 25 lines of noise. Compact to the ends of the byline — which is how the
+// paper gets cited anyway — keeping the corresponding-author mark. Under six names it is already
+// short enough to print in full. (Curated cards print the full byline, everywhere they stand.)
 function shortAuthLine(a){
   if (a.length < 6) return authLine(a);
   const one = ([n, , corr]) => corr ? `<span class="star">${n}*</span>` : n;
@@ -62,22 +62,30 @@ function paperCard(key, level){
   const p = PAPERS[key] || STUBS[key];
   const cur = !!(PAPERS[key] && PAPERS[key].cur);
   const aim = !!(PAPERS[key] && PAPERS[key].aim);
+  const narr = !!(PAPERS[key] && PAPERS[key].narr);
+  // the two programme containers share a header: no curation maturity (a reading protocol for a
+  // document that already exists) and no year, and their title reads on the CLOSED card, since
+  // `@fluid-solid-switch` / `~cnrs-v2` collapsed tells a reader nothing at all.
+  const prog = aim || narr;
   const id = `${level}:${key}`;
   const el = document.createElement("div");
-  el.className = `card ${cur ? 'curated' : 'stub'}${aim ? ' aim' : ''}`;
+  el.className = `card ${cur ? 'curated' : 'stub'}${aim ? ' aim' : ''}${narr ? ' narr' : ''}`;
   el.id = "card-" + id; el.dataset.key = key; el.dataset.id = id;
   el.dataset.year = p.year || 0;
   // Collapsed by default: circle + citekey only. The rest is revealed on focus (.open).
   // An aim carries neither: curation maturity is a reading protocol for a document that already
   // exists (programme design §7), and an aim has no year — which the header used to print as
   // a literal "null".
-  let body = `<div class="chd">${aim ? "" : passCircle(cur ? p.pass : 0)}<span class="ckey">${key}</span>`;
+  let body = `<div class="chd">${prog ? "" : passCircle(cur ? p.pass : 0)}<span class="ckey">${key}</span>`;
   if (cur) {
     body += `<span class="ctype ${p.type}">${p.type}</span>`;
     // tags ride in the header (collapsed too) between the class pill and the right-pushed year
     if (p.tags && p.tags.length) body += `<div class="ctags">`
       + p.tags.map(t => `<span class="ctag" data-tag="${esc(t)}">${esc(t)}</span>`).join("") + `</div>`;
-    if (!aim) body += `<span class="cyr">${p.year}</span>`;
+    // a narrative has no year; what stands in that slot is the one number a grant is actually
+    // constrained by — the page budget the sections have to fit inside
+    if (narr && p.budget != null) body += `<span class="cyr nbud">${esc(String(p.budget))} pages</span>`;
+    else if (!aim) body += `<span class="cyr">${p.year}</span>`;
   } else if (p.year) {
     body += `<span class="cyr">${p.year}</span>`;      // right-pushed, revealed by .card.open
   }
@@ -97,15 +105,17 @@ function paperCard(key, level){
   }
   if (cur) {
     body += `<div class="ctitle">${p.title}</div>`;
-    if (aim) {
+    if (narr) {
+      // nothing between the title and the prose: a narrative's body IS its sections, and it
+      // carries no abstract, byline or note to stand in front of them.
+    } else if (aim) {
       const [punch, pitch] = splitNote(p.note);
       if (punch) body += `<div class="cpunch">${punch}</div>`;
       const stat = aimStat(p);
       if (stat) body += `<div class="cstat">${stat}</div>`;
       if (pitch) body += `<div class="cnote">${pitch}</div>`;
     } else {
-      if (p.authors) body += `<div class="cauth">`
-        + (p.cited ? shortAuthLine(p.authors) : authLine(p.authors)) + `</div>`;
+      if (p.authors) body += `<div class="cauth">${authLine(p.authors)}</div>`;
       if (p.abs) body += `<div class="cabs">${p.abs}</div>`;   // revealed inline by .card.open (CSS), desktop and touch alike — the hover tip carries the PDF thumbnail, not this
     }
     body += `<div class="slices"></div>`;   // filled by renderSlices from the drill state

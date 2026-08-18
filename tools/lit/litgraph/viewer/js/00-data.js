@@ -8,6 +8,11 @@ const ORDER = GRAPH.order;
 // still emits "topics": {}) and `lit preview`'s isolated payload, which carries no "topics" key
 // at all (preview.isolate() reduces to one paper — see preview.py).
 const TOPICS = GRAPH.topics || {};
+// The narrative key (`~<grant>`) when this payload is a PROPOSAL page — the introduction plus
+// the aims under it, isolated together (preview.isolate_proposal) — else null. Only the landing
+// column's own header reads it: everything else on such a page is an ordinary card doing the
+// ordinary thing, which is the entire point of building the narrative as a container.
+const PROPOSAL = GRAPH.proposal || null;
 
 // slug -> every curated paper that links into that broad node (generalize / stance / answer),
 // independent of expansion state. Lets a broad-node hover reach papers still collapsed in the

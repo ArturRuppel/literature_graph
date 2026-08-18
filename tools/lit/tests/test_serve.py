@@ -855,18 +855,22 @@ def test_stub_abstract_bad_key_and_no_match(srv):
     assert status == 200 and json.loads(body) == {"abstract": None}
 
 
-# --- the programme index (the HUD's "aims" pill) -----------------------------
+# --- the programme index (the HUD's "programme" pill) ------------------------
 
 
 def test_aims_json_indexes_the_programme(srv):
     status, headers, body = get(srv, "/aims.json")
     assert status == 200 and headers["Content-Type"].startswith("application/json")
-    aims = json.loads(body)
-    assert [a["slug"] for a in aims] == ["@adaptive-batching"]
-    a = aims[0]
-    assert a["title"] == "Adaptive batch-size control"
+    rows = json.loads(body)
+    # proposals lead: a `~<grant>` row opens the narrative WITH the aims under it, which is how
+    # the programme is read now that it no longer stands as a lane on the board
+    assert [r["slug"] for r in rows] == ["~synth-grant", "@adaptive-batching"]
+    prop, aim = rows
+    assert prop["kind"] == "proposal" and prop["title"] == "Adaptive batching — placeholder application"
+    assert prop["sections"] == 2 and prop["bullets"] == 5
+    assert aim["kind"] == "aim" and aim["title"] == "Adaptive batch-size control"
     # the two signals the pill shows without opening the card
-    assert a["assumptions"] == 1 and a["at_risk"] == 1 and a["slices"] == 11
+    assert aim["assumptions"] == 1 and aim["at_risk"] == 1 and aim["slices"] == 11
 
 
 def test_preview_html_serves_an_aim_card(srv):

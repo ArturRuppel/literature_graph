@@ -467,10 +467,16 @@ addEventListener("resize",redraw);
 // A browser gesture can reliably authorize ONE new window, not two. The PDF is that one popup;
 // this graph window then navigates into the card. The POSTs settle before navigation so a failed
 // request is visible and cannot be cancelled by leaving the graph.
-// The programme index: a HUD pill listing the aims, each row a link to that aim's card at
-// /preview.html?key=@<slug> — the same isolated view `lit preview` writes, so the served card
-// and the written one cannot drift. Server-only (/aims.json is a `lit serve` route), so a
-// static `lit build` never sprouts it, and a repo with no programme/ tree never shows the pill.
+// The programme index: a HUD pill listing everything in the programme layer, each row a link to
+// its own page at /preview.html?key=<slug> — the same isolated view `lit preview` writes, so the
+// served page and the written one cannot drift. Server-only (/aims.json is a `lit serve` route),
+// so a static `lit build` never sprouts it, and a repo with no programme/ tree never shows it.
+//
+// This pill is the ONLY door to the programme layer now. It used to be a shortcut past a lane
+// that stood on the board whether you wanted it or not; that lane is gone (18-programme.js), so
+// what was a convenience is now the way in. Proposals lead the list — a `~<grant>` row opens the
+// narrative WITH the aims under it, which is how a proposal is read — and the aims follow, each
+// still openable alone for the times you want one argument without its introduction.
 if (LIVE && !DRIVE && !PDFWIN && !MOBILE_CURATE) (function(){
   const pill = document.getElementById("aims");
   const panel = document.getElementById("aimPanel");
@@ -483,19 +489,28 @@ if (LIVE && !DRIVE && !PDFWIN && !MOBILE_CURATE) (function(){
   const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
   fetch("aims.json").then(r => r.ok ? r.json() : []).then(list => {
     if (!list.length) return;               // no programme tree → the pill stays hidden
-    pill.innerHTML = `aims · <span class="n">${list.length}</span>`;
+    pill.innerHTML = `programme · <span class="n">${list.length}</span>`;
     pill.hidden = false;
     panel.innerHTML = `<div class="wp-hd">programme</div>` + list.map(a => {
-      // the two signals worth seeing without opening the card; else just its size
+      // what is worth seeing without opening the row. For an aim that is the two things a
+      // reviewer finds first; for a proposal it is its size — its assumptions ARE the aims',
+      // and they are already stated on the rows below it.
       const bits = [];
-      if (a.assumptions) bits.push(plural(a.assumptions, "assumption"));
-      if (a.at_risk) bits.push(plural(a.at_risk, "test") + " at risk");
-      const flag = bits.length ? bits.join(" · ") : plural(a.slices, "slice");
-      return `<a class="ap-row" href="${esc(cardUrl(a.slug))}" target="_blank" rel="noopener">`
+      let flag;
+      if (a.kind === "proposal") {
+        flag = `${plural(a.sections, "section")} · ${plural(a.bullets, "line")}`;
+      } else {
+        if (a.assumptions) bits.push(plural(a.assumptions, "assumption"));
+        if (a.at_risk) bits.push(plural(a.at_risk, "test") + " at risk");
+        flag = bits.length ? bits.join(" · ") : plural(a.slices, "slice");
+      }
+      return `<a class="ap-row${a.kind === "proposal" ? " prop" : ""}"`
+           + ` href="${esc(cardUrl(a.slug))}" target="_blank" rel="noopener">`
            + `<span class="ckey">${esc(a.title || a.slug)}</span>`
            + `<span class="flag${bits.length ? " warn" : ""}">${esc(flag)}</span></a>`;
-    }).join("") + `<div class="wp-note">each aim's card — its hypotheses, what they rest on, `
-                + `and the tests that would settle them. Opens in a new tab.</div>`;
+    }).join("") + `<div class="wp-note">a proposal is its introduction with the aims under it; `
+                + `an aim on its own is its hypotheses, what they rest on, and the tests that `
+                + `would settle them. Opens in a new tab.</div>`;
     pill.addEventListener("click", e => {
       e.stopPropagation();
       const wipPanel = document.getElementById("wipPanel");

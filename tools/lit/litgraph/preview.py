@@ -27,6 +27,7 @@ from .graph import (
     BuildError,
     Graph,
     aim_from_raw,
+    build_graph,
     compute_emergent,
     load_programme,
     load_repo,
@@ -45,10 +46,22 @@ def build_preview_graph(root: Path, citekey: str, scratch: Path | None = None) -
 
     A key starting with "@" is an **aim** (programme design §5): it overlays into the
     programme tree instead, so the same propose-before-tokenizing loop works on proposed
-    work as it does on a paper."""
+    work as it does on a paper. A key starting with "~" is a **narrative** — the whole
+    proposal page (isolate_proposal); there is nothing to overlay, so --scratch is refused."""
     root = Path(root)
     papers, broad = load_repo(root)
     aims = load_programme(root)
+    if citekey.startswith("~"):
+        if scratch is not None:
+            raise BuildError("--scratch overlays one container; a proposal is a whole "
+                             "narrative — edit programme/narrative/<grant>.yaml and re-run")
+        # the FULL build, not the papers/aims core above: a narrative is loaded and validated
+        # last of all (graph.build_graph), against the resolved graph its refs point into.
+        g = build_graph(root)
+        if citekey.lstrip("~") not in g.narrative:
+            raise BuildError(f"no narrative {citekey!r} to preview "
+                             f"(programme/narrative/{citekey.lstrip('~')}.yaml)")
+        return g
     if citekey.startswith("@"):
         if scratch is not None:
             raw = _yaml.load(Path(scratch).read_text(encoding="utf-8")) or {}
@@ -80,78 +93,137 @@ def _stub_entry(full: dict, key: str) -> dict | None:
 
 
 def _cited_neighbour(full: dict, key: str, ids: set[str]) -> dict | None:
-    """A curated neighbour trimmed to the slices this container actually cites.
+    """A curated neighbour, **whole** — the same card the main board draws, with `cited` naming
+    the slices this page points at so the cited rows can be marked inside it.
 
-    An aim's join to the literature *is* its content — "what does this rest on, and what did
-    that paper actually report" — so a source may not collapse to a citekey chip the way it
-    does for a paper proposition. But a whole neighbour card would drown the focal one, so the
-    paper is kept with only its cited slices, and its own edges are cleared: it is here as
-    evidence for the focal container, not to spawn a generation of its own."""
+    A programme container's join to the literature *is* its content — "what does this rest on,
+    and what did that paper actually report" — so a source may not collapse to a citekey chip
+    the way it does for a paper proposition. It used to be trimmed to the cited slices alone,
+    because every one of these cards opened automatically and a full neighbour would drown the
+    focal one. They land collapsed now (viewer/js/07-expand.js), so length costs nothing and
+    trimming only made the card disagree with the same paper's card everywhere else. One
+    rendering of one paper, wherever it stands.
+
+    Outward edges stay cleared: this page is an isolation, and a neighbour is here as evidence
+    for the focal container, not to spawn a generation of its own."""
     p = full["papers"].get(key)
-    if p is None:
+    if p is None or not ids:
         return None
-    keep = [s for s in p["slices"] if s["id"] in ids]
-    if not keep:
-        return None
-    return {**p, "slices": keep, "cited": [s["id"] for s in keep],
+    return {**p, "cited": sorted(ids),
             "grounds": [], "lateral": [], "cons": [], "ans": [], "builds": []}
 
 
 def isolate(full: dict, citekey: str) -> dict:
-    """Reduce a full graph.json dict to just `citekey`: its paper card, only the stubs/broad
-    nodes its edges point at, and `order=[citekey]`. Outward `builds` (papers that build on
-    this one) are dropped — that is other papers' context, not this paper's proposition.
+    """Reduce a full graph.json dict to just `citekey` — its card, only the stubs/broad nodes its
+    edges point at, and `order=[citekey]`. Outward `builds` (papers that build on this one) are
+    dropped: that is other papers' context, not this paper's proposition.
 
-    For an **aim**, curated sources survive as trimmed neighbour cards rather than chips
-    (`_cited_neighbour`): a programme is read against the literature it leans on, and a
-    collapsed "5 sources" stack was the whole of what one said about 53 curated papers. A
-    wildcard ref (no `tid`) still degrades to a chip — it names a container, not a finding."""
-    focal = {**full["papers"][citekey], "builds": []}
-    is_aim = bool(focal.get("aim"))
+    For a **programme container** (an aim, or a narrative — see isolate_proposal) curated sources
+    survive as full neighbour cards rather than chips (`_cited_neighbour`): a programme is read
+    against the literature it leans on, and a collapsed "5 sources" stack was the whole of what one
+    said about 53 curated papers. A wildcard ref (no `tid`) still degrades to a chip — it names a
+    container, not a finding."""
+    return _isolate(full, [citekey])
 
-    keys: set[str] = set()
+
+def _isolate(full: dict, keys: list[str]) -> dict:
+    """`isolate` over a LIST of focal containers, which is the only thing a proposal needs that a
+    single-paper preview did not: an introduction and the aims it leads into stand on one page,
+    in one column, sharing one grounds column of cited papers (so a paper cited by both is one
+    card marking the union of what they cite, not two cards)."""
+    focals = {k: {**full["papers"][k], "builds": []} for k in keys}
+    prog = any(f.get("aim") or f.get("narr") for f in focals.values())
+
+    outward: set[str] = set()
     slugs: set[str] = set()
     cited: dict[str, set[str]] = {}             # neighbour citekey -> the slice ids we point at
-    for g in focal.get("grounds", []):
-        keys.add(g["key"])
-        if g.get("tid"):
-            cited.setdefault(g["key"], set()).add(g["tid"])
-    for edges in (focal.get("lateral", []), focal.get("ans", [])):
-        for e in edges:
-            if e.get("slug"):
-                slugs.add(e["slug"])
-            elif e.get("key"):
-                keys.add(e["key"])
-                if e.get("tid"):
-                    cited.setdefault(e["key"], set()).add(e["tid"])
-    for c in focal.get("cons", []):
-        slugs.add(c["slug"])
-    keys.discard(citekey)                       # a within-paper lateral targets the focal itself
-    cited.pop(citekey, None)
+    for citekey, focal in focals.items():
+        for g in focal.get("grounds", []):
+            outward.add(g["key"])
+            if g.get("tid"):
+                cited.setdefault(g["key"], set()).add(g["tid"])
+        for edges in (focal.get("lateral", []), focal.get("ans", [])):
+            for e in edges:
+                if e.get("slug"):
+                    slugs.add(e["slug"])
+                elif e.get("key"):
+                    outward.add(e["key"])
+                    if e.get("tid"):
+                        cited.setdefault(e["key"], set()).add(e["tid"])
+        for c in focal.get("cons", []):
+            slugs.add(c["slug"])
+    for k in focals:                            # a within-container lateral targets a focal itself
+        outward.discard(k)
+        cited.pop(k, None)
 
-    papers = {citekey: focal}
-    if is_aim:
+    papers = dict(focals)
+    if prog:
         for k, ids in cited.items():
             n = _cited_neighbour(full, k, ids)
             if n is not None:
                 papers[k] = n
     stubs = {}
-    for k in keys:
+    for k in outward:
         if k in papers:
             continue                            # promoted to a real card — not also a chip
         entry = _stub_entry(full, k)
         if entry is not None:
             stubs[k] = entry
     broad = {s: full["broad"][s] for s in slugs if s in full["broad"]}
-    # `order` stays the focal container alone: it drives the LANDING column, and a neighbour
-    # belongs in the grounds column that the focal card spawns, not beside it.
-    return {"papers": papers, "broad": broad, "stubs": stubs, "order": [citekey]}
+    # `order` is the focal containers alone, in the order given: it drives the LANDING column, and
+    # a cited neighbour belongs in the grounds column the focal spawns, not beside it.
+    return {"papers": papers, "broad": broad, "stubs": stubs, "order": list(keys)}
+
+
+def _proposal_keys(full: dict, narr_key: str) -> list[str]:
+    """The proposal's landing column, top to bottom: the narrative first, then its aims.
+
+    The narrative IS the introduction — it is the linearization that says what the proposal
+    argues — so it leads, and the aims it hands off to stand under it. Aims are ordered by where
+    the narrative first cites them (its own running order is the only ordering that exists here),
+    with any aim the narrative never mentions after them so nothing in `programme/aims/` can go
+    missing from the page just because a draft has not reached it yet."""
+    aims = {k for k, p in full["papers"].items() if p.get("aim")}
+    seen: list[str] = []
+    for g in full["papers"][narr_key].get("grounds", []):
+        if g["key"] in aims and g["key"] not in seen:
+            seen.append(g["key"])
+    return [narr_key, *seen, *sorted(aims - set(seen))]
+
+
+def narrative_key(grant: str) -> str:
+    """`~<grant>` — the payload key for a narrative card, from a bare grant name or itself."""
+    return grant if grant.startswith("~") else f"~{grant}"
+
+
+def isolate_proposal(full: dict, grant: str) -> dict:
+    """The **proposal page**: one narrative and its aims, isolated together.
+
+    This is where the programme layer is read now. It used to render as a standing lane on the
+    main board — every reader who opened the graph to browse the literature got a grant's
+    argument in the leftmost column whether they asked for it or not, and the narrative's
+    citations were inert chips because a static panel had nothing to draw an arrow *to*. Both
+    problems dissolve here: the proposal is a page you click into, and on it the narrative is an
+    ordinary container, so its bullets ground into real paper cards through the machinery every
+    other card already uses.
+
+    Raises KeyError if `grant` names no narrative."""
+    key = narrative_key(grant)
+    card = (full.get("narrative") or {}).get(key)
+    if card is None:
+        raise KeyError(key)
+    merged = {**full, "papers": {**full["papers"], key: card}}
+    out = _isolate(merged, _proposal_keys(merged, key))
+    out["proposal"] = key                       # the viewer titles the column from this
+    return out
 
 
 def emit_preview(g: Graph, citekey: str, out: Path) -> Path:
     """Write an isolated single-paper `preview.html` (self-contained) into `out`, returning
     its path. Reuses the real viewer template via build.render_html."""
-    mini = isolate(to_json_dict(g, include_aims=True), citekey)
+    full = to_json_dict(g, include_aims=True)
+    mini = (isolate_proposal(full, citekey) if citekey.startswith("~")
+            else isolate(full, citekey))
     payload = json.dumps(mini, ensure_ascii=False)
     out = Path(out)
     out.mkdir(parents=True, exist_ok=True)

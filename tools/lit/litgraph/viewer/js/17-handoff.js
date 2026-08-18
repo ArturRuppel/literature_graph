@@ -26,12 +26,14 @@ function gotoTarget(spec){
   if(!s) return null;
   const i = s.indexOf(":");
   const key = i < 0 ? s : s.slice(0, i), sid = i < 0 ? null : s.slice(i + 1);
-  // An aim lives in PAPERS (18-programme.js) but not in ORDER, and gotoPaper below assumes any
-  // key it's handed belongs in the landing column (col 0) — minting one there for an aim would
-  // plant a programme card among the papers, exactly what the lane split (job 2) exists to
-  // avoid. Falling through to `gotoLost` here reproduces this spec's behaviour from before
-  // aims rode in PAPERS at all: `?goto=@slug` names nothing this handoff can reach.
-  if(PAPERS[key] && PAPERS[key].aim) return null;
+  // A programme container (an aim, a narrative) rides in PAPERS on the main board but NOT in
+  // ORDER, and gotoPaper below assumes any key it is handed belongs in the landing column —
+  // minting one there would plant a programme card among the papers, which is exactly what
+  // keeping the programme off the board is for. So the test is membership in ORDER, not kind:
+  // on the board `?goto=@slug` names nothing this handoff can reach, and on a proposal page,
+  // where the aim IS in the landing column, the very same link lands on it.
+  const prog = PAPERS[key] && (PAPERS[key].aim || PAPERS[key].narr);
+  if(prog && !ORDER.includes(key)) return null;
   if(PAPERS[key] || STUBS[key]){
     if(!sid) return {kind: "paper", key};
     const p = PAPERS[key];

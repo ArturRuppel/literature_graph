@@ -42,14 +42,6 @@ let pin=[];              // [{cardId,sid}] — clicked isolations that persist a
                          // (pinLive) — state with no mark on screen is state you cannot release.
 const SYNTH=1e6;         // synthesis band: the one column every broad node lives in
                          // (papers occupy small levels; builds-on growth stays left of it)
-// The programme lane's card level (18-programme.js) — a real negative number, not a label, so
-// card-id parsing (cardIdLevel, 03-card.js) still yields a number for the pin/SYNTH-band
-// checks every card goes through regardless of which lane it lives in. Declared here, not in
-// 18-programme.js itself: boot() (12-landing.js) calls renderProgrammeLane() as its first
-// statement, which runs before the concatenated script's execution ever reaches file 18's own
-// top-level code — a `const` there would still be in its temporal dead zone at that point and
-// throw. 01 is as early as this script gets, so nothing that runs during boot() can outrace it.
-const AIMLANE=-1;
 // A broad node's OWN leads_to (SCHEMA §4) can ladder it into a broader broad node, and the band is
 // laid out as that nesting (see broadFamilies) rather than as columns of it.
 // broadTier[slug] = the length of the longest chain of broad-to-broad leads_to edges ENDING at

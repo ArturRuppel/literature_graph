@@ -1,16 +1,34 @@
-/* ── the programme lane (js/18-programme.js) ────────────────────────────────────────────────
-   Aim cards in this lane reuse every `.card`/`.card.aim` rule 03-board.css already carries —
-   nothing new needed there. The narrative panel is new: it is deliberately NOT a `.card` the
-   reader can open (a narrative "carries no edges and derives nothing" — programme design §7 —
-   so there is no outline to reveal), just a static read of the file's own structure. */
-.card.narrative{cursor:default}
-.card.narrative:hover{border-color:var(--line)}     /* no hover affordance — nothing to click */
-.nsec{padding:2px 11px 9px}
-.nsechd{font-size:9px;letter-spacing:1px;text-transform:uppercase;color:var(--faint);
-  padding:7px 0 4px;border-top:1px solid var(--line)}
-.nsec:first-of-type .nsechd{border-top:none}
-.nbullet{padding:3px 0}
-.ntx{font-size:11px;color:var(--ink);line-height:1.4}
-.nrefs{display:flex;flex-wrap:wrap;gap:4px;padding-top:3px}
-.nref{font-size:9px;font-family:monospace;color:var(--dim);background:var(--bg);
-  border:1px solid var(--line);border-radius:5px;padding:1px 5px}
+  /* ── the narrative card (js/18-programme.js) ────────────────────────────────────────────
+     Aim cards reuse every `.card`/`.card.aim` rule 03-board.css already carries. The narrative
+     is the same kind of thing one level up — a container whose slices are the sentences of a
+     grant — so it reuses the card and the `.slice`/`.sgrp` rows too, and only the three places
+     a sentence differs from a claim are restyled here. It used to be a `.card.narrative` that
+     could not be opened at all, holding chips instead of edges; see the module header. */
+  .ctype.narrative{background:var(--broad)}
+  .cyr.nbud{font-style:italic}
+  /* the title reads on the CLOSED card, exactly as an aim's does and for the same reason */
+  .card.narr .ctitle{display:block;padding:3px 11px 9px;font-size:11px;font-weight:600;
+    color:var(--ink);line-height:1.35}
+  /* a SECTION headline is prose, not a category: the uppercase micro-label an entry group wears
+     is right for "assumptions — nothing checks these" and wrong for a sentence you are meant to
+     read. Same row, same fold, different voice. */
+  .slices .sgrp.nsec{font-size:10px;letter-spacing:0;text-transform:none;color:var(--dim);
+    font-weight:600;line-height:1.35;align-items:flex-start;margin:11px 0 4px;padding-top:7px}
+  .slices .sgrp.nsec .gcar{margin-top:2px}
+  .slices .sgrp.nsec .gct{margin-top:1px;font-size:8px}
+  .slices .sgrp.nsec:hover{color:var(--ink)}
+  /* a bullet: the sentence at reading size, its id small and quiet (it is an edge anchor, not a
+     label the reader needs), and the count of what stands behind it pushed to the right */
+  .slice.nbul{padding:5px 6px;background:#f6f8fa;cursor:pointer}
+  .slice.nbul:hover{background:#e9eef2}
+  .slice.nbul .stx{font-size:10px;line-height:1.42}
+  .sid.nb{background:var(--faint);font-weight:600;opacity:.72}
+  .nrf{flex:none;margin-left:5px;margin-top:1px;padding:0 5px;border-radius:6px;font-size:7px;
+    font-weight:700;color:var(--dim);background:#fff;border:1px solid var(--line)}
+  /* a line in a grant with nothing under it — the thing a reader of this card is hunting for */
+  .nrf.none{color:var(--risk);border-color:#e2c4c4;background:#fdf6f6}
+  /* inside a cited paper's card on a programme page: the slices this proposal actually points
+     at. The card is whole — the same one the main board draws — and this is the only thing said
+     about it that the main board would not say. */
+  .slice.cite{background:#eef4f1;box-shadow:inset 2px 0 0 var(--grounded)}
+  .snodes .slice.cite:hover{background:#e3ede8}

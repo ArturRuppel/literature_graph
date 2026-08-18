@@ -194,5 +194,10 @@
   #aimPanel .ap-row .flag{margin-left:auto;flex:none;font-size:9px;letter-spacing:.5px;
     text-transform:uppercase;color:var(--faint)}
   #aimPanel .ap-row .flag.warn{color:var(--risk);font-weight:600}
+  /* a proposal leads the list and opens the whole thing — introduction plus the aims under it —
+     so it reads as the heading of the block the aim rows beneath it belong to */
+  #aimPanel .ap-row.prop .ckey{font-weight:600}
+  #aimPanel .ap-row.prop{border-bottom:1px solid var(--line);border-radius:7px 7px 0 0;
+    margin-bottom:2px}
   #aimPanel .wp-note{padding:6px 8px 2px;font-size:10px;line-height:1.5;color:var(--faint)}
 

@@ -1,65 +1,61 @@
-// ── the programme lane: aims + the narrative that orders them (programme design §4, §7) ──
-// `include_aims` (build.py) rides both axes into this payload; this is where they get a place
-// to stand. Deliberately NOT wired into the board's column system (cols{}/ensureCol/rebuild,
-// see 06-layout.js): that machinery exists to make a paper's grounds/builds spawn generations
-// of neighbouring columns as you click deeper, and an aim has no such generation to spawn
-// (its own cross-paper "grounds" is the point of `lit preview '@slug'`, which already renders
-// it in the full column system, isolated). Registering this lane there would also mean
-// teaching rebuild()'s column-teardown loop about a THIRD persistent column (today only col 0
-// is exempt) for a lane that never needs to be torn down in the first place — it is built once,
-// at boot, from a fixed population, exactly like col 0's own "curated papers" (see
-// syncLanding's header comment) but with nothing that ever changes it afterward. Simplest
-// thing that renders the lane correctly and can't be un-rendered by an unrelated click
-// elsewhere on the board.
+// ── the narrative card: a proposal's prose, wired into the graph ─────────────────────────
+// A narrative (programme design §7, extended) is one linearization of the programme into a
+// grant's sections. It used to render as a static panel in a standing "programme lane" on the
+// main board, with each bullet's citations as inert chips. Two things were wrong with that:
 //
-// A card placed here still runs through the ordinary `paperCard`/`cardClick`/`renderSlices`
-// machinery (03-card.js, 04-hover-pin.js, 05-slices.js already branch on `p.aim` — this is
-// exactly what `lit preview` exercises today, just inside the main board instead of isolated),
-// so clicking an aim open still reveals its own outline, fold/drill and all. What it will NOT
-// do is spawn a grounds/builds column: `expandCard` (07-expand.js) is only ever reached by
-// rebuild()'s sweep over cards actually registered in `cols{}`, and this lane isn't. No edges
-// are drawn to or from it either, for the same reason — `addEdge` is only ever called from
-// that same sweep. That is a real, deliberate limit, not an oversight: it is the "own lane" of
-// job 2's ask, not the full cross-paper drill of job 2's stretch goal.
+//   * **the lane.** A grant's argument stood in the leftmost column of every reader's board,
+//     whether they had come to read the proposal or to browse the library. The programme is
+//     something you ASK for now — the HUD's programme pill opens one aim, or a whole proposal
+//     (narrative + the aims under it), on its own page. Nothing programme-shaped is on the
+//     board at rest; `order` is paper-only, so nothing puts one there.
+//   * **the chips.** A bullet's refs are the one thing a reader wants to follow, and a chip is
+//     a dead end exactly where the rest of this viewer draws an arrow. The old comment here
+//     defended that as protecting the schema — but the schema is protected by the narrative
+//     carrying no edges *into the graph*, which is a fact about build.py, not about what the
+//     viewer is allowed to draw. So a bullet is now a slice and its refs are ordinary `grounds`
+//     / `cons` edges (build._narrative_card_json), and this card gets the whole machinery for
+//     free: open it, and every sentence has arrows running to the cards it rests on; hover one
+//     and just its sources light up.
 //
-// AIMLANE itself is declared in 01-state.js beside SYNTH, not here — see the comment there for
-// why a module-local const would throw when boot() calls renderProgrammeLane() as its very
-// first statement (12-landing.js), before this file's own top-level code has run.
-function aimKeys(){ return Object.keys(PAPERS).filter(k => PAPERS[k].aim); }
+// Deleting programme/narrative/ still changes nothing the graph computes — that invariant is
+// held where it always was, in the Python (tests/test_narrative.py), not by refusing to draw.
 
-// A narrative bullet's `refs` are rendered as plain, inert chips — never as drawn edges and
-// never clickable to jump. That is not a shortcut: the narrative axis "carries no edges and
-// derives nothing" (design §7, and the extension in narrative.py's own docstring) precisely so
-// deleting it can never change the graph. Drawing a line for one here, however tempting, would
-// hand the model a relation the schema deliberately does not give it.
-function narrativePanel(grant, n){
-  const el = document.createElement("div");
-  el.className = "card narrative";
-  el.dataset.key = "narrative::" + grant;
-  const budget = n.page_budget != null
-    ? `<span class="cyr">${esc(String(n.page_budget))}p</span>` : "";
-  let body = `<div class="chd"><span class="ckey">${esc(n.title || grant)}</span>${budget}</div>`;
-  body += (n.sections || []).map(sec => {
-    const bullets = (sec.bullets || []).map(b => {
-      const refs = (b.refs || []).map(r => `<span class="nref">${esc(r)}</span>`).join("");
-      return `<div class="nbullet"><div class="ntx">${esc(b.text)}</div>`
-           + (refs ? `<div class="nrefs">${refs}</div>` : "") + `</div>`;
-    }).join("");
-    return `<div class="nsec"><div class="nsechd">${esc(sec.title)}</div>${bullets}</div>`;
-  }).join("");
-  el.innerHTML = body;
-  return el;
-}
-
-function renderProgrammeLane(){
-  const keys = aimKeys(), narr = GRAPH.narrative || {};
-  if(!keys.length && !Object.keys(narr).length) return;
-  const col = document.createElement("div");
-  col.className = "col";
-  col.innerHTML = `<div class="colhd">programme</div>`;
-  for(const k of keys) col.appendChild(paperCard(k, AIMLANE));
-  for(const grant in narr) col.appendChild(narrativePanel(grant, narr[grant]));
-  // Always first: inserting at the current firstChild works whether this runs before or after
-  // col 0 exists (boot() happens to call it first, but nothing here depends on that order).
-  stage.insertBefore(col, stage.firstChild);
+// The narrative's own rendering of its slices, in place of the paper DAG (renderGraph) and the
+// aim outline. Neither fits: a bullet has no local support and no sub-structure — the ONLY
+// structure a narrative has is which section a sentence stands in, and that is an ordering, not
+// a graph. So the sections are the groups, in the order the file writes them, and a bullet is a
+// leaf row whose whole content is the sentence that will appear in the grant.
+function renderNarrative(id, p, box){
+  const byId = {}; p.slices.forEach(s => byId[s.id] = s);
+  const secs = p.sections || [];
+  const nb = p.slices.length;
+  let html = `<div class="sbar"><span>${nb} bullet${nb === 1 ? "" : "s"}`
+           + ` · ${secs.length} section${secs.length === 1 ? "" : "s"}</span>`
+           + `<span class="saxis">◂ what each line rests on</span></div>`;
+  for (const sec of secs) {
+    const col = grpCollapsed.has(`${id}::${sec.title}`);
+    html += `<div class="sgrp nsec" data-grp="${esc(sec.title)}">`
+          + `<span class="gcar">${col ? "▸" : "▾"}</span>${sec.title}`
+          + `<span class="gct">${sec.bullets.length}</span></div>`;
+    if (col) continue;                       // header only — the section's prose folds away
+    html += `<div class="sgrpb">`;
+    for (const sid of sec.bullets) {
+      const s = byId[sid];
+      if (!s) continue;
+      // the ref COUNT still rides on the row, and is the one thing the chips did honestly: it
+      // says how much is standing behind this sentence while the card is shut and no arrow is
+      // drawn. A bullet with nothing under it says so — an unbacked line in a grant is exactly
+      // what a reader of this card is looking for.
+      const n = s.nref || 0;
+      html += `<div class="slice nbul" data-sid="${s.id}">`
+            + `<span class="sid nb">${s.id}</span>`
+            + `<span class="stx">${s.text}</span>`
+            + (n ? `<span class="nrf" title="${n} source${n === 1 ? "" : "s"} — open the card to`
+                 + ` draw them, hover this line to light just these">${n}</span>`
+                 : `<span class="nrf none" title="nothing cited yet">—</span>`)
+            + `</div>`;
+    }
+    html += `</div>`;
+  }
+  box.innerHTML = html;
 }

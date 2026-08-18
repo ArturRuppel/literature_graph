@@ -8,7 +8,12 @@ import pytest
 
 from litgraph.build import to_json_dict
 from litgraph.graph import BuildError
-from litgraph.preview import build_preview_graph, emit_preview, isolate
+from litgraph.preview import (
+    build_preview_graph,
+    emit_preview,
+    isolate,
+    isolate_proposal,
+)
 
 EXAMPLE = Path(__file__).resolve().parents[3] / "example"
 
@@ -126,3 +131,71 @@ def test_emit_preview_is_self_contained(tmp_path: Path):
     assert "src=\"http" not in text and "href=\"http" not in text
     # only the focal paper is inlined — a sibling curated paper is not a column here
     assert "Kumar2020Net" not in text
+
+
+# --- the proposal page -------------------------------------------------------
+# A narrative and the aims under it, isolated together. This is where the programme layer is
+# read now: it used to stand as a lane on the main board, with the narrative's citations as
+# inert chips because a static panel had nothing to draw an arrow to.
+
+
+def _proposal(grant: str = "~synth-grant"):
+    g = build_preview_graph(EXAMPLE, grant, None)
+    return isolate_proposal(to_json_dict(g, include_aims=True), grant)
+
+
+def test_the_proposal_is_the_narrative_with_its_aims_under_it():
+    m = _proposal()
+    assert m["order"] == ["~synth-grant", "@adaptive-batching"]     # introduction first
+    assert m["proposal"] == "~synth-grant"
+    assert m["papers"]["~synth-grant"]["narr"] is True
+    assert m["papers"]["@adaptive-batching"]["aim"] is True
+
+
+def test_a_bullets_curated_sources_land_as_cards_not_chips():
+    """The whole point of the change: a cited slice is a card with an edge to it. A wildcard
+    ref still degrades to a chip — it names a container, not a finding."""
+    m = _proposal()
+    # the whole card, with what this page cites marked: the narrative's c1 + the aim's own m1
+    assert set(m["papers"]["Chen2021Sys"]["cited"]) == {"c1", "m1"}
+    assert m["papers"]["Chen2021Sys"]["title"]
+    assert "Chen2021Sys" not in m["stubs"]
+    assert m["broad"]["throughput-scales-with-batching"]            # the broad ref rides too
+
+
+def test_a_paper_cited_by_both_the_narrative_and_an_aim_is_one_card():
+    """One grounds column serves the whole page, so a source both cite is a single card marking
+    the union of what they cite — not two cards disagreeing about the same paper."""
+    full = to_json_dict(build_preview_graph(EXAMPLE, "~synth-grant", None), include_aims=True)
+    aim_cited = {g["tid"] for g in full["papers"]["@adaptive-batching"]["grounds"]
+                 if g["key"] == "Chen2021Sys" and g["tid"]}
+    m = isolate_proposal(full, "~synth-grant")
+    assert aim_cited <= set(m["papers"]["Chen2021Sys"]["cited"])
+
+
+def test_naming_the_grant_without_the_sigil_works():
+    """`~` is the payload key's sigil, not something a caller should have to spell."""
+    full = to_json_dict(build_preview_graph(EXAMPLE, "~synth-grant", None), include_aims=True)
+    assert isolate_proposal(full, "synth-grant") == isolate_proposal(full, "~synth-grant")
+
+
+def test_unknown_grant_raises():
+    with pytest.raises(BuildError, match="no narrative"):
+        build_preview_graph(EXAMPLE, "~nope", None)
+    full = to_json_dict(build_preview_graph(EXAMPLE, "~synth-grant", None), include_aims=True)
+    with pytest.raises(KeyError):
+        isolate_proposal(full, "~nope")
+
+
+def test_a_proposal_cannot_be_scratched(tmp_path: Path):
+    """--scratch overlays one container; a proposal is a whole narrative file."""
+    f = tmp_path / "x.yaml"; f.write_text("title: x\n", encoding="utf-8")
+    with pytest.raises(BuildError, match="--scratch"):
+        build_preview_graph(EXAMPLE, "~synth-grant", f)
+
+
+def test_emit_preview_writes_the_proposal_page(tmp_path: Path):
+    g = build_preview_graph(EXAMPLE, "~synth-grant", None)
+    html = emit_preview(g, "~synth-grant", tmp_path).read_text(encoding="utf-8")
+    assert '"~synth-grant"' in html and '"@adaptive-batching"' in html
+    assert "renderNarrative" in html                    # the card's own renderer is inlined

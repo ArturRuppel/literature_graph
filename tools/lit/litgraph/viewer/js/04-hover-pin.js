@@ -127,7 +127,9 @@ function cardClick(e, el, level, key){
     // an aim's row drills its branch; a paper's row has no branch to drill — every slice is
     // already on screen — so the click trades that row's text for its badge instead.
     if (row.classList.contains("drillable")) toggleDrill(id, row.dataset.path);  // drill + rebuild
-    else if (row.dataset.sid && !PAPERS[key].aim && !PAPERS[key].cited) {
+    // …and a narrative's row is neither: a bullet has no branch and no badge worth trading a
+    // sentence for. The togglePin above is the whole gesture — click a line, its citations stay lit.
+    else if (row.dataset.sid && !PAPERS[key].aim && !PAPERS[key].narr) {
       const s = sFold.get(id) || new Set();
       if (s.has(row.dataset.sid)) s.delete(row.dataset.sid); else s.add(row.dataset.sid);
       sFold.set(id, s);

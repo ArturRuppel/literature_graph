@@ -108,11 +108,16 @@ function renderGraph(id, key, p, box){
   cols.forEach((col, c) => {
     html += `<div class="scol"><div class="schd">${c === 0 ? "floors" : "· ".repeat(c)}`
           + `<span class="sct">${col.length}</span></div>`;
+    // the slices a programme container on THIS page points at (preview.py `_cited_neighbour`);
+    // empty on the main board. Marking them is what the old trim was really for — "what does the
+    // proposal take from this paper" — minus throwing the rest of the paper away to say it.
+    const cited = new Set(p.cited || []);
     for (const sid of col) {
       const s = p.slices.find(x => x.id === sid);
       const ans = s.kind === "question" && s.answered ? " ans" : "";
       const pdf = (LIVE && s.quote) ? " pdf-src" : "";   // quote-bearing → hover aims the docked viewer
-      html += `<div class="slice${pdf}${folded.has(sid) ? " fold" : ""}" data-sid="${s.id}"`
+      const cit = cited.has(sid) ? " cite" : "";
+      html += `<div class="slice${pdf}${cit}${folded.has(sid) ? " fold" : ""}" data-sid="${s.id}"`
             + ` title="click to fold this slice to its badge">`
             + `<span class="sid ${SID_CLASS[s.color] || 'cl'}${ans}">${s.id}</span>`
             + `<span class="stx">${s.text}</span>`
@@ -145,7 +150,12 @@ function renderSlices(id){
   const key = id.slice(id.indexOf(":") + 1), p = PAPERS[key];
   const box = document.getElementById("card-" + id).querySelector(".slices");
   if (!box) return;
-  if (!p.aim && !p.cited) return renderGraph(id, key, p, box);
+  if (p.narr) return renderNarrative(id, p, box);        // sections, not a DAG (18-programme.js)
+  // A cited neighbour used to render its own way here — one "cited here" group holding the
+  // trimmed slices a programme container points at. It is a whole paper card now (preview.py
+  // `_cited_neighbour`), so it renders as one: the same slice DAG the main board draws, with
+  // the cited rows marked inside it. One paper, one rendering, wherever it stands.
+  if (!p.aim) return renderGraph(id, key, p, box);
   const byId = {}; p.slices.forEach(s => byId[s.id] = s);
   const answeredBy = {};
   p.slices.forEach(s => (s.answers || []).forEach(r => {
@@ -194,14 +204,8 @@ function renderSlices(id){
   const caps = p.aim ? p.slices.filter(s => s.kind === "capability") : [];
   const other = p.aim ? p.slices.filter(s =>
     !["claim", "question", "test", "capability"].includes(s.kind)) : [];
-  // A trimmed neighbour (`lit preview` of an aim, preview.py `_cited_neighbour`) carries only the
-  // slices the focal container cites, and they go in one group whatever their kind — the paper
-  // branch's entry rule never surfaces a Method, and three of the five sources here are cited for
-  // their methods. The group IS the answer to "what does the aim take from this paper".
   // [label, rows, folded-by-default]
-  const groups = p.cited ? [
-    ["cited here", p.cited.map(i => byId[i]).filter(Boolean), false],
-  ] : p.aim ? [
+  const groups = p.aim ? [
     ["the argument", argument, false],
     ["assumptions — nothing checks these", assumptions, true],
     ["rests on the literature", literature, true],

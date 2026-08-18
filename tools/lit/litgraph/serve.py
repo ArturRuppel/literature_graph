@@ -41,7 +41,7 @@ from litgraph import config, endpoints, pdfview, store
 from litgraph.build import render_html
 from litgraph.config import load_config
 from litgraph.graph import BuildError, build_graph
-from litgraph.preview import isolate
+from litgraph.preview import isolate, isolate_proposal, narrative_key
 from litgraph.quotes import JOIN
 from litgraph.sources.openalex import OpenAlex
 
@@ -365,6 +365,26 @@ class _Handler(BaseHTTPRequestHandler):
         return endpoints.payload_dict(self.server.root, self.server.pdf_dir, cockpit=cockpit,
                                       include_aims=include_aims, views=_available_views())
 
+    def _isolated(self, key: str) -> dict | None:
+        """The isolated payload behind both preview routes, or None when `key` names nothing.
+
+        Two kinds of key, one door: `~<grant>` is a whole proposal (the narrative plus the aims
+        under it — preview.isolate_proposal), anything else is a single container. Resolving
+        both here is what keeps /preview.html and /preview.json from drifting: the DRIVE card
+        refreshes itself off the JSON and must see exactly the page it is standing on."""
+        full = self._payload_dict(include_aims=True)
+        if key.startswith("~"):
+            try:
+                return isolate_proposal(full, key)
+            except KeyError:
+                return None
+        return isolate(full, key) if key in full["papers"] else None
+
+    def _preview_404(self, raw_path: str):
+        key = parse_qs(urlparse(raw_path).query).get("key", [""])[0]
+        return self._send(HTTPStatus.NOT_FOUND, "text/plain; charset=utf-8",
+                          f"nothing to preview: {key}\n".encode())
+
     def _payload(self) -> str:
         """`_payload_dict` serialized — the graph.json body served at `/` and `/graph.json`.
 
@@ -425,42 +445,48 @@ class _Handler(BaseHTTPRequestHandler):
                 return self._send(HTTPStatus.OK, "application/json; charset=utf-8",
                                   json.dumps(resp).encode())
             if path == "/preview.html":
-                # one paper's local subgraph in isolation — the exact `lit preview` view
+                # one container's local subgraph in isolation — the exact `lit preview` view
                 # (real `isolate()` + the shared template), for reviewing an in-progress paper
                 # from the main viewer. `.html` (not `/preview/…`, taken by PNG thumbnails)
                 # keeps the base dir at `/` so the isolated page's own live PDF features resolve.
-                key = parse_qs(urlparse(self.path).query).get("key", [""])[0]
-                full = self._payload_dict(include_aims=True)
-                if key not in full["papers"]:
-                    return self._send(HTTPStatus.NOT_FOUND, "text/plain; charset=utf-8",
-                                      f"nothing to preview: {key}\n".encode())
-                mini = json.dumps(isolate(full, key), ensure_ascii=False)
+                # A `~<grant>` key is the whole PROPOSAL page (isolate_proposal): the narrative
+                # and the aims under it, which is where the programme layer is read now that it
+                # no longer stands as a lane on the board.
+                mini = self._isolated(parse_qs(urlparse(self.path).query).get("key", [""])[0])
+                if mini is None:
+                    return self._preview_404(self.path)
                 return self._send(HTTPStatus.OK, "text/html; charset=utf-8",
-                                  render_html(mini).encode())
+                                  render_html(json.dumps(mini, ensure_ascii=False)).encode())
             if path == "/preview.json":
-                # the isolated subgraph as JSON — same `isolate()` as /preview.html, sans the
+                # the isolated subgraph as JSON — same resolution as /preview.html, sans the
                 # template. The zone's DRIVE card fetches this to refresh its data *in place* on a
                 # YAML edit (rebuild from live PAPERS, reading state preserved) instead of reloading
                 # the iframe, which would collapse the card the human is reading.
-                key = parse_qs(urlparse(self.path).query).get("key", [""])[0]
-                full = self._payload_dict(include_aims=True)
-                if key not in full["papers"]:
-                    return self._send(HTTPStatus.NOT_FOUND, "text/plain; charset=utf-8",
-                                      f"nothing to preview: {key}\n".encode())
+                mini = self._isolated(parse_qs(urlparse(self.path).query).get("key", [""])[0])
+                if mini is None:
+                    return self._preview_404(self.path)
                 return self._send(HTTPStatus.OK, "application/json; charset=utf-8",
-                                  json.dumps(isolate(full, key), ensure_ascii=False).encode())
+                                  json.dumps(mini, ensure_ascii=False).encode())
             if path == "/aims.json":
-                # the programme index behind the HUD's "aims" pill: one row per aim, each
-                # linking to its card at /preview.html?key=@<slug>. The counts are the two
-                # signals worth seeing without opening it (programme design §8).
+                # the programme index behind the HUD's "programme" pill: one row per thing you
+                # can open, each linking to its page at /preview.html?key=<slug>. Proposals lead
+                # — a `~<grant>` row is the narrative AND the aims under it, which is how the
+                # programme is meant to be read — with the aims listed after, each still openable
+                # on its own. The counts are the signals worth seeing without opening a row
+                # (programme design §8); for a proposal that is its size, since its assumptions
+                # are the aims' and already stated on their rows.
                 graph = build_graph(self.server.root)
-                aims = [{"slug": slug, "title": a.title, "slices": len(a.slices),
-                         "assumptions": sum(1 for s in a.slices if s.load_bearing),
-                         "at_risk": sum(1 for s in a.slices
-                                        if s.kind == "test" and s.at_risk)}
-                        for slug, a in sorted(graph.aims.items())]
+                rows = [{"slug": narrative_key(grant), "kind": "proposal", "title": n.title or grant,
+                         "sections": len(n.sections),
+                         "bullets": sum(len(sec.bullets) for sec in n.sections)}
+                        for grant, n in sorted(graph.narrative.items())]
+                rows += [{"slug": slug, "kind": "aim", "title": a.title, "slices": len(a.slices),
+                          "assumptions": sum(1 for s in a.slices if s.load_bearing),
+                          "at_risk": sum(1 for s in a.slices
+                                         if s.kind == "test" and s.at_risk)}
+                         for slug, a in sorted(graph.aims.items())]
                 return self._send(HTTPStatus.OK, "application/json; charset=utf-8",
-                                  json.dumps(aims).encode())
+                                  json.dumps(rows).encode())
             if path == "/pdfs.json":
                 keys = (sorted(f.stem for f in self.server.pdf_dir.glob("*.pdf"))
                         if self.server.pdf_dir.is_dir() else [])

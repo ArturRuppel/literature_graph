@@ -97,8 +97,8 @@ def main(argv: list[str] | None = None) -> int:
     p_prev = sub.add_parser("preview", help="render one paper's local subgraph in isolation "
                                             "(curation: see a proposition as it'll look)")
     p_prev.add_argument("citekey", nargs="?",
-                        help="focal paper citekey, or an aim as \"@<slug>\" "
-                             "(default: --scratch file stem)")
+                        help="focal paper citekey, an aim as \"@<slug>\", or a whole proposal "
+                             "as \"~<grant>\" (default: --scratch file stem)")
     p_prev.add_argument("--scratch", default=None,
                         help="a curated-schema YAML to overlay as the focal paper (or an "
                              "aim-schema YAML with an \"@<slug>\" key) — propose before "
