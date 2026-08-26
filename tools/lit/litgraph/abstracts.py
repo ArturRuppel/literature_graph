@@ -17,12 +17,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from ruamel.yaml import YAML
 
 from . import store
 from .fulltext import extract_abstract
+from .yamlio import safe_yaml
 
-_yaml_safe = YAML(typ="safe")  # reading only; `store.write_abstract` does the round-trip write
 
 
 @dataclass
@@ -61,7 +60,7 @@ def backfill(root: Path, pdf_dir: Path | None, dry_run: bool = False,
         key = path.stem
         if only and key not in only:
             continue
-        doc = _yaml_safe.load(path.read_text()) or {}
+        doc = safe_yaml().load(path.read_text()) or {}
         if (doc.get("abstract") or "").strip():
             res.already.append(key)
             continue

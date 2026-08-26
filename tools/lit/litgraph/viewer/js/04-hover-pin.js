@@ -93,6 +93,17 @@ function renderSlicesInPlace(id, sel){
 // graph) or drill (an aim's outline).
 function cardClick(e, el, level, key){
   const id = `${level}:${key}`;
+  if (e.target.closest(".cabsx") && el.classList.contains("open")) {
+    // the abstract fold. Keyed by citekey, so every instance of this paper on the board turns
+    // together — and applied by toggling a class rather than re-rendering, because the abstract is
+    // the only thing on the card that changes.
+    if (absOpen.has(key)) absOpen.delete(key); else absOpen.add(key);
+    const on = absOpen.has(key);
+    document.querySelectorAll(`.card.curated[data-key="${CSS.escape(key)}"]`)
+      .forEach(c => c.classList.toggle("absopen", on));
+    redraw();                                     // the card's height moved → its arcs re-anchor
+    return;
+  }
   if (e.target.closest(".sfold") && el.classList.contains("open")) {
     // the whole card at once: fold every slice to its badge, or give the text back. Folded is
     // how the graph is READ — 26 rows of prose is a scroll, 26 badges is a diagram.
@@ -100,6 +111,14 @@ function cardClick(e, el, level, key){
     const s = sFold.get(id) || new Set();
     if (rows.length && rows.every(n => s.has(n))) s.clear(); else rows.forEach(n => s.add(n));
     sFold.set(id, s);
+    renderSlicesInPlace(id); redraw();
+    return;
+  }
+  if (e.target.closest(".sbar") && el.classList.contains("open")) {
+    // the slice-graph fold — the bar itself, checked after `.sfold` because that toggle sits
+    // inside it. Rows appear/vanish, so this is a real re-render and the edge layer re-decides
+    // every arc from the new state (see renderGraph).
+    if (sliceOpen.has(id)) sliceOpen.delete(id); else sliceOpen.add(id);
     renderSlicesInPlace(id); redraw();
     return;
   }
@@ -142,6 +161,7 @@ function cardClick(e, el, level, key){
     if (e.target.closest(".chd")) {
       if (open.has(id)) {
         open.delete(id); drill.delete(id); grpSeeded.delete(id); sFold.delete(id);
+        sliceOpen.delete(id); sliceSeeded.delete(id);   // reopen lands on the default view
         for (const g of [...grpCollapsed]) if (g.startsWith(id + "::")) grpCollapsed.delete(g);
       }
       else open.add(id);                      // context-opened card → promote to focused

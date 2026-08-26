@@ -29,6 +29,7 @@
 
 // read-only introspection for headless tests; not used by the UI
 window.litDebug={get edges(){return edges},get cols(){return cols},open,drill,stacks,
+  absOpen,sliceOpen,stubOpen,
   walk:WALK,
   get ctxOpen(){return ctxOpen},get ctxDrill(){return ctxDrill},get hover(){return hover},
   get pin(){return pin},anchorRect};

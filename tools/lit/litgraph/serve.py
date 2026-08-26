@@ -78,7 +78,9 @@ _PROTOTYPES = Path(__file__).resolve().parents[3] / "prototypes"
 _VIEWS = (("paper-graph", "paper graph", "papers as circles — grounding and co-support"),
           ("claim-graph", "claim graph (flat)", "the support skeleton, layered by distance to floor"),
           ("claim-sphere", "claim sphere (3D)",
-           "generality as radius, family as direction — three readings, one panel"))
+           "generality as radius, family as direction — three readings, one panel"),
+          ("claim-map", "claim map (overview)",
+           "the broad claims on one page — when their evidence landed, how general they are"))
 _VIEW_TYPES = {".html": "text/html; charset=utf-8", ".js": "application/javascript",
                ".css": "text/css; charset=utf-8", ".json": "application/json; charset=utf-8"}
 

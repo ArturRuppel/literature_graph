@@ -25,16 +25,23 @@ def _mini(citekey: str):
 
 # --- isolation ---------------------------------------------------------------
 
-def test_isolate_reduces_to_one_paper():
-    m = _mini("Chen2021Sys")
-    assert m["order"] == ["Chen2021Sys"]
-    assert list(m["papers"]) == ["Chen2021Sys"]
-    # every outward edge endpoint is present as a stub chip or a broad node — nothing dangles
-    f = m["papers"]["Chen2021Sys"]
+def _outward(mini: dict, citekey: str) -> set[str]:
+    """The citekeys the focal card points at, which the payload must account for one way or
+    the other: a curated one as a neighbour card, an uncurated one as a stub chip."""
+    f = mini["papers"][citekey]
     keys = {g["key"] for g in f["grounds"]}
     keys |= {e["key"] for e in f["lateral"] + f["ans"] if e.get("key")}
-    keys.discard("Chen2021Sys")                       # a within-paper lateral targets the focal
-    assert keys and all(k in m["stubs"] for k in keys)
+    keys.discard(citekey)                             # a within-paper lateral targets the focal
+    return keys
+
+
+def test_isolate_reduces_to_one_landing_paper():
+    m = _mini("Chen2021Sys")
+    assert m["order"] == ["Chen2021Sys"]              # the landing column is the focal alone
+    # every outward edge endpoint is present, as a neighbour card or a stub chip — nothing dangles
+    keys = _outward(m, "Chen2021Sys")
+    assert keys and all(k in m["stubs"] or k in m["papers"] for k in keys)
+    f = m["papers"]["Chen2021Sys"]
     slugs = {c["slug"] for c in f["cons"]}
     slugs |= {e["slug"] for e in f["lateral"] + f["ans"] if e.get("slug")}
     assert all(s in m["broad"] for s in slugs)
@@ -42,12 +49,24 @@ def test_isolate_reduces_to_one_paper():
 
 def test_isolate_carries_only_referenced_neighbours():
     m = _mini("Chen2021Sys")
-    f = m["papers"]["Chen2021Sys"]
-    referenced = {g["key"] for g in f["grounds"]}
-    referenced |= {e["key"] for e in f["lateral"] + f["ans"] if e.get("key")}
-    referenced.discard("Chen2021Sys")
+    referenced = _outward(m, "Chen2021Sys")
     # the isolated payload holds exactly the neighbours its edges point at — no more
-    assert set(m["stubs"]) == referenced
+    assert set(m["stubs"]) | (set(m["papers"]) - {"Chen2021Sys"}) == referenced
+    assert not (set(m["stubs"]) & set(m["papers"]))   # a neighbour is a card or a chip, never both
+
+
+def test_a_curated_neighbour_cited_by_citekey_alone_is_still_a_card():
+    """The promotion gate is curation, not sharpening. A pass-2 container cites by citekey with
+    no `tid`, and its sources are no less curated for it — the card stands with no row marked."""
+    full = to_json_dict(build_preview_graph(EXAMPLE, "Chen2021Sys", None))
+    for g in full["papers"]["Chen2021Sys"]["grounds"]:
+        if g["key"] == "Lopez2019Arch":
+            g["tid"] = None                           # blunt the one sharpened ground
+    m = isolate(full, "Chen2021Sys")
+    assert "Lopez2019Arch" not in m["stubs"]
+    n = m["papers"]["Lopez2019Arch"]
+    assert n["cur"] is True and n["slices"]           # the whole card, as everywhere else
+    assert n["cited"] == []                           # …with nothing marked inside it
 
 
 def test_isolate_drops_builds_on():

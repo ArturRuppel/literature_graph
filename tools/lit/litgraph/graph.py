@@ -7,12 +7,10 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from ruamel.yaml import YAML
 from ruamel.yaml.error import YAMLError
 
 from .topics import Topic, load_topics, validate_topics
-
-_yaml = YAML(typ="safe")
+from .yamlio import safe_yaml
 
 # The one specific trap worth naming: a sharpened cross-paper ref (`Key2026Journal:c4`, or a
 # programme `@aim:c1`) left unquoted inside a flow sequence. In flow context a plain scalar may
@@ -86,7 +84,7 @@ def load_yaml(path: Path) -> dict:
     if hint:
         raise BuildError(hint)
     try:
-        return _yaml.load(text) or {}
+        return safe_yaml().load(text) or {}
     except YAMLError as e:
         raise BuildError(f"{path}: {e}") from e
 

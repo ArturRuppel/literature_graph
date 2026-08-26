@@ -1,6 +1,6 @@
 # CURATION — how to read a paper into its local subgraph
 
-**Status:** v2 (lean / slice model) · **Date:** 2026-06-25 · companion to [CONCEPT.md](CONCEPT.md) and [SCHEMA.md](SCHEMA.md)
+**Status:** v2 (lean / slice model) · **Date:** 2026-06-25 · **batch mode added 2026-08-21** · companion to [CONCEPT.md](CONCEPT.md) and [SCHEMA.md](SCHEMA.md)
 
 The model says *what* the graph is (CONCEPT) and *how* it's stored (SCHEMA). This doc is the
 **reading protocol**: the structured pass an agent makes over one paper's full text to
@@ -9,17 +9,39 @@ The model says *what* the graph is (CONCEPT) and *how* it's stored (SCHEMA). Thi
 accept / edit / reject.
 
 This is **not a CLI.** Curation is reading comprehension and judgement; only an agent
-(reading) plus a human (curating) can do it. It is **interactive and discussion-first**: in
-each pass the agent **first explains its reading** in prose, at that pass's granularity, and
-the two **discuss until they agree** — *only then* does the agent **tokenize**, writing the
-agreed slices into `curated/<citekey>.yaml`. The human reviews the **git diff** and
-edits/accepts. Nothing is "curated" until the human commits it.
+(reading) plus a human (curating) can do it. The human is always the gate: the agent
+**proposes**, the human **accepts / edits / rejects**, and nothing is "curated" until the human
+commits it. What varies is *when* the human is consulted, and there are **two modes**:
+
+- **Interactive** — the human is present, typically with `lit serve` and the paper's card open.
+  Each pass is a loop: the agent **explains its reading** in prose at that pass's granularity,
+  the two **discuss until they agree**, and *only then* does the agent **tokenize** into
+  `curated/<citekey>.yaml`. Realign before the next pass. Use this when the paper is
+  load-bearing, when its reading is contested, or when the curator wants to steer granularity
+  as it forms.
+- **Batch** — the human is not present. A dispatched agent is given **one paper and a target
+  pass up front**, climbs to that rung in a single run writing directly into
+  `curated/<citekey>.yaml`, and the completed proposition is reviewed afterwards as a **git
+  diff**. Agreement moves to the two ends: the target pass is agreed at dispatch, the slices
+  are judged on return. This is how a batch of papers is curated in parallel, one agent per
+  paper.
+
+Batch trades alignment bandwidth for throughput, and the cost is real: a misjudged reading
+surfaces at the end rather than at the pass that produced it, so there is more to reject at
+once. Two briefing rules keep it honest. **Tell the agent what the paper is being asked to
+support, and instruct it that a finding which *undermines* that is the most valuable thing it
+can return** — an agent that only ever confirms has been briefed badly. And **name the specific
+question the paper must settle**, so its verdict on that question comes back stated outright
+rather than buried in the slices.
 
 ## The rhythm (don't forget)
 
-- **Discuss, then tokenize — align after every pass.** Never write slices ahead of agreement.
-  Each pass is a loop: *explain your reading at the pass's granularity → discuss until
-  aligned → only then weld the agreed slices into the file.* Realign before the next pass.
+- **Discuss, then tokenize — align after every pass (interactive mode).** Never write slices
+  ahead of agreement. Each pass is a loop: *explain your reading at the pass's granularity →
+  discuss until aligned → only then weld the agreed slices into the file.* Realign before the
+  next pass. **In batch mode this loop collapses to its two ends** — target pass agreed at
+  dispatch, whole proposition judged on the git diff — so what follows in this bullet describes
+  interactive work.
   **In the `lit serve` cockpit, the card *is* the explain step:** the human triggers a pass
   ("launch pass 2"), the agent writes that pass's proposed slices straight into
   `curated/<citekey>.yaml` as the proposition, and the two discuss over the reloaded card /
@@ -54,8 +76,10 @@ edits/accepts. Nothing is "curated" until the human commits it.
   by the abstract) · **2** intro + discussion (borrowed claims, graph connections, open
   questions from the discussion) · **3** results (claims sharpened, welded to phrases
   describing the data) · **4** methods (methods read precisely, their citations traced and
-  linked — the full sweep). Climb one rung per sitting, bumping `pass` as you go; stopping
-  early is a normal resting state, not an unfinished task. This is the signal the interface
+  linked — the full sweep). Climb one rung at a time, bumping `pass` as you go — one per
+  sitting in interactive mode, or up to the dispatched target in a batch run. Stopping early is
+  a normal resting state, not an unfinished task, and a batch target below 4 is a deliberate
+  resting place rather than a job left half done. This is the signal the interface
   ranks and renders (the curation circle in `docs/2026-06-25-visualization-design.md`). A stub
   carries no `pass` (breadth stays emergent via file presence, SCHEMA §1). The reading passes
   below **are** these rungs — same numbers, same names.
@@ -101,8 +125,12 @@ So: Pass 0 *ingested* · Pass 1 *the gist* · Pass 2 *what they claim* · Pass 3
 Pass 4 *the method detail*. Because abstract sentences are verbatim-dense, you'll often weld a
 provisional quote in Pass 1 and merely *confirm or relocate* it from the results later.
 
-Each pass runs as **explain → discuss → align → tokenize**. The tables say *what* each pass
-yields; they are the targets of that discussion, not a license to write before you agree.
+Each pass runs as **explain → discuss → align → tokenize** in interactive mode. In batch mode
+the agent climbs the rungs in order without pausing, and the whole climb is judged at the end;
+the rungs still have to be climbed in sequence, because each one refines the slices the previous
+one wrote rather than appending beside them. The tables say *what* each pass yields; in
+interactive mode they are the targets of that discussion, not a license to write before you
+agree.
 
 ### Pass 1 — Abstract: *question · claims · methods*
 

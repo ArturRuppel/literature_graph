@@ -127,11 +127,16 @@ must remain reachable to browse PDFs and use live curation features; the static
 
 ## Curating a paper
 
-Curation is interactive and discussion-first, never a one-shot file dump. Work
-one pass at a time. Explain your reading of the paper at that pass's
-granularity in prose, discuss until you and the human agree, then tokenize the
-agreed nodes into `curated/<citekey>.yaml`. Realign after every pass before
-starting the next, and never tokenize ahead of agreement.
+Curation runs in one of two modes, and in both the human is the gate: the agent
+proposes, the human accepts / edits / rejects, and nothing is curated until they
+commit it. **Interactive** — work one pass at a time, explaining your reading at
+that pass's granularity in prose, discussing until you and the human agree, then
+tokenizing the agreed nodes into `curated/<citekey>.yaml`, realigning after every
+pass and never tokenizing ahead of agreement. **Batch** — a dispatched agent is
+given one paper and a target pass up front, climbs to it in a single run, and the
+finished proposition is reviewed as a git diff. Batch buys throughput at the cost
+of alignment bandwidth; see [CURATION.md](CURATION.md) for the briefing rules that
+keep it honest.
 
 ## Read next
 

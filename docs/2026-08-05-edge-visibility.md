@@ -150,3 +150,37 @@ hidden, console clean.
 - **Whether the band's density clause should be a threshold rather than a flag.** Right now band
   edges are dark unless lit, full stop. A count-based version ("show them when few enough are in
   play") is more nuanced and more surprising; not attempted.
+
+---
+
+## 7. Addendum, 2026-08-19: quiet mode — the reader gets a hand on the rule
+
+**Status:** built · `viewer/js/12-landing.js` (`setQuiet`, the HUD's `quiet arrows`, `q`) ·
+`08-edges.js` (`quietEdges`, clause **2c**)
+
+§4 gave the board one exit — `clear arrows`, which **releases what you are holding**. That is the
+right door when the mess is yours. It does nothing at all when the mess is the *resting* board:
+scaffolding and ghosts you never asked for, which by construction survive a clear because there is
+nothing to release.
+
+So there is now a second, orthogonal control: **quiet arrows** (HUD toggle, `q`). It hides every
+edge that is not **lit** — the resting board goes dark, and a pinned row or the row under the
+pointer keeps its full fan. Together they cover the two halves of one complaint, and neither does
+the other's job: clearing a board with no pins changes nothing, and quieting one does not release
+the pins it is deliberately keeping.
+
+Three properties worth keeping true:
+
+- **It is one clause, in the one place.** `if(quietEdges) return E_OFF;` sits immediately after
+  the lit test in `edgeVis` — not a second pass over the edge list, not a class on the SVG. The
+  whole point of §1 is that one function answers "why is that arrow there"; a mode that answered
+  it somewhere else would undo that.
+- **It is state, not a gesture** (§3). A standing preference, read the same way on every redraw,
+  so the board still draws the same arrows however you arrived at it. `redraw()` alone applies it:
+  nothing about the layout moved.
+- **It sits after `lit`, on purpose.** Quiet is a claim about the *resting* board. A mode that
+  also darkened the pinned and hovered fans would not be quiet, it would be off — and the hover
+  fan is exactly how you ask a quiet board a question.
+
+Measured, real library, two papers open with one slice graph unfolded: resting **14 → 0** drawn
+edges; pinning one row brings back **4**.

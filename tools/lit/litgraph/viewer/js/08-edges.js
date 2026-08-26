@@ -40,12 +40,19 @@
 //         synthesis band, and the band collects all of them — a permanent fan that says only
 //         "many things generalize", which you knew. Legible or not, it is noise until you ask.
 //
-//      They are different arguments — one about distance, one about density — and neither
-//      subsumes the other, so neither is dressed up as the other. (a) is measured on the glass, so
-//      it is zoom-aware for free: zoom out until both ends fit and the edge comes back as
-//      scaffolding, which is the board-becomes-a-map reading working as intended. It is a test on
-//      the DISTANCE between the anchors, never on where they sit, so scrolling changes nothing and
-//      no arrow flickers under a scroll.
+//      c. NOT ASKED FOR. The reader has put the board in quiet mode (`quietEdges`, the HUD's
+//         `quiet arrows`), which says: draw the arrows I asked for and nothing else. It is the only
+//         input here the reader sets directly, and it is still a state rather than a gesture — a
+//         standing preference read the same way on every redraw. It sits *after* the lit test on
+//         purpose: quiet is about the resting board, so a pinned row and the row under the pointer
+//         keep their fans, and a mode that hid those would not be quiet, it would be off.
+//
+//      They are different arguments — one about distance, one about density, one about what was
+//      asked for — and none subsumes the others, so none is dressed up as another. (a) is measured
+//      on the glass, so it is zoom-aware for free: zoom out until both ends fit and the edge comes
+//      back as scaffolding, which is the board-becomes-a-map reading working as intended. It is a
+//      test on the DISTANCE between the anchors, never on where they sit, so scrolling changes
+//      nothing and no arrow flickers under a scroll.
 //   3. Are both its ends OPEN? — an arrow between two slice rows you can see says which claim rests
 //      on which. An arrow that dies on the closed border of a card says only "something in here" —
 //      it cannot name its own endpoint, because you have not opened the thing it lands on. Those
@@ -83,6 +90,7 @@ function edgeVis(e,lit,fa,fb,ra,rb){
   if(e.intra) { if(!(fa&&fb)) return E_OFF; }
   else if(e.from.sid&&e.to.sid&&!fa&&!fb) return E_OFF;                     // 1
   if(lit) return E_LIT;
+  if(quietEdges) return E_OFF;                                             // 2c
   if(isBandEnd(e.from)||isBandEnd(e.to)) return E_OFF;                      // 2b
   const dx=Math.abs((ra.left+ra.right)-(rb.left+rb.right))/2;
   const dy=Math.abs((ra.top+ra.bottom)-(rb.top+rb.bottom))/2;

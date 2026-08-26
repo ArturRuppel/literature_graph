@@ -10,16 +10,11 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from ruamel.yaml import YAML
 
 from .graph import classify_ref
+from .yamlio import rt_yaml, safe_yaml
 from .model import CuratedPaper, Stub
 
-_yaml_rt = YAML()  # round-trip (preserves comments)
-_yaml_rt.preserve_quotes = True
-_yaml_rt.width = 4096                       # never re-wrap long scalars (titles, notes)
-_yaml_rt.indent(mapping=2, sequence=4, offset=2)   # match the "  - {…}" sequence style on disk
-_yaml_safe = YAML(typ="safe")
 
 # Every slice-level field that carries refs (SCHEMA §6 / programme design §5), and every
 # top-level group that holds slices — paper groups plus the aim-only tests/capabilities.
@@ -75,14 +70,14 @@ def load_taken(root: Path) -> dict[str, str | None]:
         for f in sorted(cdir.glob("*.yaml")):
             doi = None
             try:
-                doc = _yaml_safe.load(f.read_text()) or {}
+                doc = safe_yaml().load(f.read_text()) or {}
                 doi = doc.get("doi")
             except Exception:
                 pass
             taken[f.stem] = doi
     sp = stubs_path(root)
     if sp.exists():
-        stubs = _yaml_safe.load(sp.read_text()) or {}
+        stubs = safe_yaml().load(sp.read_text()) or {}
         for key, body in stubs.items():
             taken[key] = (body or {}).get("doi") if isinstance(body, dict) else None
     return taken
@@ -108,7 +103,7 @@ def merge_stubs(root: Path, stubs: list[Stub], dry_run: bool) -> tuple[list[str]
     """
     sp = stubs_path(root)
     if sp.exists():
-        doc = _yaml_rt.load(sp.read_text()) or {}
+        doc = rt_yaml().load(sp.read_text()) or {}
     else:
         from ruamel.yaml.comments import CommentedMap
 
@@ -128,7 +123,7 @@ def merge_stubs(root: Path, stubs: list[Stub], dry_run: bool) -> tuple[list[str]
     if not dry_run and added:
         sp.parent.mkdir(parents=True, exist_ok=True)
         with sp.open("w") as fh:
-            _yaml_rt.dump(doc, fh)
+            rt_yaml().dump(doc, fh)
     return added, deduped
 
 
@@ -144,7 +139,7 @@ def prune_curated_stubs(root: Path, dry_run: bool, extra_keys: tuple[str, ...] =
     sp = stubs_path(root)
     if not sp.exists():
         return []
-    doc = _yaml_rt.load(sp.read_text()) or {}
+    doc = rt_yaml().load(sp.read_text()) or {}
     curated_stems = {f.stem for f in curated_dir(root).glob("*.yaml")} if curated_dir(root).is_dir() else set()
     curated_stems.update(extra_keys)
     removed = [k for k in list(doc) if k in curated_stems]
@@ -154,7 +149,7 @@ def prune_curated_stubs(root: Path, dry_run: bool, extra_keys: tuple[str, ...] =
         for k in removed:
             del doc[k]
         with sp.open("w") as fh:
-            _yaml_rt.dump(doc, fh)
+            rt_yaml().dump(doc, fh)
     return removed
 
 
@@ -183,7 +178,7 @@ def enrich_stubs(root: Path, oa, dry_run: bool = False, force: bool = False) -> 
     sp = stubs_path(root)
     if not sp.exists():
         return EnrichResult([], [], [], [])
-    doc = _yaml_rt.load(sp.read_text()) or {}
+    doc = rt_yaml().load(sp.read_text()) or {}
 
     doi_to_keys: dict[str, list[str]] = {}
     already: list[str] = []
@@ -220,7 +215,7 @@ def enrich_stubs(root: Path, oa, dry_run: bool = False, force: bool = False) -> 
 
     if not dry_run and enriched:
         with sp.open("w") as fh:
-            _yaml_rt.dump(doc, fh)
+            rt_yaml().dump(doc, fh)
     return EnrichResult(enriched, already, no_doi, unmatched)
 
 
@@ -316,7 +311,7 @@ def write_quote_loc(root: Path, citekey: str, slice_id: str, page: int,
     path = curated_dir(root) / f"{citekey}.yaml"
     if not path.is_file():
         raise FileNotFoundError(f"no curated paper: {citekey}")
-    doc = _yaml_rt.load(path.read_text()) or {}
+    doc = rt_yaml().load(path.read_text()) or {}
 
     target = None
     for group in _SLICE_GROUPS:
@@ -332,7 +327,7 @@ def write_quote_loc(root: Path, citekey: str, slice_id: str, page: int,
     _place_quote_loc(target, _loc_cm(page, rects))
     _quote_sharpened_refs(doc)
     with path.open("w") as fh:
-        _yaml_rt.dump(doc, fh)
+        rt_yaml().dump(doc, fh)
     return path
 
 
@@ -343,7 +338,7 @@ def write_quote_locs(root: Path, citekey: str, locs: dict[str, dict]) -> int:
     path = curated_dir(root) / f"{citekey}.yaml"
     if not path.is_file():
         raise FileNotFoundError(f"no curated paper: {citekey}")
-    doc = _yaml_rt.load(path.read_text()) or {}
+    doc = rt_yaml().load(path.read_text()) or {}
     by_id: dict = {}
     for group in _SLICE_GROUPS:
         for s in doc.get(group, []) or []:
@@ -358,7 +353,7 @@ def write_quote_locs(root: Path, citekey: str, locs: dict[str, dict]) -> int:
     if n:
         _quote_sharpened_refs(doc)
         with path.open("w") as fh:
-            _yaml_rt.dump(doc, fh)
+            rt_yaml().dump(doc, fh)
     return n
 
 
@@ -371,7 +366,7 @@ def edit_tags(root: Path, citekey: str, tags: list[str], remove: bool = False) -
     path = curated_dir(root) / f"{citekey}.yaml"
     if not path.is_file():
         raise FileNotFoundError(f"no curated paper: {citekey}")
-    doc = _yaml_rt.load(path.read_text()) or {}
+    doc = rt_yaml().load(path.read_text()) or {}
     current = list(doc.get("tags") or [])
     if not tags:                                   # list-only: no mutation
         return current
@@ -398,7 +393,7 @@ def edit_tags(root: Path, citekey: str, tags: list[str], remove: bool = False) -
             doc["tags"] = seq
     _quote_sharpened_refs(doc)
     with path.open("w") as fh:
-        _yaml_rt.dump(doc, fh)
+        rt_yaml().dump(doc, fh)
     return result
 
 
@@ -411,7 +406,7 @@ def write_abstract(root: Path, citekey: str, abstract: str, dry_run: bool = Fals
     path = curated_dir(root) / f"{citekey}.yaml"
     if not path.is_file():
         raise FileNotFoundError(f"no curated paper: {citekey}")
-    doc = _yaml_rt.load(path.read_text()) or {}
+    doc = rt_yaml().load(path.read_text()) or {}
     if (doc.get("abstract") or "").strip():
         return False
 
@@ -425,7 +420,7 @@ def write_abstract(root: Path, citekey: str, abstract: str, dry_run: bool = Fals
     if not dry_run:
         _quote_sharpened_refs(doc)
         with path.open("w") as fh:
-            _yaml_rt.dump(doc, fh)
+            rt_yaml().dump(doc, fh)
     return True
 
 

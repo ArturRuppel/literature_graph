@@ -15,10 +15,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from ruamel.yaml import YAML
 from ruamel.yaml.error import YAMLError
-
-_yaml = YAML(typ="safe")
+from .yamlio import safe_yaml
 
 
 @dataclass
@@ -42,7 +40,7 @@ def load_topics(root) -> dict[str, Topic]:
         # Name the file: ruamel is handed text, so its own errors say only
         # `in "<unicode string>", line N` — see graph.load_yaml for the same guard.
         try:
-            raw = _yaml.load(f.read_text()) or {}
+            raw = safe_yaml().load(f.read_text()) or {}
         except YAMLError as e:
             raise TopicError(f"{f}: {e}") from e
         topics[f.stem] = Topic(

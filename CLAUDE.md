@@ -130,11 +130,13 @@ reversal each one records.
 
 | Doc | Specifies |
 |---|---|
-| [2026-08-05-edge-visibility.md](docs/2026-08-05-edge-visibility.md) | the four edge states (*lit · scaffolding · ghost · not drawn*) decided in one place, `edgeVis`; why nothing in it reads a gesture; pin release (`pinLive`, `clear arrows`) |
+| [2026-08-05-edge-visibility.md](docs/2026-08-05-edge-visibility.md) | the four edge states (*lit · scaffolding · ghost · not drawn*) decided in one place, `edgeVis`; why nothing in it reads a gesture; pin release (`pinLive`, `clear arrows`); §7 the `quiet arrows` mode — the resting board dark, pins and hover kept |
+| [2026-08-19-card-folds.md](docs/2026-08-19-card-folds.md) | what an OPEN card shows: the paper's identity, plus three folds asked for one click at a time — abstract, slice graph, and cited cards that arrive collapsed. Records the reversal of "open each source on the exact cited finding" |
 | [2026-08-03-topics-and-claim-altitudes.md](docs/2026-08-03-topics-and-claim-altitudes.md) | the synthesis band as **containment**, one box per ladder root. §6 and §6.1 record two reversals — hiding-until-clicked, and altitude columns. **Length is not the defect; unstructured length is.** |
 | [2026-08-03-the-walk-design.md](docs/2026-08-03-the-walk-design.md) | the walk: one focus, one relation, no drawn edges. `contains` is a **roster**, the only complete view, and it flags `unwired` slices |
 | [2026-07-09-cockpit-redesign-in-progress-zone.md](docs/2026-07-09-cockpit-redesign-in-progress-zone.md) + [2026-07-28-curation-windows.md](docs/2026-07-28-curation-windows.md) | the two surfaces: browse view with the docked/detachable PDF, and the one-click curation session |
 | [2026-08-02-programme-graph-design.md](docs/2026-08-02-programme-graph-design.md) | the programme graph and its narrative layer |
+| [2026-08-25-claim-map-design.md](docs/2026-08-25-claim-map-design.md) | the claim map (`prototypes/claim-map/`): the 44 broad claims on one page, x = median year of their papers, y = ladder altitude. §1 records the rejected similarity-embedding proposal, §3 the measurement that rules out a topic band as an axis |
 | [2026-08-05-additive-graph-views.md](docs/2026-08-05-additive-graph-views.md) · [2026-07-19-tags-and-search-design.md](docs/2026-07-19-tags-and-search-design.md) · [2026-06-25-visualization-design.md](docs/2026-06-25-visualization-design.md) | view composition, tags/search, and the original (still unbuilt) recursive container view |
 
 ### Not yet in a design doc
@@ -161,14 +163,31 @@ scroll-anchoring site is untouched.
 ## Curating a paper
 
 When the human asks to **curate a paper**, **read [CURATION.md](CURATION.md) first** and
-follow its protocol. Curation is **interactive and discussion-first**, never a one-shot file
-dump:
+follow its protocol. There are **two modes**, and which one you are in is set by whether the
+human is present. In both, the human is the gate: you propose, they accept / edit / reject, and
+nothing is curated until they commit it.
+
+**Interactive** (human present, usually with `lit serve` and the card open) — never a one-shot
+file dump:
 
 - Work **one pass at a time** (the four passes in CURATION.md).
 - Each pass is a loop: **explain your reading** of the paper at that pass's granularity in
   prose → **discuss with the human until you agree** → *only then* **tokenize** (write the
   agreed nodes into `curated/<citekey>.yaml`).
 - **Realign after every pass** before starting the next. Never tokenize ahead of agreement.
+
+**Batch** (you were dispatched with one paper and a target pass, human not present) — climb to
+that target in a single run, writing into `curated/<citekey>.yaml`, and the human reviews the
+finished proposition as a git diff:
+
+- Climb the rungs **in order** anyway. Each pass refines the slices the previous one wrote; do
+  not skip to the target.
+- **Report a verdict, not just a file.** Say what the paper does and does not show on the
+  specific question you were dispatched to settle.
+- **A finding that undermines the claim you were asked to support is the most valuable thing
+  you can return.** Do not stretch, soften, or select slices to make a hypothesis look
+  supported. Write the gap into the claim text and flag it in your report.
+- Touch only `curated/<citekey>.yaml`. Sibling agents may be running; do not run `lit build`.
 
 ## Working with this project
 

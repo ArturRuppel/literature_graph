@@ -339,15 +339,18 @@ def test_preview_aim_keeps_a_curated_source_as_a_whole_card():
     assert mini["order"] == [AIM]                      # …and it stays out of the landing column
 
 
-def test_preview_paper_still_collapses_its_neighbours_to_chips():
-    """The trimmed-neighbour rule is the AIM's; a paper proposition keeps its isolation."""
+def test_preview_paper_promotes_its_curated_neighbours_too():
+    """The whole-neighbour rule started as the AIM's and now holds for a paper proposition:
+    reading a paper against its sources is the same act whichever container you stand on."""
     from litgraph.build import to_json_dict
     from litgraph.preview import build_preview_graph, isolate
 
     g = build_preview_graph(EXAMPLE, "Kumar2020Net")
     mini = isolate(to_json_dict(g, include_aims=True), "Kumar2020Net")
-    assert list(mini["papers"]) == ["Kumar2020Net"]
-    assert "Chen2021Sys" in mini["stubs"]
+    assert mini["order"] == ["Kumar2020Net"]                    # …but the landing column is one
+    assert set(mini["papers"]) == {"Kumar2020Net", "Chen2021Sys", "Lopez2019Arch"}
+    assert "Chen2021Sys" not in mini["stubs"]
+    assert "Bench2016Tools" in mini["stubs"]                    # uncurated stays a chip
 
 
 def test_preview_rejects_an_unknown_aim():

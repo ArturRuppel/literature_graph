@@ -19,6 +19,17 @@ const stubOpen=new Set();// citekeys of uncited stubs expanded to their bib reco
                          // is one bibliography record, and there is nothing instance-specific for
                          // the two instances to disagree about. An expanded stub is an OPEN end as
                          // far as edgeVis is concerned — see toggleStub.
+const absOpen=new Set(); // citekeys whose ABSTRACT is unfolded. Keyed by key and not by
+                         // "level:key", for stubOpen's reason exactly: an abstract is a
+                         // bibliographic fact about the paper, so the two instances of one paper
+                         // standing in two columns have nothing to disagree about.
+const sliceOpen=new Set();   // "level:key" whose slice graph is unfolded. An open card shows the
+                             // paper — head, byline, folds — and the local subgraph is a SECOND
+                             // thing to open, because 26 rows of prose and 34 arcs arriving with
+                             // the title bury the very head they hang off.
+const sliceSeeded=new Set(); // card ids whose slice fold has had its default applied once, so the
+                             // seeding cannot re-fold what the reader has since unfolded. Cleared
+                             // by a close, like grpSeeded — a reopened card is a fresh read.
 const drill=new Map();   // "level:key" -> Set of expanded row paths ("c3", "c3/c1", …); AIM cards
                          // only — a paper's slices are a graph now, and a graph has no paths
 const sFold=new Map();   // "level:key" -> Set of slice ids folded down to their badge. A paper's
@@ -40,6 +51,11 @@ let pin=[];              // [{cardId,sid}] — clicked isolations that persist a
                          // = every pinned target ∪ the current hover; see edgeVis for the rest.
                          // A pin names a ROW, and is dropped the moment that row leaves the board
                          // (pinLive) — state with no mark on screen is state you cannot release.
+// The quiet mode: draw ONLY the arrows the reader asked for (a pin, or the row under the pointer)
+// and none of the resting ones. It is the one input to edgeVis the reader sets directly — and it is
+// still a STATE, not a gesture: a standing preference, read the same way on every redraw, so the
+// board draws the same arrows however you arrived at it. See edgeVis clause 2c.
+let quietEdges=false;
 const SYNTH=1e6;         // synthesis band: the one column every broad node lives in
                          // (papers occupy small levels; builds-on growth stays left of it)
 // A broad node's OWN leads_to (SCHEMA §4) can ladder it into a broader broad node, and the band is

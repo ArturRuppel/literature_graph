@@ -14,8 +14,13 @@
   .schd .sct{margin-left:auto;letter-spacing:0}
   .snodes .slice{cursor:pointer;margin:0}
   .snodes .slice:hover{background:#e9eef2}
-  .slices .sbar{display:flex;align-items:center;gap:6px;margin-bottom:6px;
+  /* the bar is the section's own header: click it to unfold the graph, and shut it says only how
+     much is behind it. `.sfold` inside it keeps its own job (fold every row to its badge). */
+  .slices .sbar{display:flex;align-items:center;gap:6px;margin-bottom:6px;cursor:pointer;
     font-size:8px;letter-spacing:1.2px;text-transform:uppercase;color:var(--faint)}
+  .slices .sbar:hover{color:var(--dim)}
+  .slices .sbar.shut{margin-bottom:0}
+  .slices .sbar .gcar{font-size:7px}
   .slices .saxis{opacity:.75}
   .slices .sfold{margin-left:auto;cursor:pointer;letter-spacing:.5px;padding:1px 6px;
     border:1px solid var(--line);border-radius:9px;white-space:nowrap}

@@ -65,8 +65,9 @@ function applyGoto(spec){
   if(t.kind !== "slice" || document.body.classList.contains("walk")) return true;
   const id = `0:${t.key}`;
   open.add(id); rebuild(id);                 // focused, so the slices are on the card at all
-  // An aim's outline still hides a row behind its fold, and rebuild() clears the ctx state on its
-  // way through — so the drill path is forced open after the sweep, and the card re-rendered.
+  // A focused card opens on its bibliographic head, with the slice graph folded (and an aim's
+  // outline hiding rows inside its own groups); rebuild() clears the ctx state on its way through
+  // — so the folds are forced open after the sweep, and the card re-rendered.
   reveal(id, t.sid); renderSlices(id); redraw();
   const el = document.getElementById("card-" + id);
   const row = el && el.querySelector(`.slice[data-sid="${CSS.escape(t.sid)}"]`);

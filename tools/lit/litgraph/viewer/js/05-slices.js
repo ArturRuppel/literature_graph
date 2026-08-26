@@ -95,16 +95,37 @@ function localDag(p){
 // the window — and folding (a node by click, the card by the bar's toggle) is the way out of
 // that: badges are a quarter the width, so a folded card puts the whole ladder on screen at
 // once. Read the text one column at a time, fold to see the shape.
+// Is a card's slice graph unfolded from the start? On the BOARD, no: a card is opened to read the
+// paper, and its subgraph is a second question — three open cards used to put ~80 rows of prose and
+// a hundred arcs on screen at once, burying the bibliographic heads they hang off. On a page that
+// IS one card — the curation card window, `lit preview`'s isolated render, the mobile curation view
+// — the slices are the entire reason the page exists, so making you click for them is a papercut on
+// every step of the loop. Read at render time, never at parse time: DRIVE is declared later.
+const sliceDefaultOpen = () => DRIVE || MOBILE_CURATE || ORDER.length === 1;
+
 function renderGraph(id, key, p, box){
   const {rows, cols, links} = localDag(p);
   const cid = "card-" + id;
   const folded = sFold.get(id) || new Set();
   const all = rows.length && rows.every(n => folded.has(n));
-  let html = `<div class="sbar"><span>${rows.length} slice${rows.length === 1 ? "" : "s"}`
+  // Seeded once per card (like grpSeeded), so unfolding sticks across the rebuilds a click causes;
+  // a close clears the seed and the card reopens on the default view.
+  if (!sliceSeeded.has(id)) { sliceSeeded.add(id); if (sliceDefaultOpen()) sliceOpen.add(id); }
+  const shown = sliceOpen.has(id);
+  // Shut, the bar is the whole section: a caret and the size of what is behind it. The axis label
+  // and the fold toggle describe columns that aren't on screen, so they wait for them.
+  let html = `<div class="sbar${shown ? "" : " shut"}"><span class="gcar">${shown ? "▾" : "▸"}</span>`
+           + `<span>${rows.length} slice${rows.length === 1 ? "" : "s"}`
            + ` · ${links.length} edge${links.length === 1 ? "" : "s"}</span>`
-           + `<span class="saxis">ground →&nbsp;derived</span>`
-           + `<span class="sfold">${all ? "show text" : "fold to graph"}</span></div>`
-           + `<div class="snodes${all ? " allfold" : ""}">`;
+           + (shown ? `<span class="saxis">ground →&nbsp;derived</span>`
+                    + `<span class="sfold">${all ? "show text" : "fold to graph"}</span>` : ``)
+           + `</div>`;
+  // Nothing rendered, nothing anchored: with no rows on screen the within-card arcs have no honest
+  // place to be drawn (edgeVis clause 1 turns an intra edge off the moment either end falls back to
+  // the card), so they are not added at all, and a cross-paper edge into this card anchors on the
+  // border until the reader opens the graph — the same continuum a collapsed card is already on.
+  if (!shown) { box.innerHTML = html; return; }
+  html += `<div class="snodes${all ? " allfold" : ""}">`;
   cols.forEach((col, c) => {
     html += `<div class="scol"><div class="schd">${c === 0 ? "floors" : "· ".repeat(c)}`
           + `<span class="sct">${col.length}</span></div>`;

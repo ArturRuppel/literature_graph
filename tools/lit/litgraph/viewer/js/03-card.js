@@ -116,7 +116,12 @@ function paperCard(key, level){
       if (pitch) body += `<div class="cnote">${pitch}</div>`;
     } else {
       if (p.authors) body += `<div class="cauth">${authLine(p.authors)}</div>`;
-      if (p.abs) body += `<div class="cabs">${p.abs}</div>`;   // revealed inline by .card.open (CSS), desktop and touch alike — the hover tip carries the PDF thumbnail, not this
+      // The abstract is 200 words of someone else's prose sitting between the byline and the
+      // graph — the longest thing on the card and the one you reread least. So it gets its own
+      // fold: an open card offers the WORD, and the paragraph arrives when it is asked for.
+      // (Inline, desktop and touch alike — the hover tip carries the PDF thumbnail, not this.)
+      if (p.abs) body += `<div class="cabsx"><span class="acar"></span>abstract</div>`
+                       + `<div class="cabs">${p.abs}</div>`;
     }
     body += `<div class="slices"></div>`;   // filled by renderSlices from the drill state
   }
@@ -128,6 +133,7 @@ function paperCard(key, level){
   el.innerHTML = body;
   if (level === 0) el.classList.add("plain");
   if (!cur && stubOpen.has(key)) el.classList.add("open");   // a card minted while its stub is expanded
+  if (cur && absOpen.has(key)) el.classList.add("absopen");  // …and one minted while its abstract is
   // a tag chip runs a search for that tag (the whole filter-by-tag story — no separate panel);
   // stopPropagation keeps the click off cardClick's fold/drill routing
   if (cur) el.querySelectorAll(".ctag").forEach(chip =>

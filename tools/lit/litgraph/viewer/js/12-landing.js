@@ -123,11 +123,34 @@ function syncClearBtn(){
   clearBtn.textContent=`clear arrows · ${n}`;
 }
 if(clearBtn) clearBtn.addEventListener("click",()=>clearArrows());
+// ── quiet arrows: the resting board goes dark ────────────────────────────────────────────
+// `clear arrows` releases what you are HOLDING; this puts away what you never asked for. They are
+// the two halves of the same complaint and neither does the other's job: clearing a board with no
+// pins on it changes nothing, and quieting one does not release the pins it is deliberately keeping.
+//
+// A standing mode, not an action, so it gets a toggle rather than a button that fires once — and
+// one line in edgeVis rather than a second pass over the edge list, because "which arrows are on"
+// is decided in exactly one place (see there). redraw() alone is enough: it re-asks edgeVis about
+// every edge from current state, and nothing about the board's layout has moved.
+const quietBtn=document.getElementById("quietBtn");
+function setQuiet(on){
+  quietEdges=!!on;
+  if(quietBtn){
+    quietBtn.classList.toggle("on",quietEdges);
+    quietBtn.title=quietEdges
+      ? "showing only the arrows you asked for — click to bring the resting board back (q)"
+      : "draw only the arrows you asked for — everything resting goes dark (q)";
+  }
+  redraw();
+}
+if(quietBtn&&!PDFWIN){ quietBtn.hidden=false; quietBtn.addEventListener("click",()=>setQuiet(!quietEdges)); }
+// `q` for quiet, alongside `c` for clear and `w` for the walk — same guards: not while typing, and
+// not while a pane that owns the keyboard is up.
 addEventListener("keydown",e=>{
-  if(e.key!=="c"||e.metaKey||e.ctrlKey||e.altKey) return;
+  if((e.key!=="c"&&e.key!=="q")||e.metaKey||e.ctrlKey||e.altKey) return;
   if(/^(INPUT|TEXTAREA)$/.test(e.target.tagName||"")||e.target.isContentEditable) return;
   if(document.body.classList.contains("library")||document.body.classList.contains("walk")) return;
-  clearArrows();
+  if(e.key==="c") clearArrows(); else setQuiet(!quietEdges);
 });
 // ── showing a claim: ONE gesture ─────────────────────────────────────────────────────────
 // This used to be three. A ◂ chip landed the claim's papers in the column; a ▸ chip walked one rung

@@ -14,25 +14,28 @@ function findCardLevel(key,near){
 // cards land in one contiguous block per opened card rather than mixed in by year. See placeInCol.
 function expandCard(level,key,p,grp){
   const cid=`card-${level}:${key}`;
-  // A PROGRAMME container (an aim, a narrative) does not auto-reveal what it grounds in. A paper
-  // cites a dozen sources, so opening each one on the exact cited finding is the whole payoff —
-  // you see what it took from them without a click. A proposal cites the library: the CNRS
-  // introduction alone grounds 37 sentences in 54 curated papers, and auto-revealing all of them
-  // turned the grounds column into a wall of open cards you had to scroll past to find any one
-  // paper. So these land COLLAPSED, as a scannable list of citekeys, and expand on click through
-  // the same gesture every card on the board uses (cardClick). Nothing is lost by waiting: the
-  // edge anchors on the card border until the card is open and then sharpens to the cited row,
-  // which is the behaviour `edges` (01-state.js) is built around.
-  const prog=!!(p.aim||p.narr);
-  // LEFT — grounds spawn the previous generation. Curated sources get their own card; a
-  // sharpened ref (tid) reveals the specific source slice there and anchors the edge on
-  // it. Uncurated sources fold into one collapsed "▸ N sources" stack (citation-wall
-  // collapse) — their edges anchor on the stack until the human unfolds it.
+  // NOTHING this expansion spawns lands open. A cited card used to arrive already unfolded onto the
+  // exact slice the edge points at — "see what this paper took from them without a click" — which
+  // reads well for one source and not at all for twelve: a paper's grounds column came up as a wall
+  // of open cards, every one of them carrying its own title, byline, abstract and 20-odd slice rows,
+  // and finding any single paper in it meant scrolling past the rest. That was already conceded for
+  // programme containers (the CNRS introduction grounds 37 sentences in 54 curated papers), where it
+  // was written down as a special case; it is the general rule now, and the same one the landing
+  // column has always followed — collapsed body, depth earned by focusing
+  // (docs/2026-06-25-visualization-design.md).
+  //
+  // Nothing is lost by waiting. The edge anchors on the card border and stays a GHOST until the card
+  // is opened, then sharpens to the cited row once its graph is unfolded — one continuum driven by
+  // how much you have opened up, which is exactly what `edgeVis` (08-edges.js) is built around.
+  //
+  // LEFT — grounds spawn the previous generation. Curated sources get their own (collapsed) card,
+  // and a sharpened ref (tid) names the source slice on the edge, which anchors there the moment
+  // that row is on screen. Uncurated sources fold into one collapsed "▸ N sources" stack
+  // (citation-wall collapse) — their edges anchor on the stack until the human unfolds it.
   const wall=[];
   (p.grounds||[]).forEach(g=>{
     if(!PAPERS[g.key]){ wall.push(g); return; }
     addPaper(level-1,g.key,"grounds ←",grp);
-    if(g.tid&&!prog) reveal(`${level-1}:${g.key}`,g.tid);
     addEdge({cardId:`card-${level-1}:${g.key}`,sid:g.tid||null},{cardId:cid,sid:g.via},"leads");
   });
   if(wall.length){
@@ -49,7 +52,6 @@ function expandCard(level,key,p,grp){
       return;
     }
     const tl=findCardLevel(l.key,level);
-    if(l.tid&&PAPERS[l.key]&&!prog) reveal(`${tl}:${l.key}`,l.tid);
     addEdge(from,{cardId:`card-${tl}:${l.key}`,sid:l.tid||null},l.sign);
   });
   // ANSWERS — cross-paper claim→question: like lateral, never spawns a column. The target
@@ -63,7 +65,6 @@ function expandCard(level,key,p,grp){
       return;
     }
     const tl=findCardLevel(a.key,level);
-    if(a.tid&&PAPERS[a.key]&&!prog) reveal(`${tl}:${a.key}`,a.tid);
     addEdge(from,{cardId:`card-${tl}:${a.key}`,sid:a.tid||null},"answers");
   });
   // RIGHT — the papers that build on this one (inverted grounds) spawn the next
@@ -80,15 +81,20 @@ function expandCard(level,key,p,grp){
   });
 }
 
-// Context-reveal a sharpened target: open its card and force-expand the drill path from
-// an entry row down to `sid` (climbing the local outline parents — the slice's dependents
-// via `up`, or the broader claim it ladders into via `gen`), so the exact slice is on
+// Context-reveal a sharpened target: open its card, unfold its slice graph, and force-expand the
+// drill path from an entry row down to `sid` (climbing the local outline parents — the slice's
+// dependents via `up`, or the broader claim it ladders into via `gen`), so the exact slice is on
 // screen. If the target is itself an entry row, opening the card suffices.
+//
+// The board no longer reveals anything on its own (see expandCard): the one caller left is the
+// `?goto=Citekey:sid` handoff (17-handoff.js), where naming a claim MUST put that claim on screen —
+// a handoff that lands on a fold is not a handoff.
 function reveal(id,sid){
   ctxOpen.add(id);
   const p=PAPERS[id.slice(id.indexOf(":")+1)];
   if(!p) return;
-  // A paper's card renders every slice, so opening it IS the reveal — there is no path to
+  sliceOpen.add(id); sliceSeeded.add(id);   // the row lives in the graph; unfold the section holding it
+  // A paper's card renders every slice, so unfolding it IS the reveal — there is no path to
   // force. Only an aim's outline still hides a slice behind a fold.
   if(!p.aim) return;
   const dep={};

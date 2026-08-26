@@ -1,0 +1,81 @@
+<!doctype html>
+<meta charset="utf-8">
+<!-- Without the viewport meta a phone lays this page out at 980px and scales the
+     result down, which makes the axis labels unreadable. The doctype matters for
+     the same reason the other prototypes give: quirks mode is not a place to
+     debug an SVG's coordinates. -->
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Claim map — time against altitude</title>
+<link rel="stylesheet" href="style.css">
+
+<!-- One screen, two surfaces: the map and the readout beside it. Every number
+     in the chrome is filled in by app.js from the derived model — nothing here
+     is hardcoded, because the library grows and a stale count in a standfirst
+     is a lie. -->
+
+<section class="screen">
+
+  <div class="screen-head">
+    <span class="id-chip">04</span>
+    <div class="kicker">prototype · the overview view</div>
+    <a class="back" id="back" href="../../" hidden>← board</a>
+    <div class="statline" data-f="stats">…</div>
+  </div>
+
+  <h2>The claim map</h2>
+  <p class="standfirst">
+    Every broad claim in the library placed twice over: <b>left to right by when its
+    evidence landed</b>, and <b>top to bottom by how general it is</b>. A mark's area is
+    the number of curated papers attached to it, and red marks a claim somebody argues
+    with. The three other prototypes draw the graph's edges; this one is the page that
+    fits on one screen.
+  </p>
+  <div class="rule"></div>
+
+  <div class="body">
+
+    <div class="ctl-col">
+      <div class="ctl-block">
+        <div class="ctl-head">draw</div>
+        <label><input type="checkbox" id="tgl-ladder" checked> <span>the ladder (<span data-f="nladder">…</span> edges)</span></label>
+        <label><input type="checkbox" id="tgl-spread" checked> <span>year spread, not just the median</span></label>
+        <label><input type="checkbox" id="tgl-labels" checked> <span>claim labels</span></label>
+      </div>
+
+      <div class="ctl-block">
+        <div class="ctl-head">narrow</div>
+        <label><input type="checkbox" id="tgl-dispute"> <span>only claims under dispute (<span data-f="ndispute">…</span>)</span></label>
+        <label class="stack">topic
+          <select id="sel-topic"><option value="">every topic</option></select>
+        </label>
+        <label class="stack">smallest claim shown
+          <input type="range" id="rng-min" min="2" max="12" value="2" step="1">
+          <span class="rng-read" data-f="minread">2 papers</span>
+        </label>
+        <button id="btn-reset">reset</button>
+      </div>
+
+      <div class="ctl-block">
+        <div class="ctl-head">key</div>
+        <div class="key">
+          <div class="key-row"><svg width="42" height="18"><circle cx="12" cy="9" r="4.5" class="k-plain"/><circle cx="31" cy="9" r="8" class="k-plain"/></svg> area = papers attached</div>
+          <div class="key-row"><svg width="42" height="18"><circle cx="12" cy="9" r="7" class="k-internal"/></svg> papers under it disagree</div>
+          <div class="key-row"><svg width="42" height="18"><circle cx="12" cy="9" r="7" class="k-contra"/></svg> the claim itself is contradicted</div>
+          <div class="key-row"><svg width="42" height="18"><line x1="3" y1="9" x2="39" y2="9" class="k-whisk"/><line x1="12" y1="9" x2="30" y2="9" class="k-iqr"/></svg> first…last paper, middle half</div>
+        </div>
+        <p class="key-note" data-f="banded"></p>
+      </div>
+    </div>
+
+    <div class="map-col">
+      <div id="mapWrap"><svg id="map" xmlns="http://www.w3.org/2000/svg"></svg></div>
+    </div>
+
+    <aside class="read-col" id="readout">
+      <div class="read-empty">Point at a claim.</div>
+    </aside>
+
+  </div>
+</section>
+
+<script type="module" src="app.js"></script>

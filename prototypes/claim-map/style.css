@@ -1,0 +1,187 @@
+/* Claim map — the same Modernist tokens the other prototypes use.
+   Radius 0 everywhere, no shadows; rules and alignment do the organising.
+
+   On colour, the house rule carries over unchanged: red means exactly one
+   thing, contradiction. Everything placed is ink; the accent is reserved for
+   the claims somebody argues with, which is the finding this view exists to
+   make visible at a glance.
+
+   Archivo is the system's face. A prototype pulls nothing from a CDN, so it is
+   used if the machine has it and falls back to system-ui if not. */
+
+:root {
+  --ground: #f3f2f2;
+  --ink: #201e1d;
+  --accent: #ec3013;
+  --accent-deep: #ae1800;
+  --accent-tint: #ffe0d9;
+  --surface: #eae9e9;
+  --muted: #605d5d;
+  --muted-2: #7d7979;
+  --divider: color-mix(in srgb, #201e1d 40%, transparent);
+  --hairline: color-mix(in srgb, #201e1d 22%, transparent);
+
+  --font: "Archivo", system-ui, sans-serif;
+
+  --space-1: 4px;  --space-2: 8px;  --space-3: 12px;
+  --space-4: 16px; --space-6: 24px; --space-8: 32px;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: #e6e4e4;
+  color: var(--ink);
+  font-family: var(--font);
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+::selection { background: color-mix(in srgb, var(--accent) 30%, transparent); }
+
+input[type="range"] { accent-color: var(--accent); height: 14px; width: 100%; }
+input[type="checkbox"] { accent-color: var(--accent); width: 13px; height: 13px; margin: 0; flex: none; }
+
+.screen {
+  background: var(--ground);
+  border-top: 6px solid var(--ink);
+  padding: var(--space-8) var(--space-8) 28px;
+  min-height: 100vh;
+}
+
+.screen-head { display: flex; align-items: baseline; gap: var(--space-3); }
+.id-chip {
+  background: var(--accent); color: var(--ground);
+  font-size: 12px; font-weight: 700; padding: 1px 7px; letter-spacing: .04em;
+}
+.kicker {
+  font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted);
+}
+.back {
+  color: var(--ink); text-decoration: none; border-bottom: 2px solid var(--accent);
+  font-size: 12px;
+}
+.statline { margin-left: auto; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+h2 { font-size: 34px; line-height: 1.1; margin: var(--space-3) 0 var(--space-2); font-weight: 700; letter-spacing: -.015em; }
+.standfirst { margin: 0; max-width: 76ch; color: var(--muted); font-size: 14px; }
+.standfirst b { color: var(--ink); font-weight: 600; }
+.rule { border-top: 2px solid var(--ink); margin: var(--space-4) 0 var(--space-4); }
+
+/* ── the three columns ─────────────────────────────────────────────────── */
+.body {
+  display: grid;
+  grid-template-columns: 210px minmax(0, 1fr) 300px;
+  gap: var(--space-6);
+  align-items: start;
+}
+@media (max-width: 1100px) {
+  .body { grid-template-columns: 1fr; }
+  .read-col { max-height: none; }
+}
+
+/* ── controls ──────────────────────────────────────────────────────────── */
+.ctl-block { margin-bottom: var(--space-6); }
+.ctl-head {
+  font-size: 11px; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--muted); border-bottom: 1px solid var(--divider);
+  padding-bottom: 3px; margin-bottom: var(--space-2);
+}
+.ctl-col label {
+  display: flex; align-items: center; gap: var(--space-2);
+  font-size: 13px; padding: 3px 0; cursor: pointer;
+}
+.ctl-col label.stack { display: block; color: var(--muted); font-size: 12px; }
+.ctl-col label.stack select,
+.ctl-col label.stack input { margin-top: 3px; }
+select {
+  width: 100%; font: inherit; font-size: 13px; padding: 3px 4px;
+  background: var(--surface); color: var(--ink);
+  border: 1px solid var(--divider); border-radius: 0;
+}
+.rng-read { font-size: 12px; color: var(--ink); font-variant-numeric: tabular-nums; }
+button {
+  font: inherit; font-size: 12px; padding: 4px 10px; margin-top: var(--space-2);
+  background: var(--ink); color: var(--ground); border: 0; border-radius: 0; cursor: pointer;
+}
+button:hover { background: var(--accent-deep); }
+
+.key-row { display: flex; align-items: center; gap: var(--space-2); font-size: 12px; color: var(--muted); padding: 2px 0; }
+.key-row svg { flex: none; overflow: visible; }
+.k-plain    { fill: color-mix(in srgb, var(--ink) 62%, transparent); }
+.k-internal { fill: color-mix(in srgb, var(--ink) 62%, transparent); stroke: var(--accent); stroke-width: 2; }
+.k-contra   { fill: var(--accent); }
+.k-whisk    { stroke: var(--hairline); stroke-width: 1; }
+.k-iqr      { stroke: color-mix(in srgb, var(--ink) 45%, transparent); stroke-width: 3.5; }
+.key-note { font-size: 11.5px; color: var(--muted-2); margin: var(--space-3) 0 0; line-height: 1.45; }
+
+/* ── the map ───────────────────────────────────────────────────────────── */
+#mapWrap { background: var(--ground); border: 1px solid var(--divider); }
+#map { display: block; width: 100%; height: auto; }
+
+.lane-sep   { stroke: var(--divider); stroke-width: 1; }
+.grid-year  { stroke: var(--hairline); stroke-width: 1; }
+.grid-decade{ stroke: var(--divider); stroke-width: 1; }
+.axis-txt {
+  font-size: 11px; fill: var(--muted); font-variant-numeric: tabular-nums;
+}
+.axis-title {
+  font-size: 11px; fill: var(--muted); letter-spacing: .1em; text-transform: uppercase;
+}
+.lane-name { font-size: 11.5px; fill: var(--ink); font-weight: 600; }
+.lane-sub  { font-size: 10.5px; fill: var(--muted-2); }
+
+.ladder { stroke: color-mix(in srgb, var(--ink) 13%, transparent); fill: none; stroke-width: 1; }
+.ladder.on { stroke: var(--ink); stroke-width: 1.6; }
+
+.whisk { stroke: color-mix(in srgb, var(--ink) 26%, transparent); stroke-width: 1; }
+.iqr   { stroke: color-mix(in srgb, var(--ink) 58%, transparent); stroke-width: 4; stroke-linecap: butt; }
+
+.dot { fill: color-mix(in srgb, var(--ink) 62%, transparent); cursor: pointer; }
+.dot.internal { stroke: var(--accent); stroke-width: 2; }
+.dot.contra   { fill: var(--accent); }
+.mark.dim { opacity: .13; }
+.mark.on .dot { fill: var(--ink); }
+.mark.on .dot.contra { fill: var(--accent); }
+.mark.on .whisk { stroke: color-mix(in srgb, var(--ink) 55%, transparent); }
+
+.label { font-size: 10.5px; fill: var(--ink); pointer-events: none; }
+.label-lead { stroke: var(--hairline); stroke-width: 1; }
+.mark.dim .label { opacity: .5; }
+
+/* ── readout ───────────────────────────────────────────────────────────── */
+.read-col {
+  border-left: 2px solid var(--ink); padding-left: var(--space-4);
+  max-height: 78vh; overflow-y: auto;
+}
+.read-empty { color: var(--muted-2); font-size: 13px; }
+.read-title { font-size: 19px; font-weight: 700; line-height: 1.2; margin: 0 0 var(--space-2); }
+.read-slug { font-size: 11px; color: var(--muted-2); font-family: ui-monospace, monospace; word-break: break-all; }
+.read-text { font-size: 13px; margin: var(--space-3) 0; }
+.read-facts { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: var(--space-3); }
+.read-facts th { text-align: left; font-weight: 400; color: var(--muted); padding: 2px 0; }
+.read-facts td { text-align: right; font-variant-numeric: tabular-nums; padding: 2px 0; }
+.read-facts tr.hot td, .read-facts tr.hot th { color: var(--accent-deep); font-weight: 600; }
+.read-head {
+  font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--muted);
+  border-bottom: 1px solid var(--divider); padding-bottom: 3px;
+  margin: var(--space-4) 0 var(--space-2);
+}
+.topic-bar { display: flex; align-items: center; gap: var(--space-2); font-size: 12px; padding: 1px 0; }
+.topic-bar .bar { height: 7px; background: color-mix(in srgb, var(--ink) 35%, transparent); flex: none; }
+.topic-bar .lbl { color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.paper { font-size: 12px; padding: 3px 0; border-bottom: 1px solid var(--hairline); display: flex; gap: var(--space-2); }
+.paper .yr { color: var(--muted-2); font-variant-numeric: tabular-nums; flex: none; }
+.paper .tt { flex: 1; }
+.paper.contra { color: var(--accent-deep); }
+.paper.contra .yr { color: var(--accent); }
+.stance { font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--accent); flex: none; }
+
+/* A handoff back to the board. Only rendered under `lit serve`, where a board
+   exists to receive it; the link is the paper's own title rather than an icon
+   beside it, because the title is what the reader is already pointing at. */
+.goto { color: inherit; text-decoration: none; border-bottom: 1px solid var(--hairline); }
+.goto:hover { border-bottom-color: var(--accent); color: var(--accent-deep); }
+.read-title .goto { border-bottom-width: 2px; border-bottom-color: var(--accent); }

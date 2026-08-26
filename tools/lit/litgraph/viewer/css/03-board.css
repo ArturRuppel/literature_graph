@@ -86,14 +86,24 @@
   /* the abstract: inline in the open card, everywhere. It used to be touch-only, on the theory
      that desktop read it in the hover tip — but that tip shows a curated paper's PDF thumbnail
      and only ever carried an abstract for an uncurated stub (cockpit.showTip), so on desktop
-     the text was written to the DOM and reachable by nothing. */
+     the text was written to the DOM and reachable by nothing.
+     Behind its own fold since: the open card shows the WORD (.cabsx), the paragraph follows on a
+     click. The caret is CSS rather than markup because the toggle flips a class on every card of
+     this paper at once (cardClick) and never re-renders one. */
+  .cabsx{display:none;align-items:center;gap:5px;padding:0 11px 8px;font-size:8px;
+    letter-spacing:1.2px;text-transform:uppercase;color:var(--faint);cursor:pointer}
+  .cabsx:hover{color:var(--dim)}
+  .cabsx .acar{font-size:7px}
+  .cabsx .acar::before{content:"\25b8"}                 /* ▸ */
+  .card.absopen .cabsx .acar::before{content:"\25be"}   /* ▾ */
   .cabs{display:none;padding:0 11px 8px;font-size:10px;color:var(--dim);line-height:1.4}
   /* the venue line, expanded stubs only: a curated paper has no `journal` field at all
      (SCHEMA §3 — the venue lives in the citekey), so this has nothing to say on one */
   .cbib{display:none;padding:0 11px 8px;font-size:9px;color:var(--faint);font-style:italic}
   .card.open .cyr{display:inline-block}
   .card.open .ctitle,.card.open .cauth{display:block}
-  .card.open .cabs{display:block}
+  .card.open .cabsx{display:flex}
+  .card.open.absopen .cabs{display:block}
   .card.open .cbib{display:block}
   /* the aim card's punchline. A paper's card is a bibliography record — its citekey identifies it
      and the title can wait for the open state. An aim has no such handle: `@fluid-solid-switch`

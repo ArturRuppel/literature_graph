@@ -20,9 +20,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from ruamel.yaml import YAML
 
 from .build import render_html, to_json_dict
+from .yamlio import safe_yaml
 from .graph import (
     BuildError,
     Graph,
@@ -34,8 +34,6 @@ from .graph import (
     paper_from_raw,
     validate,
 )
-
-_yaml = YAML(typ="safe")
 
 
 def build_preview_graph(root: Path, citekey: str, scratch: Path | None = None) -> Graph:
@@ -64,14 +62,14 @@ def build_preview_graph(root: Path, citekey: str, scratch: Path | None = None) -
         return g
     if citekey.startswith("@"):
         if scratch is not None:
-            raw = _yaml.load(Path(scratch).read_text(encoding="utf-8")) or {}
+            raw = safe_yaml().load(Path(scratch).read_text(encoding="utf-8")) or {}
             aims[citekey] = aim_from_raw(citekey, raw)
         if citekey not in aims:
             raise BuildError(f"no aim {citekey!r} to preview "
                              "(pass --scratch to overlay a proposition)")
     else:
         if scratch is not None:
-            raw = _yaml.load(Path(scratch).read_text(encoding="utf-8")) or {}
+            raw = safe_yaml().load(Path(scratch).read_text(encoding="utf-8")) or {}
             papers[citekey] = paper_from_raw(citekey, raw)   # overlay/replace the focal paper
         focal = papers.get(citekey)
         if focal is None or not focal.curated:
@@ -82,8 +80,9 @@ def build_preview_graph(root: Path, citekey: str, scratch: Path | None = None) -
 
 
 def _stub_entry(full: dict, key: str) -> dict | None:
-    """A minimal stub-shaped entry for an outward edge target, whether the target is a real
-    stub or another curated paper (isolation collapses every neighbour to a labelled chip)."""
+    """A minimal stub-shaped entry for an outward edge target — in practice an uncurated one,
+    since `_cited_neighbour` promotes every curated target. The curated branch below is a
+    safety net for a target the promotion pass could not build, not a rule about wildcards."""
     if key in full["stubs"]:
         return full["stubs"][key]
     p = full["papers"].get(key)
@@ -94,20 +93,25 @@ def _stub_entry(full: dict, key: str) -> dict | None:
 
 def _cited_neighbour(full: dict, key: str, ids: set[str]) -> dict | None:
     """A curated neighbour, **whole** — the same card the main board draws, with `cited` naming
-    the slices this page points at so the cited rows can be marked inside it.
+    the slices this page points at so the cited rows can be marked inside it. `cited` is empty
+    when every ref to this neighbour is a wildcard: the card still stands, with no row marked,
+    because what the library holds about a paper does not depend on how precisely one citation
+    happened to name it.
 
-    A programme container's join to the literature *is* its content — "what does this rest on,
-    and what did that paper actually report" — so a source may not collapse to a citekey chip
-    the way it does for a paper proposition. It used to be trimmed to the cited slices alone,
-    because every one of these cards opened automatically and a full neighbour would drown the
-    focal one. They land collapsed now (viewer/js/07-expand.js), so length costs nothing and
-    trimming only made the card disagree with the same paper's card everywhere else. One
-    rendering of one paper, wherever it stands.
+    A container's join to the literature *is* its content — "what does this rest on, and what
+    did that paper actually report" — so a curated source may not collapse to a citekey chip.
+    This began as a programme-only rule; it holds for a paper isolation too, because the
+    in-progress zone is exactly where you check a proposition against what the cited paper
+    actually says, and a chip is the one thing that cannot answer that. It used to be trimmed
+    to the cited slices alone, because every one of these cards opened automatically and a full
+    neighbour would drown the focal one. They land collapsed now (viewer/js/07-expand.js), so
+    length costs nothing and trimming only made the card disagree with the same paper's card
+    everywhere else. One rendering of one paper, wherever it stands.
 
     Outward edges stay cleared: this page is an isolation, and a neighbour is here as evidence
     for the focal container, not to spawn a generation of its own."""
     p = full["papers"].get(key)
-    if p is None or not ids:
+    if p is None:
         return None
     return {**p, "cited": sorted(ids),
             "grounds": [], "lateral": [], "cons": [], "ans": [], "builds": []}
@@ -118,11 +122,14 @@ def isolate(full: dict, citekey: str) -> dict:
     edges point at, and `order=[citekey]`. Outward `builds` (papers that build on this one) are
     dropped: that is other papers' context, not this paper's proposition.
 
-    For a **programme container** (an aim, or a narrative — see isolate_proposal) curated sources
-    survive as full neighbour cards rather than chips (`_cited_neighbour`): a programme is read
-    against the literature it leans on, and a collapsed "5 sources" stack was the whole of what one
-    said about 53 curated papers. A wildcard ref (no `tid`) still degrades to a chip — it names a
-    container, not a finding."""
+    Curated sources survive as full neighbour cards rather than chips (`_cited_neighbour`) —
+    for a paper proposition as much as for a **programme container** (an aim, or a narrative —
+    see isolate_proposal). A container is read against the literature it leans on, and a
+    collapsed stub chip was the whole of what one said about a paper the library has fully
+    curated. Curation alone promotes, which is the browse view's rule (`viewer/js/07-expand.js`
+    gates on `PAPERS[key]`): a sharpened ref additionally marks the cited row inside the card,
+    but a pass-2 container cites by citekey alone and its sources are no less curated for it.
+    An uncurated reference is still a stub."""
     return _isolate(full, [citekey])
 
 
@@ -132,24 +139,27 @@ def _isolate(full: dict, keys: list[str]) -> dict:
     in one column, sharing one grounds column of cited papers (so a paper cited by both is one
     card marking the union of what they cite, not two cards)."""
     focals = {k: {**full["papers"][k], "builds": []} for k in keys}
-    prog = any(f.get("aim") or f.get("narr") for f in focals.values())
 
     outward: set[str] = set()
     slugs: set[str] = set()
-    cited: dict[str, set[str]] = {}             # neighbour citekey -> the slice ids we point at
+    cited: dict[str, set[str]] = {}             # every neighbour -> the slice ids we point at
+                                                # (empty set = cited by citekey alone; still a card
+                                                # if curated, `_cited_neighbour` decides)
     for citekey, focal in focals.items():
         for g in focal.get("grounds", []):
             outward.add(g["key"])
+            ids = cited.setdefault(g["key"], set())
             if g.get("tid"):
-                cited.setdefault(g["key"], set()).add(g["tid"])
+                ids.add(g["tid"])
         for edges in (focal.get("lateral", []), focal.get("ans", [])):
             for e in edges:
                 if e.get("slug"):
                     slugs.add(e["slug"])
                 elif e.get("key"):
                     outward.add(e["key"])
+                    ids = cited.setdefault(e["key"], set())
                     if e.get("tid"):
-                        cited.setdefault(e["key"], set()).add(e["tid"])
+                        ids.add(e["tid"])
         for c in focal.get("cons", []):
             slugs.add(c["slug"])
     for k in focals:                            # a within-container lateral targets a focal itself
@@ -157,11 +167,10 @@ def _isolate(full: dict, keys: list[str]) -> dict:
         cited.pop(k, None)
 
     papers = dict(focals)
-    if prog:
-        for k, ids in cited.items():
-            n = _cited_neighbour(full, k, ids)
-            if n is not None:
-                papers[k] = n
+    for k, ids in cited.items():
+        n = _cited_neighbour(full, k, ids)
+        if n is not None:
+            papers[k] = n
     stubs = {}
     for k in outward:
         if k in papers:
