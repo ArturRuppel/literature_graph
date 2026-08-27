@@ -32,14 +32,24 @@ function expandCard(level,key,p,grp){
   // and a sharpened ref (tid) names the source slice on the edge, which anchors there the moment
   // that row is on screen. Uncurated sources fold into one collapsed "▸ N sources" stack
   // (citation-wall collapse) — their edges anchor on the stack until the human unfolds it.
+  //
+  // A narrative is a LINEARIZATION — the order its sentences run in is the whole of what it adds
+  // over the graph — so the column it spawns runs in that order too: the paper the introduction
+  // cites first sits at the top, and reading down the prose is reading down the cards beside it.
+  // Every other container keeps chronology, which is what a support DAG's grounding walk gives.
+  // `citeOrd` counts every ground, curated or not, so the citation wall lands where the prose
+  // first reaches for an uncurated source rather than at the foot of the block.
+  const citeOrd=new Map();
+  if(p.narr) (p.grounds||[]).forEach(g=>{ if(!citeOrd.has(g.key)) citeOrd.set(g.key,citeOrd.size); });
   const wall=[];
   (p.grounds||[]).forEach(g=>{
     if(!PAPERS[g.key]){ wall.push(g); return; }
-    addPaper(level-1,g.key,"grounds ←",grp);
+    addPaper(level-1,g.key,"grounds ←",grp,citeOrd.get(g.key));
     addEdge({cardId:`card-${level-1}:${g.key}`,sid:g.tid||null},{cardId:cid,sid:g.via},"leads");
   });
   if(wall.length){
-    const sid=addStack(level-1,key,wall,"grounds ←",grp);
+    const wallOrd=p.narr?Math.min(...wall.map(g=>citeOrd.get(g.key))):undefined;
+    const sid=addStack(level-1,key,wall,"grounds ←",grp,wallOrd);
     wall.forEach(g=>addEdge({cardId:sid,sid:g.key},{cardId:cid,sid:g.via},"leads"));
   }
   // LATERAL — never spawns a column: connect to the target wherever it already sits,

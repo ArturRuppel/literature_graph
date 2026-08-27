@@ -232,7 +232,20 @@ function ensureCol(level,label){
 // everything, so the band still reads as the complete ladder once the opened claims are past.
 const BACKFILL=1e9;
 const cardGrp=el=>{ const g=+el.dataset.grp; return Number.isFinite(g)?g:BACKFILL; };
-// `within` breaks the tie inside one group: year desc for papers, arrival order for broad nodes.
+// A card's rank in the walk that spawned it. It is stamped only when the container doing the
+// spawning has a reading order of its own, so it is NaN on a card placed by chronology.
+const cardOrd=el=>{ const o=+el.dataset.ord; return Number.isFinite(o)?o:NaN; };
+// The tie-break inside one group, as a `within` predicate for placeInCol: does the incoming card
+// belong above the one being compared. Chronology (year desc) is the rule, unless `ord` names the
+// incoming card's place in its spawner's own order, which then wins and is stamped on the card so
+// the cards after it have something to compare against. One walk spawns a whole group, so a group
+// is never half ordered by one rule and half by the other.
+function withinRule(el,ord){
+  if(ord==null){ const yr=+el.dataset.year||0; return ch=>(+ch.dataset.year||0)<yr; }
+  el.dataset.ord=ord;
+  return ch=>cardOrd(ch)>ord;                        // NaN compares false: a chronological card stays put
+}
+// `within` breaks the tie inside one group: withinRule for papers, arrival order for broad nodes.
 function placeInCol(c,el,grp,within){
   el.dataset.grp=grp;
   let before=null;
@@ -242,14 +255,16 @@ function placeInCol(c,el,grp,within){
   }
   c.el.insertBefore(el,before);
 }
-function addPaper(level,key,label,grp){
+// `ord` is where this card stands in the order its spawner reads in, when the spawner has one
+// (expandCard passes it for a narrative and for nothing else); without it, chronology falls out of
+// the grounding walk within a group, which is the older and still the general rule.
+function addPaper(level,key,label,grp,ord){
   const c=ensureCol(level,label);
   if(c.keys.has(key)) return;          // de-dup by citekey (accumulate) — and the FIRST group to
   c.keys.add(key);                     // ask for a card keeps it; a later one only adds an edge
   const card=paperCard(key,level);
   if(level===0){ c.el.appendChild(card); return; }   // landing keeps its pass ranking
-  const yr=+card.dataset.year||0;      // within a group, chronology falls out of the grounding walk
-  placeInCol(c,card,grp==null?BACKFILL:grp,ch=>(+ch.dataset.year||0)<yr);
+  placeInCol(c,card,grp==null?BACKFILL:grp,withinRule(card,ord));
 }
 // A broad node is never placed alone: naming any rung places its whole FAMILY, because a rung's
 // card only exists inside its root's box. So the column's key — and the dedup — is the root, and
@@ -294,7 +309,7 @@ function ensureBroadBand(){
 // (reveal()/rebuild() never unfold it, so it stays collapsed under any programmatic
 // expansion). Rows carry data-sid=<citekey>, so a wall edge sharpens from the stack card to
 // its source row the moment the stack is unfolded. Returns the stack element id.
-function addStack(level,owner,wall,label,grp){
+function addStack(level,owner,wall,label,grp,ord){
   const c=ensureCol(level,label);
   const key=owner+"::srcs", id=`${level}:${key}`, eid="card-"+id;
   if(c.keys.has(key)) return eid;
@@ -325,8 +340,7 @@ function addStack(level,owner,wall,label,grp){
     // reading one source is the opposite of putting all of them away.
     row.addEventListener("click",e=>{ e.stopPropagation(); dropTip(); toggleStub(row.dataset.sid); });
   }
-  const yr=+el.dataset.year||0;                        // grouped then year-sorted, same rule as cards
-  placeInCol(c,el,grp==null?BACKFILL:grp,ch=>(+ch.dataset.year||0)<yr);
+  placeInCol(c,el,grp==null?BACKFILL:grp,withinRule(el,ord));   // grouped, then the same rule as cards
   return eid;
 }
 
