@@ -63,9 +63,8 @@ def _payload_dict(root: Path, pdf_dir: Path) -> dict:
     """graph.json as a dict — the shared builder, with every serve-only extra left off.
 
     This used to be a hand-copy of ``lit serve``'s version and had already fallen a version
-    behind it. The labbook mounts the viewer read-only: no cockpit (it cannot spawn an agent
-    or attach a terminal) and no ``/views/`` renderings, so the defaults are exactly right
-    here and there is nothing left to keep in step by hand."""
+    behind it. The labbook mounts the viewer read-only and never answers ``/views/``, so the
+    defaults are exactly right here and there is nothing left to keep in step by hand."""
     return endpoints.payload_dict(root, pdf_dir)
 
 

@@ -5,10 +5,11 @@
 over the same data. They already share the validation regexes and `locate_quote`; what they
 kept re-implementing was the two things below, and both had drifted:
 
-  * **the payload.** Each grew its own `_payload_dict`. `lit serve`'s learned `cockpit`,
-    `views` and `include_aims`; the plugin's did not, so the labbook served a viewer that
-    was quietly a version behind. One function now, with the serve-only extras as arguments
-    that default to off — a static `lit build` artifact still never sees them.
+  * **the payload.** Each grew its own `_payload_dict`. `lit serve`'s learned `views` and
+    `include_aims` (and, while the curation cockpit was still current, a `cockpit` flag —
+    retired along with it, see CURATION.md); the plugin's did not, so the labbook served a
+    viewer that was quietly a version behind. One function now, with the serve-only extras
+    as arguments that default to off — a static `lit build` artifact still never sees them.
   * **the PDF guard.** "validate the citekey, find the file, run a pdfview function, turn
     any failure into a 404" appeared six times in the plugin and six more in `lit serve`,
     written slightly differently each time.
@@ -36,22 +37,21 @@ class HttpError(Exception):
         self.message = message
 
 
-def payload_dict(root: Path, pdf_dir: Path, *, cockpit: dict | None = None,
+def payload_dict(root: Path, pdf_dir: Path, *,
                  include_aims: bool = False, views: list[dict] | None = None) -> dict:
     """graph.json as a dict, rebuilt from the repo's YAML — the one place it is computed.
 
     May raise `BuildError`: a repo mid-edit is a normal state, and both servers turn that
     into a readable 500 so the fix is edit-and-refresh rather than restart. Quotes are
     polished against the `.md` full text in `pdf_dir` (falling back to the raw anchor when a
-    paper has no `.md`), and `[curation] active` is re-read per call, so editing it is live.
+    paper has no `.md`), and `[curation] active` is re-read per call, so editing it is live —
+    it is now a plain reading list (CURATION.md), not a curation-session worklist.
 
-    `cockpit`, `views` and `include_aims` are serve-only: a `lit build` artifact has no
-    server to answer `/views/` or attach a terminal, so it never receives those keys and
-    never grows the corresponding UI."""
+    `views` and `include_aims` are serve-only: a `lit build` artifact has no server to answer
+    `/views/`, so it never receives that key and never grows the dropdown it feeds."""
     graph = build_graph(root)
     polish_graph(graph, pdf_dir)
-    out = to_json_dict(graph, active=load_config(root).active, cockpit=cockpit,
-                       include_aims=include_aims)
+    out = to_json_dict(graph, active=load_config(root).active, include_aims=include_aims)
     if views:
         out["views"] = views
     return out

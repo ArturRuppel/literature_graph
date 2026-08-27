@@ -4,6 +4,11 @@
 [the cockpit design](2026-07-09-curation-cockpit-design.md) · **Date:** 2026-07-09 · companion to
 [CURATION.md](../CURATION.md)
 
+> **Retired (2026-08-27):** the cockpit (§§3–4: the in-progress zone as a three-pane curation
+> session) is gone — curation now happens with conventional coding agents against the reading
+> list. §2 (the browse view's collapsible/detachable docked PDF pane) is unaffected and still
+> current. See [CURATION.md](../CURATION.md).
+
 > **Superseded in part (2026-07-28):** §4's *three-pane* layout is gone — curation now opens three
 > real OS windows, and the ttyd terminal iframe is a native emulator. See
 > [curation windows](2026-07-28-curation-windows.md). Everything else here still holds: the move,

@@ -222,7 +222,7 @@ def _topics_json(g: Graph) -> dict:
             for slug, t in g.topics.items()}
 
 
-def to_json_dict(g: Graph, active: "tuple[str, ...]" = (), cockpit: "dict | None" = None,
+def to_json_dict(g: Graph, active: "tuple[str, ...]" = (),
                  include_aims: bool = False) -> dict:
     """Serialize the graph for the viewer. Aims — and the narrative axis that orders them —
     are **off by default**: the landing view is paper-centric (it sorts by pass / year /
@@ -254,9 +254,8 @@ def to_json_dict(g: Graph, active: "tuple[str, ...]" = (), cockpit: "dict | None
     # curated papers, preserving the given order. Empty for static `lit build` (the WIP panel is
     # serve-only), so a shared artifact never carries the curator's private worklist.
     active_curated = [k for k in active if k in curated]
-    # Unlike `active`/`cockpit` below, topics carry no worklist or server state — they are
-    # public library structure, so (per SCHEMA §9) they belong in both a static `lit build`
-    # and `lit serve` alike.
+    # Unlike `active` above, topics carry no worklist or server state — they are public library
+    # structure, so (per SCHEMA §9) they belong in both a static `lit build` and `lit serve` alike.
     out = {"papers": curated, "broad": broad, "stubs": stubs, "order": g.order,
            "active": active_curated, "topics": _topics_json(g)}
     # Narrative rides along with aims (see the flag's docstring above) and only when there is
@@ -264,11 +263,6 @@ def to_json_dict(g: Graph, active: "tuple[str, ...]" = (), cockpit: "dict | None
     # other optional axis's "absent means absent" contract.
     if include_aims and g.narrative:
         out["narrative"] = _narrative_json(g)
-    # `cockpit` is serve-only (`lit serve --curate`): its presence flips the viewer into the
-    # three-pane curate layout and carries the embedded terminal's port. Absent for static
-    # `lit build`, so the shared artifact never sprouts a curate UI or a terminal iframe.
-    if cockpit:
-        out["cockpit"] = cockpit
     return out
 
 

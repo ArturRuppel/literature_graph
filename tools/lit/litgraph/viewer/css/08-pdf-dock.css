@@ -46,10 +46,9 @@
     #dockGrip::after{width:38px;height:3px}
     body.library.dock-open #libraryPane{right:0;bottom:var(--dock-h)}
   }
-  /* ── PDF-only window (index.html?detached=1 or ?focus=1) ────────────────────────────────
-     One document, two drivers: the browse view's popped-out dock (`detached`, mirrored over a
-     BroadcastChannel) and curation's paper window (`focus`, aimed by polling the focus wire).
-     Both hide all graph chrome and let the PDF pane fill the whole window. Same .pw markup as
+  /* ── the detached PDF window (index.html?detached=1) ────────────────────────────────────
+     The browse view's popped-out dock, mirrored from the graph window over a BroadcastChannel.
+     Hides all graph chrome and lets the PDF pane fill the whole window. Same .pw markup as
      the dock, restyled to be borderless. */
   #detachPane{display:none}
   body.detached{overflow:hidden}

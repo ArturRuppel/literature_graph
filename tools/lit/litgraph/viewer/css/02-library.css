@@ -154,14 +154,6 @@
     #libBar{padding:9px 12px}
   }
 
-  /* "finish curation" — the DRIVE card window's counterpart to the picker row's ✓ (serve only) */
-  #hud .donebtn{display:inline-flex;align-items:center;gap:6px;cursor:pointer;font:inherit;
-    font-size:10px;letter-spacing:1px;text-transform:uppercase;color:#a9d8c6;
-    border:1px solid rgba(120,200,175,.42);border-radius:999px;padding:3px 10px;
-    background:rgba(39,115,95,.20)}
-  #hud .donebtn:hover{background:rgba(39,115,95,.38);border-color:rgba(150,215,195,.8);color:#fff}
-  #hud .donebtn[disabled]{opacity:.5;cursor:default}
-  #hud .donebtn[hidden]{display:none}
   #wipPanel{position:fixed;z-index:45;top:44px;left:16px;width:300px;max-height:72vh;overflow:auto;
     background:var(--panel);border:1px solid var(--line);border-radius:10px;
     box-shadow:0 12px 34px rgba(38,54,70,.24);padding:6px}

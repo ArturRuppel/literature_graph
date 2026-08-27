@@ -24,11 +24,7 @@ from __future__ import annotations
 import gzip
 import hashlib
 import json
-import os
 import re
-import shlex
-import shutil
-import subprocess
 import threading
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -220,33 +216,10 @@ def _int_param(url: str, name: str) -> int | None:
     return int(raw) if raw.isdigit() else None
 
 
-def _data_version(root: Path) -> int:
-    """Max mtime (ns) over the YAML the card is built from — curated/*.yaml + stubs.yaml.
-    The viewer piggybacks this on the focus poll and reloads the cockpit card when it bumps,
-    so an agent's edit shows up without a manual refresh. 44-odd stats every 500 ms is free;
-    `lit build` writes only to dist/, so a rebuild never bumps it — only a source edit does."""
-    latest = 0
-    try:
-        paths = list((root / "curated").glob("*.yaml"))
-    except OSError:
-        paths = []
-    paths.append(root / "stubs.yaml")
-    for p in paths:
-        try:
-            latest = max(latest, p.stat().st_mtime_ns)
-        except OSError:
-            pass  # a file removed mid-glob just doesn't count toward the version this tick
-    return latest
-
-
 def _source_version(root: Path, pdf_dir: Path) -> tuple[int, int]:
-    """Everything `payload_dict` reads, as a cheap (max mtime ns, file count) fingerprint.
-
-    Wider than `_data_version`, which covers only what the cockpit card watches: the payload
-    also comes from claims|questions|methods/, topics/, programme/aims/, config.toml's active
-    list, and the `.md` full text quotes are polished against. Keying a cache on the narrow
-    version would serve a stale graph after a broad-claim edit — silently, which is the worst
-    way to be wrong about a graph.
+    """Everything `payload_dict` reads, as a cheap (max mtime ns, file count) fingerprint —
+    curated/|claims/|questions/|methods/|topics/, programme/aims/, config.toml's active list,
+    and the `.md` full text quotes are polished against.
 
     The count rides along because a deletion *lowers* the max mtime, so mtime alone would call
     a shrunken repo unchanged. ~600 stats, a millisecond, against a rebuild costing a second."""
@@ -273,13 +246,12 @@ def _source_version(root: Path, pdf_dir: Path) -> tuple[int, int]:
 class _Server(ThreadingHTTPServer):
     daemon_threads = True
 
-    def __init__(self, address, root: Path, pdf_dir: Path, term_cmd: list[str] | None = None,
-                 agent_cmd: tuple[list[str], Path] | None = None, read_only: bool = False):
+    def __init__(self, address, root: Path, pdf_dir: Path, read_only: bool = False):
         self.root = Path(root)
         self.pdf_dir = Path(pdf_dir)
         # A mirror serves a checkout it does not own — one `git pull` away from having any local
-        # edit clobbered. Read-only refuses the three endpoints that change state on the host
-        # rather than letting them write into a tree that will be overwritten.
+        # edit clobbered. Read-only refuses the one endpoint that writes synced content (see the
+        # `_MUTATING` note below) rather than letting it write into a tree that will be overwritten.
         self.read_only = read_only
         # the built graph.json body, memoized against `_source_version`. `lit serve` rebuilds
         # from YAML on every request by design — that is what makes edit-and-refresh work — but
@@ -288,18 +260,6 @@ class _Server(ThreadingHTTPServer):
         # from being rebuilt once per concurrent request.
         self._payload_cache: tuple[tuple[int, int], str] | None = None
         self._payload_lock = threading.Lock()
-        # argv prefix that opens a new terminal WINDOW running a command (e.g. ["kitty", "-e"]),
-        # or None when no emulator was found. Curation's terminal is a real OS window, not an
-        # embedded pane — POST /term spawns one per paper.
-        self.term_cmd = term_cmd
-        # Switchboard owns agent creation. The tuple is (argv prefix, cwd), for example
-        # ([.../.venv/bin/python, "-m", "sb.cli"], .../switchboard).
-        self.agent_cmd = agent_cmd
-        # the focus channel: the one "what should the PDF pane be aimed at" record, driven by
-        # `lit focus` (the agent) or a card click and polled by the viewer. Serve-only, ephemeral
-        # — never persisted. `seq` is the poll's change-detector; `loc` is the resolved {page,
-        # rects} or None (the graceful floor: switch paper, no highlight).
-        self.focus = {"seq": 0, "citekey": None, "quote": None, "loc": None}
         # stub abstracts: fetched from OpenAlex on hover, memoized for the session (citekey ->
         # abstract str | None). Never persisted — the diffable stubs.yaml stays abstract-free.
         self._abs_cache: dict[str, str | None] = {}
@@ -351,20 +311,15 @@ class _Handler(BaseHTTPRequestHandler):
         """graph.json as a dict, rebuilt from the repo's YAML on every request (may raise
         BuildError) — the shared `endpoints.payload_dict`, which the labbook plugin calls too.
 
-        The extras are assembled here because only this server has them. Agent creation and
-        terminal attachment are separate capabilities: phone curation needs the former but
-        deliberately skips the latter; desktop uses both. The alternative renderings live at
-        /views/ and need a server to answer for them. Aims (and the narrative axis that orders
-        them) default ON here, same as `lit build` (build.emit): `/graph.json` carries the
+        `views` is assembled here because only this server has it: the alternative renderings
+        live at /views/ and need a server to answer for them. Aims (and the narrative axis that
+        orders them) default ON here, same as `lit build` (build.emit): `/graph.json` carries the
         programme lane's data in its own "papers" entries / "narrative" key, and the paper-
         centric `order` — the landing column's actual sort — stays exactly as it was, since
         `graph.order` never reads either axis. The preview routes below pass `include_aims=True`
         explicitly too, which is now redundant with the default but kept for clarity at the
         call site: each still means "this route needs the programme layer" on its own terms."""
-        cockpit = ({"agent": "Switchboard agent",
-                    "terminal": Path(self.server.term_cmd[0]).name if self.server.term_cmd else None}
-                   if self.server.agent_cmd else None)
-        return endpoints.payload_dict(self.server.root, self.server.pdf_dir, cockpit=cockpit,
+        return endpoints.payload_dict(self.server.root, self.server.pdf_dir,
                                       include_aims=include_aims, views=_available_views())
 
     def _isolated(self, key: str) -> dict | None:
@@ -372,8 +327,8 @@ class _Handler(BaseHTTPRequestHandler):
 
         Two kinds of key, one door: `~<grant>` is a whole proposal (the narrative plus the aims
         under it — preview.isolate_proposal), anything else is a single container. Resolving
-        both here is what keeps /preview.html and /preview.json from drifting: the DRIVE card
-        refreshes itself off the JSON and must see exactly the page it is standing on."""
+        both here is what keeps /preview.html and /preview.json from drifting: `lit preview`
+        and the served page must render exactly the same isolated subgraph."""
         full = self._payload_dict(include_aims=True)
         if key.startswith("~"):
             try:
@@ -439,13 +394,6 @@ class _Handler(BaseHTTPRequestHandler):
                                       b"not found\n")
                 ctype = _VIEW_TYPES.get(target.suffix, "application/octet-stream")
                 return self._send(HTTPStatus.OK, ctype, target.read_bytes())
-            if path == "/focus":
-                # the focus wire — what the viewer's PDF pane should aim at right now. Set by
-                # POST /focus (the `lit focus` CLI or a card click); the viewer polls this.
-                # `data_version` rides along so the same poll can hot-reload the card on an edit.
-                resp = {**self.server.focus, "data_version": _data_version(self.server.root)}
-                return self._send(HTTPStatus.OK, "application/json; charset=utf-8",
-                                  json.dumps(resp).encode())
             if path == "/preview.html":
                 # one container's local subgraph in isolation — the exact `lit preview` view
                 # (real `isolate()` + the shared template), for reviewing an in-progress paper
@@ -461,9 +409,9 @@ class _Handler(BaseHTTPRequestHandler):
                                   render_html(json.dumps(mini, ensure_ascii=False)).encode())
             if path == "/preview.json":
                 # the isolated subgraph as JSON — same resolution as /preview.html, sans the
-                # template. The zone's DRIVE card fetches this to refresh its data *in place* on a
-                # YAML edit (rebuild from live PAPERS, reading state preserved) instead of reloading
-                # the iframe, which would collapse the card the human is reading.
+                # template. A plain read API for a paper's local subgraph: useful to a script or
+                # an agent inspecting `curated/<citekey>.yaml`'s emergent shape without parsing
+                # HTML.
                 mini = self._isolated(parse_qs(urlparse(self.path).query).get("key", [""])[0])
                 if mini is None:
                     return self._preview_404(self.path)
@@ -625,16 +573,15 @@ class _Handler(BaseHTTPRequestHandler):
         return json.loads(self.rfile.read(n) or b"{}")
 
     # What a mirror must refuse: /quote_loc writes curated/*.yaml, which is *synced* content —
-    # an edit there survives only until the next push overwrites it. /term spawns a process.
+    # an edit there survives only until the next push overwrites it.
     #
     # /active is deliberately NOT here, though it writes too. It writes config.toml, which every
-    # sync excludes precisely because it is host-local, so a mirror's worklist is its own and
-    # nothing clobbers it. The in-progress zone is viewer state, not library content, and being
-    # able to shuffle it from the couch is most of why the mirror exists.
+    # sync excludes precisely because it is host-local, so a mirror's reading list is its own and
+    # nothing clobbers it. The reading list is viewer state, not library content, and being able
+    # to shuffle it from the couch is most of why the mirror exists.
     #
-    # /resolve and /focus are absent for a different reason: the first is a pure function of a
-    # PDF, the second moves an in-memory pointer that dies with the server.
-    _MUTATING = frozenset({"/quote_loc", "/term"})
+    # /resolve is absent for a different reason: it's a pure function of a PDF, nothing to guard.
+    _MUTATING = frozenset({"/quote_loc"})
 
     def do_POST(self) -> None:  # noqa: N802 (http.server API)
         path = unquote(urlparse(self.path).path)
@@ -665,24 +612,9 @@ class _Handler(BaseHTTPRequestHandler):
                     return self._send(HTTPStatus.NOT_FOUND, "text/plain; charset=utf-8",
                                       f"{e}\n".encode())
                 return self._send(HTTPStatus.OK, "application/json", b'{"ok":true}')
-            if path == "/focus":
-                # aim the wire at a quote: resolve its geometry (like /resolve), store it, bump
-                # seq. Quote optional — omit to just switch the pane to a paper (loc stays None,
-                # the graceful floor). A missing PDF is a 404; an unresolvable quote is not (the
-                # focus still lands, sans highlight).
-                body = self._read_json()
-                key, quote = body.get("citekey", ""), body.get("quote", "") or ""
-                pdf = self.server.pdf_dir / (key + ".pdf")
-                if not _CITEKEY.match(key) or not pdf.is_file():
-                    return self._send(HTTPStatus.NOT_FOUND, "application/json", b"null")
-                loc = locate_quote(pdf, quote) if quote.strip() else None
-                self.server.focus = {"seq": self.server.focus["seq"] + 1,
-                                     "citekey": key, "quote": quote, "loc": loc}
-                return self._send(HTTPStatus.OK, "application/json; charset=utf-8",
-                                  json.dumps(self.server.focus).encode())
             if path == "/active":
-                # the move: add/remove a paper from the in-progress worklist (`[curation] active`
-                # in config.toml). Curated-only for now — a stub has no local subgraph to curate
+                # the move: add/remove a paper from the reading list (`[curation] active` in
+                # config.toml). Curated-only for now — a stub has no local subgraph to curate
                 # (stub promotion is a later item). The write is picked up on the next rebuild.
                 body = self._read_json()
                 key, active = body.get("citekey", ""), body.get("active")
@@ -696,31 +628,6 @@ class _Handler(BaseHTTPRequestHandler):
                 new_active = config.set_active(self.server.root, key, active)
                 return self._send(HTTPStatus.OK, "application/json; charset=utf-8",
                                   json.dumps({"ok": True, "active": list(new_active)}).encode())
-            if path == "/term":
-                # Always ask Switchboard to create the canonical agent tmux session. Desktop also
-                # asks us to attach a native terminal; phone sends attach=false and leaves the
-                # agent detached but visible/manageable in Switchboard.
-                body = self._read_json()
-                key, attach = body.get("citekey", ""), body.get("attach", True)
-                if not _CITEKEY.match(key) or not isinstance(attach, bool):
-                    return self._send(HTTPStatus.BAD_REQUEST, "text/plain; charset=utf-8",
-                                      b"bad term payload\n")
-                if not (self.server.root / "curated" / f"{key}.yaml").is_file():
-                    return self._send(HTTPStatus.NOT_FOUND, "text/plain; charset=utf-8",
-                                      f"not a curated paper: {key}\n".encode())
-                if not self.server.agent_cmd or (attach and not self.server.term_cmd):
-                    return self._send(HTTPStatus.SERVICE_UNAVAILABLE, "application/json",
-                                      b'{"ok":false,"error":"switchboard agent unavailable"}')
-                try:
-                    session = spawn_agent(self.server.agent_cmd, self.server.root, key,
-                                          self.server.server_address[0])
-                    if attach:
-                        attach_terminal(self.server.term_cmd, session)
-                except RuntimeError as exc:
-                    return self._send(HTTPStatus.BAD_GATEWAY, "text/plain; charset=utf-8",
-                                      f"{exc}\n".encode())
-                payload = json.dumps({"ok": True, "session": session, "attached": attach}).encode()
-                return self._send(HTTPStatus.OK, "application/json", payload)
             return self._send(HTTPStatus.NOT_FOUND, "text/plain; charset=utf-8",
                               b"not found\n")
         except (ValueError, json.JSONDecodeError):
@@ -731,127 +638,24 @@ class _Handler(BaseHTTPRequestHandler):
 
 
 def make_server(root: Path, pdf_dir: Path, host: str = "127.0.0.1",
-                port: int = 0, term_cmd: list[str] | None = None,
-                agent_cmd: tuple[list[str], Path] | None = None,
-                read_only: bool = False) -> _Server:
+                port: int = 0, read_only: bool = False) -> _Server:
     """Bind (port 0 = ephemeral) but don't serve yet — the caller runs serve_forever()."""
-    return _Server((host, port), root=root, pdf_dir=pdf_dir, term_cmd=term_cmd,
-                   agent_cmd=agent_cmd, read_only=read_only)
-
-
-# Terminal emulators tried in order, with the argument that makes each run a command in a fresh
-# window. `$LIT_TERMINAL` overrides (shell-split, so "kitty --class litcurate -e" works) — the
-# escape hatch for a WM rule that wants to tag / place the curation window.
-_TERMINALS = (("kitty", ["-e"]), ("wezterm", ["start", "--"]), ("ghostty", ["-e"]),
-              ("foot", ["-e"]), ("alacritty", ["-e"]), ("konsole", ["-e"]),
-              ("gnome-terminal", ["--"]), ("xfce4-terminal", ["-x"]), ("xterm", ["-e"]))
-
-
-def terminal_cmd() -> list[str] | None:
-    """The argv prefix that opens a new terminal window running a command, or None if this machine
-    has no emulator we know. Resolved once at `lit serve` start — the answer can't change under us."""
-    override = os.environ.get("LIT_TERMINAL", "").strip()
-    if override:
-        parts = shlex.split(override)
-        return parts if parts and shutil.which(parts[0]) else None
-    for exe, run in _TERMINALS:
-        found = shutil.which(exe)
-        if found:
-            return [found, *run]
-    return None
-
-
-def switchboard_cmd() -> tuple[list[str], Path] | None:
-    """Return Switchboard's local CLI and its working directory.
-
-    ``LIT_SWITCHBOARD`` can name an installed/custom command. In the development layout the two
-    public repos are siblings, so the zero-config path uses Switchboard's own virtualenv. Keeping
-    this seam explicit lets an installed LitGraph degrade cleanly when Switchboard is absent.
-    """
-    override = os.environ.get("LIT_SWITCHBOARD", "").strip()
-    if override:
-        parts = shlex.split(override)
-        return (parts, Path.cwd()) if parts and shutil.which(parts[0]) else None
-    code_root = Path(__file__).resolve().parents[3]
-    sibling = code_root.parent / "switchboard"
-    python = sibling / ".venv" / "bin" / "python"
-    if python.is_file() and (sibling / "sb" / "cli.py").is_file():
-        return [str(python), "-m", "sb.cli"], sibling
-    return None
-
-
-def _curation_prompt(citekey: str, data_root: Path, serve_host: str) -> str:
-    code_root = Path(__file__).resolve().parents[3]
-    return (
-        f"We are curating {citekey}. Data root: {Path(data_root).resolve()} "
-        "(pass --root there to every lit command). "
-        f"First read {code_root / 'CURATION.md'} for the protocol, then read the paper in full "
-        "and work out its structure on your own. Do NOT propose, summarise, list, or tokenize "
-        "anything yet — when you have finished reading and are oriented, reply with exactly: "
-        "I'm ready. — and nothing else. From then on we communicate through the card, one pass "
-        "at a time: when I tell you to launch a pass, write that pass's proposed slices directly "
-        f"into curated/{citekey}.yaml — that edit is your proposition, not chat prose. Run lit "
-        "build first to confirm it validates, then tell me to reload. I'll review it in the card "
-        "and tell you what to keep, edit, or revert before the next pass. Use lit focus "
-        f'{citekey} --host {serve_host} --quote "<verbatim sentence>" to aim my PDF window whenever we are discussing '
-        f"a specific passage. Pick up from wherever curated/{citekey}.yaml leaves off."
-    )
-
-
-def spawn_agent(agent_cmd: tuple[list[str], Path], data_root: Path,
-                citekey: str, serve_host: str) -> str:
-    """Spawn the canonical Switchboard agent and return its detached tmux session name."""
-    argv, switchboard_root = agent_cmd
-    try:
-        result = subprocess.run(
-            [*argv, "spawn", "agent", "--cwd", str(Path(data_root).resolve()),
-             "--prompt", _curation_prompt(citekey, data_root, serve_host)],
-            cwd=switchboard_root, capture_output=True, text=True, timeout=20)
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        raise RuntimeError(f"switchboard could not spawn the curation agent: {exc}") from exc
-    if result.returncode:
-        detail = result.stderr.strip() or result.stdout.strip() or f"exit {result.returncode}"
-        raise RuntimeError(f"switchboard could not spawn the curation agent: {detail}")
-    session = result.stdout.strip()
-    if not re.fullmatch(r"[A-Za-z0-9_.-]+", session):
-        raise RuntimeError("switchboard returned an invalid tmux session name")
-    return session
-
-
-def attach_terminal(term_cmd: list[str], session: str) -> subprocess.Popen:
-    """Open a native terminal attached to an already-spawned Switchboard agent."""
-    try:
-        return subprocess.Popen([*term_cmd, "tmux", "attach", "-t", f"={session}"],
-                                start_new_session=True, stdout=subprocess.DEVNULL,
-                                stderr=subprocess.DEVNULL)
-    except OSError as exc:
-        raise RuntimeError(f"could not open the curation terminal: {exc}") from exc
+    return _Server((host, port), root=root, pdf_dir=pdf_dir, read_only=read_only)
 
 
 def serve(root: Path, pdf_dir: Path, host: str = "127.0.0.1", port: int = 8000,
           read_only: bool = False) -> None:
-    """Serve until interrupted, announcing the URL. Raises OSError if the port is taken. Curation
-    opens three real OS windows (card · PDF · terminal); the browser opens the first two itself and
-    asks the server (POST /term) for the third. Phone uses the same endpoint to spawn the agent
-    detached while keeping card + PDF together, so Switchboard is useful even without an emulator.
+    """Serve until interrupted, announcing the URL. Raises OSError if the port is taken.
 
-    `read_only` is the mirror's mode: a host serving a checkout it does not author. It refuses the
-    state-changing POSTs and skips discovering a terminal and Switchboard entirely, so the viewer
-    is told there is no curation cockpit rather than offering buttons that 405."""
-    term = None if read_only else terminal_cmd()
-    agent = None if read_only else switchboard_cmd()
-    srv = make_server(root, pdf_dir, host=host, port=port, term_cmd=term, agent_cmd=agent,
-                      read_only=read_only)
+    `read_only` is the mirror's mode: a host serving a checkout it does not author. It refuses
+    the state-changing POSTs that would write into a tree the next `git pull` overwrites (see
+    `_Handler._MUTATING`)."""
+    srv = make_server(root, pdf_dir, host=host, port=port, read_only=read_only)
     bound = srv.server_address
     print(f"serving {Path(root).resolve()} at http://{bound[0]}:{bound[1]}/")
     print(f"PDFs from {Path(pdf_dir).resolve()} — Ctrl-C to stop")
     if read_only:
-        print("  read-only — curation endpoints disabled")
-    elif term and agent:
-        print(f"  curation terminal: Switchboard agent in {Path(term[0]).name}")
-    else:
-        missing = "terminal emulator" if not term else "Switchboard CLI"
-        print(f"  ⚠ no {missing} found — curation opens the card + PDF windows only")
+        print("  read-only — the /quote_loc endpoint is disabled")
     try:
         srv.serve_forever()
     except KeyboardInterrupt:

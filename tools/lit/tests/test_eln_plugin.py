@@ -40,10 +40,8 @@ def test_graph_json_matches_the_shared_builder(client):
 
 
 def test_read_only_mount_carries_no_serve_only_keys(client):
-    """The labbook cannot spawn an agent or answer /views/, so the viewer it serves must not
-    advertise either — a cockpit key here would render buttons that go nowhere."""
+    """The labbook never answers /views/, so the viewer it serves must not advertise it."""
     payload = json.loads(client.get("/litgraph/graph.json").data)
-    assert "cockpit" not in payload
     assert "views" not in payload
     assert payload["active"] == []
 

@@ -5,7 +5,6 @@ import http.client
 import json
 import os
 import shutil
-import subprocess
 import threading
 from pathlib import Path
 
@@ -88,40 +87,23 @@ def test_pwa_manifest_and_phone_icons_are_served(srv):
         assert body.startswith(b"\x89PNG\r\n\x1a\n")
 
 
-def test_curation_opens_three_surfaces_in_one_click_without_two_popups(srv):
+def test_wip_row_click_finds_the_paper_on_the_board(srv):
+    # The cockpit's three-window launch (card + PDF popup + terminal) is retired: a reading-list
+    # row click now just runs the board's own gotoPaper, same as a search result or a library row.
     text = get(srv, "/")[2].decode()
-    # The PDF consumes the click's one popup allowance; the existing graph window becomes the
-    # card, and the server launches the terminal. Thus all three surfaces still take one click.
     enter = text.split("function enter(k){", 1)[1].split("async function returnToGraph", 1)[0]
-    assert enter.count("window.open(") == 1
-    assert 'location.assign(cardUrl)' in enter
-    assert 'fetch("term"' in enter and "Promise.allSettled([focusRequest, termRequest])" in enter
-
-
-def test_phone_curation_keeps_card_and_pdf_in_one_window_without_terminal(srv):
-    text = get(srv, "/")[2].decode()
-    phone_branch = text.split("function enter(k){", 1)[1].split(
-        "const pdf = window.open", 1)[0]
-    assert "if (PHONE_LAUNCH)" in phone_branch
-    assert 'mobile: "1"' in phone_branch and "location.assign(" in phone_branch
-    assert "window.open(" not in phone_branch
-    assert 'fetch("term"' in phone_branch and "attach: false" in phone_branch
-    # the card + PDF share one window, split on that window's long axis — the same layout the
-    # browse view gets, not a phone-only special case (which is what this used to assert)
-    assert "@media (orientation:portrait){" in text
-    assert "body.dock-open #board{right:0;bottom:var(--dock-h)}" in text
-    assert "open.add(`0:${key}`); loadDock(key); rebuild()" in text
-    assert "aimDock(key, row.dataset.sid)" in text
+    assert "gotoPaper(k)" in enter
+    assert "window.open(" not in enter
+    assert 'fetch("term"' not in enter and "PHONE_LAUNCH" not in enter
 
 
 def test_the_pdf_split_follows_the_window_shape_in_every_mode(srv):
     """Landscape docks the PDF on the right, portrait stacks it underneath, and no rule is scoped
-    to a mode class — phone curation and the browse view get the identical split."""
+    to a mode class — every window gets the identical split."""
     text = get(srv, "/")[2].decode()
     portrait = text.split("@media (orientation:portrait){", 1)[1].split("\n  }", 1)[0]
     for sel in ("#board", "#dockEmpty", ".pw-side", "#dockGrip"):
         assert f"body.dock-open {sel}" in portrait, sel
-    assert "mobile-curate" not in portrait
     # each axis keeps its own persisted fraction, so a rotate restores that shape's ratio
     assert "--dock-w:44%;--dock-h:52%" in text
     assert '{w: "lit.dock.w", h: "lit.dock.h"}' in text
@@ -180,7 +162,7 @@ def test_preview_html_rejects_unknown_and_stub_keys(srv):
 
 
 def test_preview_json_isolates_one_curated_paper(srv):
-    # the JSON twin of /preview.html: the DRIVE card fetches it to hot-reload its data in place
+    # the JSON twin of /preview.html: same isolated payload, sans the HTML template
     status, headers, body = get(srv, "/preview.json?key=Chen2021Sys")
     assert status == 200 and headers["Content-Type"].startswith("application/json")
     mini = json.loads(body)
@@ -564,58 +546,7 @@ def test_quote_loc_rejects_bad_payloads(srv):
                 {"citekey": "Chen2021Sys", "slice_id": "../x", "page": 0, "rects": [[0, 0, 1, 1]]})[0] == 400
 
 
-# ── focus channel: the shared "aim the PDF pane here" wire ────────────────────────────────
-
-
-def test_focus_starts_empty(srv):
-    status, _, body = get(srv, "/focus")
-    assert status == 200
-    rec = json.loads(body)
-    assert rec.pop("data_version") >= 0        # rides along on the poll for the card hot-reload
-    assert rec == {"seq": 0, "citekey": None, "quote": None, "loc": None}
-
-
-def test_focus_set_resolves_quote_bumps_seq_and_reads_back(srv):
-    status, rec = post(srv, "/focus", {"citekey": "Chen2021Sys", "quote": "fixture paper"})
-    assert status == 200
-    assert rec["citekey"] == "Chen2021Sys" and rec["quote"] == "fixture paper"
-    assert rec["seq"] == 1 and rec["loc"]["page"] == 0 and len(rec["loc"]["rects"]) >= 1
-    got = json.loads(get(srv, "/focus")[2])
-    assert got.pop("data_version") >= 0                     # GET adds the reload version;
-    assert got == rec                                      # the focus record itself is unchanged
-    # each set bumps seq — the poll's change-detector
-    _, rec2 = post(srv, "/focus", {"citekey": "Chen2021Sys", "quote": "fixture paper"})
-    assert rec2["seq"] == 2
-
-
-def test_focus_unlocated_quote_is_graceful_floor(srv):
-    # quote absent from the page → loc null, but the focus still lands (switch paper, no highlight)
-    status, rec = post(srv, "/focus", {"citekey": "Chen2021Sys", "quote": "no such words here"})
-    assert status == 200 and rec["citekey"] == "Chen2021Sys" and rec["loc"] is None
-
-
-def test_focus_without_quote_just_opens_the_paper(srv):
-    status, rec = post(srv, "/focus", {"citekey": "Chen2021Sys"})
-    assert status == 200 and rec["citekey"] == "Chen2021Sys"
-    assert rec["quote"] == "" and rec["loc"] is None
-
-
-def test_data_version_bumps_on_curated_edit(srv):
-    # the card hot-reload signal: editing a curated YAML must raise data_version so the
-    # viewer's focus poll can re-render the cockpit card without a manual refresh.
-    v0 = json.loads(get(srv, "/focus")[2])["data_version"]
-    f = srv.root / "curated" / "Chen2021Sys.yaml"
-    os.utime(f, ns=(v0 + 1_000_000_000, v0 + 1_000_000_000))   # push mtime a second ahead of the max
-    v1 = json.loads(get(srv, "/focus")[2])["data_version"]
-    assert v1 > v0
-
-
-def test_focus_rejects_missing_pdf_and_traversal(srv):
-    assert post(srv, "/focus", {"citekey": "Nope2020Xyz", "quote": "x"}) == (404, None)
-    assert post(srv, "/focus", {"citekey": "../etc", "quote": "x"})[0] == 404
-
-
-# ── the move: POST /active writes the in-progress worklist ────────────────────────────────
+# ── the move: POST /active writes the reading list ────────────────────────────────────────
 
 
 def test_active_move_writes_config_and_shows_in_graph(srv, repo):
@@ -644,118 +575,6 @@ def test_active_move_rejects_non_curated_and_bad_payloads(srv, repo):
     assert post(srv, "/active", {"citekey": "Nope2099X", "active": False})[0] == 200
 
 
-def test_serve_without_terminal_has_no_cockpit(srv):
-    # no terminal/Switchboard integration → no cockpit payload; a static build carries none
-    assert "cockpit" not in json.loads(get(srv, "/graph.json")[2])
-
-
-def test_terminal_available_injects_cockpit_name(repo):
-    agent = (["/switchboard/python", "-m", "sb.cli"], Path("/switchboard"))
-    s = make_server(repo, repo / "pdfs", term_cmd=["/usr/bin/kitty", "-e"],
-                    agent_cmd=agent)
-    threading.Thread(target=s.serve_forever, daemon=True).start()
-    try:
-        assert json.loads(get(s, "/graph.json")[2])["cockpit"] == {
-            "agent": "Switchboard agent", "terminal": "kitty"}
-    finally:
-        s.shutdown()
-        s.server_close()
-
-
-def test_post_term_uses_switchboard_agent_spawn_then_attaches(repo):
-    from litgraph import serve as sm
-    cap = {}
-
-    def fake_run(argv, **kw):
-        cap["spawn_argv"], cap["spawn_kw"] = argv, kw
-        return subprocess.CompletedProcess(argv, 0, "agents-7\n", "")
-
-    class FakePopen:
-        def __init__(self, argv, **kw):
-            cap["term_argv"], cap["term_kw"] = argv, kw
-
-    agent = (["/switchboard/python", "-m", "sb.cli"], Path("/switchboard"))
-    s = make_server(repo, repo / "pdfs", term_cmd=["/usr/bin/kitty", "-e"],
-                    agent_cmd=agent)
-    threading.Thread(target=s.serve_forever, daemon=True).start()
-    try:
-        real_run, real_popen = sm.subprocess.run, sm.subprocess.Popen
-        sm.subprocess.run, sm.subprocess.Popen = fake_run, FakePopen
-        try:
-            assert post(s, "/term", {"citekey": "Chen2021Sys"})[0] == 200
-        finally:
-            sm.subprocess.run, sm.subprocess.Popen = real_run, real_popen
-    finally:
-        s.shutdown()
-        s.server_close()
-    assert cap["spawn_argv"][:5] == [
-        "/switchboard/python", "-m", "sb.cli", "spawn", "agent"]
-    assert cap["spawn_argv"][cap["spawn_argv"].index("--cwd") + 1] == str(repo.resolve())
-    prompt = cap["spawn_argv"][cap["spawn_argv"].index("--prompt") + 1]
-    assert "Chen2021Sys" in prompt and "CURATION.md" in prompt
-    assert "lit focus Chen2021Sys --host 127.0.0.1" in prompt
-    assert cap["spawn_kw"]["cwd"] == Path("/switchboard")
-    assert cap["term_argv"] == [
-        "/usr/bin/kitty", "-e", "tmux", "attach", "-t", "=agents-7"]
-    assert cap["term_kw"]["start_new_session"] is True
-
-
-def test_post_term_can_spawn_agent_detached_without_an_emulator(repo):
-    from litgraph import serve as sm
-    cap = {}
-
-    def fake_run(argv, **kw):
-        cap["spawn_argv"] = argv
-        return subprocess.CompletedProcess(argv, 0, "agents-8\n", "")
-
-    agent = (["/switchboard/python", "-m", "sb.cli"], Path("/switchboard"))
-    s = make_server(repo, repo / "pdfs", agent_cmd=agent)  # deliberately no emulator
-    threading.Thread(target=s.serve_forever, daemon=True).start()
-    try:
-        real_run, sm.subprocess.run = sm.subprocess.run, fake_run
-        try:
-            status, result = post(s, "/term", {"citekey": "Chen2021Sys", "attach": False})
-        finally:
-            sm.subprocess.run = real_run
-    finally:
-        s.shutdown()
-        s.server_close()
-    assert status == 200 and result == {"ok": True, "session": "agents-8", "attached": False}
-    assert cap["spawn_argv"][:5] == [
-        "/switchboard/python", "-m", "sb.cli", "spawn", "agent"]
-
-
-def test_post_term_rejects_bad_key_and_degrades_without_an_emulator(srv, repo):
-    assert post(srv, "/term", {"citekey": "../etc"})[0] == 400
-    assert post(srv, "/term", {"citekey": "Nope2099X"})[0] == 404      # not a curated paper
-    assert post(srv, "/term", {"citekey": "Chen2021Sys", "attach": "no"})[0] == 400
-    # `srv` has term_cmd=None: a curated paper still 503s rather than crashing — the card and
-    # paper windows keep working, you just start the session yourself
-    assert post(srv, "/term", {"citekey": "Chen2021Sys"})[0] == 503
-
-
-def test_terminal_cmd_prefers_a_found_emulator_and_honours_the_override(monkeypatch):
-    from litgraph import serve as sm
-    monkeypatch.delenv("LIT_TERMINAL", raising=False)
-    monkeypatch.setattr(sm.shutil, "which", lambda e: None)
-    assert sm.terminal_cmd() is None                        # nothing installed — graceful, not a crash
-    monkeypatch.setattr(sm.shutil, "which", lambda e: f"/usr/bin/{e}" if e == "foot" else None)
-    assert sm.terminal_cmd() == ["/usr/bin/foot", "-e"]
-    monkeypatch.setenv("LIT_TERMINAL", "kitty --class litcurate -e")
-    monkeypatch.setattr(sm.shutil, "which", lambda e: f"/usr/bin/{e}")
-    assert sm.terminal_cmd() == ["kitty", "--class", "litcurate", "-e"]
-
-
-def test_switchboard_cmd_degrades_cleanly_and_honours_override(monkeypatch):
-    from litgraph import serve as sm
-    monkeypatch.setenv("LIT_SWITCHBOARD", "custom-sb")
-    monkeypatch.setattr(sm.shutil, "which", lambda e: "/usr/bin/custom-sb" if e == "custom-sb" else None)
-    argv, cwd = sm.switchboard_cmd()
-    assert argv == ["custom-sb"] and cwd == Path.cwd()
-    monkeypatch.setenv("LIT_SWITCHBOARD", "missing-sb")
-    assert sm.switchboard_cmd() is None
-
-
 # ── CLI wiring ───────────────────────────────────────────────────────────────────────────
 
 from litgraph import cli
@@ -776,28 +595,13 @@ def test_cli_serve_wires_root_port_and_pdf_dir(repo, monkeypatch):
     assert rc == 0 and calls["read_only"] is True
 
 
-def test_cli_focus_posts_to_running_server(srv, capsys):
-    port = srv.server_address[1]
-    rc = cli.main(["focus", "Chen2021Sys", "--quote", "fixture paper", "--port", str(port)])
-    assert rc == 0
-    out = capsys.readouterr().out
-    assert "Chen2021Sys" in out and "p.1" in out
-    rec = json.loads(get(srv, "/focus")[2])              # the server now holds that focus
-    assert rec["citekey"] == "Chen2021Sys" and rec["loc"]["page"] == 0
-
-
-def test_cli_focus_errors_cleanly_when_no_server(capsys):
-    # nothing listening → clean message, nonzero exit (not a traceback)
-    rc = cli.main(["focus", "Chen2021Sys", "--port", "1"])
-    assert rc == 1
-    assert "no lit serve" in capsys.readouterr().err
-
-
-def test_cli_focus_errors_on_unknown_pdf(srv, capsys):
-    port = srv.server_address[1]
-    rc = cli.main(["focus", "Nope2020Xyz", "--quote", "x", "--port", str(port)])
-    assert rc == 1
-    assert "Nope2020Xyz" in capsys.readouterr().err
+def test_cli_has_no_focus_command(capsys):
+    # `lit focus` steered the cockpit's separate paper window (POST /focus); both are retired.
+    # argparse rejects an unknown subcommand with usage + SystemExit(2), same as any typo.
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["focus", "Chen2021Sys"])
+    assert exc.value.code == 2
+    assert "invalid choice: 'focus'" in capsys.readouterr().err
 
 
 def test_cli_curate_moves_paper_in_and_out(repo, capsys):
@@ -920,21 +724,18 @@ def ro_srv(repo):
     s.server_close()
 
 
-def test_read_only_refuses_writes_to_synced_content_and_process_spawns(ro_srv, repo):
+def test_read_only_refuses_writes_to_synced_content(ro_srv, repo):
     """A mirror's curated/ is overwritten by the next push, so a write there is a lie — refuse
-    it rather than accept it and lose it. /term spawns a process and has no business on a host
-    nobody is sitting at."""
+    it rather than accept it and lose it."""
     before = (repo / "curated" / "Chen2021Sys.yaml").read_text()
-    for path, payload in (("/quote_loc", {"citekey": "Chen2021Sys", "slice_id": "c1",
-                                          "page": 0, "rects": [[1, 1, 2, 2]]}),
-                          ("/term", {"citekey": "Chen2021Sys", "attach": False})):
-        status, _ = post(ro_srv, path, payload)
-        assert status == 405, path
+    status, _ = post(ro_srv, "/quote_loc", {"citekey": "Chen2021Sys", "slice_id": "c1",
+                                            "page": 0, "rects": [[1, 1, 2, 2]]})
+    assert status == 405
     assert (repo / "curated" / "Chen2021Sys.yaml").read_text() == before
 
 
-def test_read_only_still_moves_papers_in_and_out_of_the_worklist(ro_srv, repo):
-    """config.toml is host-local — every sync excludes it — so the mirror's in-progress zone is
+def test_read_only_still_moves_papers_in_and_out_of_the_reading_list(ro_srv, repo):
+    """config.toml is host-local — every sync excludes it — so the mirror's reading list is
     its own and no push can clobber it. Curating from the couch is most of the point."""
     status, body = post(ro_srv, "/active", {"citekey": "Chen2021Sys", "active": True})
     assert status == 200 and body["ok"] and "Chen2021Sys" in body["active"]
@@ -950,12 +751,6 @@ def test_read_only_still_reads_and_still_resolves_quotes(ro_srv):
     assert get(ro_srv, "/pdf/Chen2021Sys.pdf")[0] == 200
     status, loc = post(ro_srv, "/resolve", {"citekey": "Chen2021Sys", "quote": "fixture paper"})
     assert status == 200 and loc["page"] == 0
-
-
-def test_read_only_offers_no_curation_cockpit(repo):
-    """No terminal, no agent — the viewer shouldn't render buttons that would 405."""
-    s = make_server(repo, repo / "pdfs", read_only=True)
-    assert s.term_cmd is None and s.agent_cmd is None
 
 
 def test_the_payload_is_rebuilt_once_until_a_source_changes(srv, repo, monkeypatch):

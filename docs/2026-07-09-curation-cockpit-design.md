@@ -8,6 +8,10 @@ terminal, wrapper) all carry over; only their framing/triggers change. · **Date
 companion to [CURATION.md](../CURATION.md) and the
 [visualization design](2026-06-25-visualization-design.md)
 
+> **Retired (2026-08-27):** the curation cockpit described here is gone — curation now happens
+> with conventional coding agents against the reading list, not an in-browser session. See
+> [CURATION.md](../CURATION.md).
+
 > **Superseded in part (2026-07-28):** §5's ttyd transport is retired — the terminal is a native
 > emulator window now, running this doc's wrapper unchanged — and the three panes are three OS
 > windows. See [curation windows](2026-07-28-curation-windows.md). The focus channel, the docked

@@ -139,10 +139,7 @@ function cardClick(e, el, level, key){
     // now aims it everywhere — on desktop that's a no-op confirming what the hover already did
     // (aimDock early-returns when it's already parked on this claim). Aiming never OPENS the
     // PDF: with the dock shut the aim is just remembered, and the next explicit 📄 lands on it.
-    if (row.classList.contains("pdf-src")) {
-      if (DRIVE) focusFromClick(key, row.dataset.sid);   // card window: steer the separate PDF window
-      else aimDock(key, row.dataset.sid);                // browse / mobile-curate: aim the dock
-    }
+    if (row.classList.contains("pdf-src")) aimDock(key, row.dataset.sid);
     // an aim's row drills its branch; a paper's row has no branch to drill — every slice is
     // already on screen — so the click trades that row's text for its badge instead.
     if (row.classList.contains("drillable")) toggleDrill(id, row.dataset.path);  // drill + rebuild

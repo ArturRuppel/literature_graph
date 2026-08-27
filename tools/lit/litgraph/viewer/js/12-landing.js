@@ -143,7 +143,7 @@ function setQuiet(on){
   }
   redraw();
 }
-if(quietBtn&&!PDFWIN){ quietBtn.hidden=false; quietBtn.addEventListener("click",()=>setQuiet(!quietEdges)); }
+if(quietBtn&&!DETACHED){ quietBtn.hidden=false; quietBtn.addEventListener("click",()=>setQuiet(!quietEdges)); }
 // `q` for quiet, alongside `c` for clear and `w` for the walk — same guards: not while typing, and
 // not while a pane that owns the keyboard is up.
 addEventListener("keydown",e=>{
@@ -189,9 +189,8 @@ function showBroad(slug){
   flash(el);
 }
 // Reconcile cols[0]. The curated list is a FIXED population — every key landingKeys() names is
-// present from boot and never leaves, so this only ever adds what a fresh graph brought in (a
-// hot-reloaded DRIVE window) and evicts stub cards nobody names any more. It never re-sorts: a card
-// already in the column stays exactly where the hoists left it.
+// present from boot and never leaves, so a later call only ever evicts stub cards nobody names
+// any more. It never re-sorts: a card already in the column stays exactly where the hoists left it.
 function syncLanding(){
   const c=cols[0]; if(!c) return;
   const want=landedWant();
@@ -205,7 +204,7 @@ function syncLanding(){
     const el=document.getElementById(`card-0:${k}`); if(el) el.remove();
   }
   for(const k of perm){                              // ORDER's ranking — never resorted
-    if(ACTIVE.has(k)||c.keys.has(k)) continue;        // in-progress papers live in their own windows
+    if(ACTIVE.has(k)||c.keys.has(k)) continue;        // reading-list papers stay off the column
     addPaper(0,k);
   }
   for(const k of landedStuck){                       // a stub named by hand isn't in landingKeys()
@@ -254,20 +253,16 @@ function boot(){
   ensureBroadBand();                                 // synthesis band present from the landing view
   redraw();
 }
-if (!PDFWIN) boot();                                  // a PDF-only window renders no graph
+if (!DETACHED) boot();                                // the detached PDF window renders no graph
 
-// ── the PDF-only window ──────────────────────────────────────────────────────────────────
-// Its own OS window holding nothing but a full-bleed PDF pane, mounted with the same
-// buildWin/mountDoc the in-page dock uses so the two can't drift. Two drivers share the mount:
-//
-//   ?detached=1  the browse view's popped-out dock. The graph window broadcasts {t:"aim",…} on
-//                the same hover that would aim the in-page dock. We announce {t:"ready"} on boot
-//                so a graph window that opened us first still hands over the current aim.
-//   ?focus=1     curation's paper window. No parent to mirror — it polls the focus wire itself,
-//                so `lit focus` from the agent and quote-clicks in the card window both steer it,
-//                and it survives the graph window being closed or navigated away.
-if (PDFWIN) {
-  document.title = FOCUSWIN ? "litgraph · paper" : "litgraph · PDF";
+// ── the detached PDF window ──────────────────────────────────────────────────────────────
+// Its own OS window holding nothing but a full-bleed PDF pane (?detached=1), mounted with the
+// same buildWin/mountDoc the in-page dock uses so the two can't drift. It is the browse view's
+// popped-out dock: the graph window broadcasts {t:"aim",…} on the same hover that would aim the
+// in-page dock, over the "lit-pdf" BroadcastChannel. We announce {t:"ready"} on boot so a graph
+// window that opened us first still hands over the current aim.
+if (DETACHED) {
+  document.title = "litgraph · PDF";
   const pane = document.getElementById("detachPane");
   let win = null, lastAim = null;
   function mount(m){
@@ -279,21 +274,11 @@ if (PDFWIN) {
     pane.appendChild(win);                           // re-parent out of <body> into the full-bleed host
     mountDoc(win, m.key, m.page || 0, (m.rects || []).slice(), {interactive: true});
   }
-  const chan = (DETACHED && "BroadcastChannel" in window) ? new BroadcastChannel("lit-pdf") : null;
+  const chan = ("BroadcastChannel" in window) ? new BroadcastChannel("lit-pdf") : null;
   if (chan) {
     chan.onmessage = e => { const m = e.data; if (m && m.t === "aim") mount(m); };
     chan.postMessage({t: "ready"});
     addEventListener("beforeunload", () => chan.postMessage({t: "closed"}));
-  }
-  if (FOCUSWIN) {                                     // poll the wire; re-mount only when seq moves
-    let seq = null;
-    setInterval(async () => {
-      let f; try { f = await fetch("focus").then(r => r.ok ? r.json() : null); } catch { return; }
-      if (!f || !f.citekey || f.seq === seq) return;
-      seq = f.seq;
-      const loc = (f.loc && f.loc.rects) ? f.loc : {page: 0, rects: []};
-      mount({key: f.citekey, page: loc.page || 0, rects: loc.rects || []});
-    }, 500);
   }
   let rt = null;                                      // re-fit the page to the new window width (mountDoc bakes W0)
   addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(() => { if (lastAim) mount(lastAim); }, 140); });

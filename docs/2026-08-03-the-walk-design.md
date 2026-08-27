@@ -5,6 +5,11 @@
 [2026-06-25-visualization-design.md](2026-06-25-visualization-design.md) is untouched and
 remains the landing view.
 
+> **Retired in part (2026-08-27):** the curation cockpit this doc mentions — the DRIVE card
+> window, its `contents` button, the focus wire, "Reachable from the cockpit" below — is gone.
+> The walk itself is a viewer feature and is unaffected: it still swaps the board in the ordinary
+> graph viewer exactly as the first bullet below describes. See [CURATION.md](../CURATION.md).
+
 - **In the viewer:** the `walk` button in the HUD (or the `w` key) swaps the board for the
   walk and back. One or the other, never both — the same full-pane exchange the library
   makes. Reading state on each side survives the toggle.

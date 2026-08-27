@@ -146,7 +146,7 @@ function paperCard(key, level){
   });
   el.addEventListener("mouseleave", () => { dropTip(); hoverRow(null); });
   // right-click a curated card (browse view) → "Curate this paper" → move it onto the worklist
-  if (cur && LIVE && !DRIVE) el.addEventListener("contextmenu", e => showCurateMenu(e, key));
+  if (cur && LIVE) el.addEventListener("contextmenu", e => showCurateMenu(e, key));
   // Both kinds of card open on a click; what they open to differs. A curated card routes through
   // cardClick (fold / drill / isolate); a stub has none of that and simply reveals its bib record.
   // The citekey stays the tip's handle in both: on desktop the mousemove above pops it on hover,

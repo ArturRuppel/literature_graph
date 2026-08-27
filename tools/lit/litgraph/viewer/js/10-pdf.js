@@ -40,10 +40,10 @@ const idKey = cardId => cardId.slice(cardId.indexOf(":") + 1);
 
 // ── collapsible PDF viewer (browse view, live-only) ──────────────────────────────────────
 // One docked pane on the right, toggled from the HUD. While OPEN, hovering a quote-slice aims
-// it at that claim's citation (resolveLoc → mountDoc, the same full-document viewer a curate
-// focus uses); while collapsed, hover is inert. No floating windows and no /focus round-trip —
-// the browse view has no terminal to keep in sync, so hover drives mountDoc directly. The pane
-// rests on the last-hovered claim when the pointer leaves; a non-quote row leaves it put.
+// it at that claim's citation (resolveLoc → mountDoc); while collapsed, hover is inert. No
+// floating windows and no server-side round-trip to keep in sync — hover drives mountDoc
+// directly, in this same window. The pane rests on the last-hovered claim when the pointer
+// leaves; a non-quote row leaves it put.
 let dockOpen = false, dockWin = null, dockShown = null, dockReq = null, dockTimer = null;
 let dockDoc = null, dockRefitTimer = null;             // dockDoc = last mount {key,page,rects} (for refit)
 // ── detachable PDF pane ──────────────────────────────────────────────────────────────────
@@ -54,7 +54,7 @@ let dockDoc = null, dockRefitTimer = null;             // dockDoc = last mount {
 // child mounts it. `dockDoc` stays the single source of truth for what's shown; `renderCurrent`
 // paints it wherever the PDF currently lives (in-page dock, or broadcast to the detached child).
 let pdfDetached = false, pdfWin = null, pdfWatch = null;
-const pdfChan = (LIVE && !DRIVE && !PDFWIN && "BroadcastChannel" in window) ? new BroadcastChannel("lit-pdf") : null;
+const pdfChan = (LIVE && !DETACHED && "BroadcastChannel" in window) ? new BroadcastChannel("lit-pdf") : null;
 const pdfActive = () => dockOpen || pdfDetached;       // hover aims the PDF while EITHER home is live
 function broadcastAim(){ if (pdfChan && dockDoc) pdfChan.postMessage({t: "aim", ...dockDoc}); }
 function renderCurrent(){ if (pdfDetached) broadcastAim(); else if (dockOpen) mountDockDoc(); }
@@ -135,7 +135,7 @@ function scheduleDockRefit(){ clearTimeout(dockRefitTimer);
 // by openDock when no claim has aimed it yet. It does not open the dock itself: opening is the
 // pill's job, and nothing here should put a PDF on screen that the human didn't ask for.
 function loadDock(key){
-  if (DRIVE || !LIVE || !(PDFS && PDFS.has(key))) return;   // DRIVE card has no dock; nothing servable → skip
+  if (!LIVE || !(PDFS && PDFS.has(key))) return;   // nothing servable → skip
   const qid = `${key}:__paper__`;
   if (qid === dockShown) { if (pdfDetached && pdfWin && !pdfWin.closed) pdfWin.focus(); return; }
   clearTimeout(dockTimer); dockReq = qid;
@@ -172,7 +172,7 @@ async function aimDock(key, sid){
 // Only a WIDTH change needs the re-fit: mountDoc bakes the page width into its layout, while the
 // height is just how much of the scroll body you can see, so a portrait drag keeps its scroll spot.
 const SPLIT_MIN = 0.2, SPLIT_MAX = 0.8;
-if (LIVE && !DRIVE) {
+if (LIVE) {
   const grip = document.getElementById("dockGrip");
   const KEY = {w: "lit.dock.w", h: "lit.dock.h"};
   const portrait = () => matchMedia("(orientation:portrait)").matches;
@@ -217,7 +217,7 @@ if (LIVE && !DRIVE) {
 // down and slid away, taking the zoom slider out from under the hand still dragging it. A scroll
 // nobody asked for is not a signal about where the reader's attention is going.
 let hudQuiet = 0;                       // performance.now() before which scrolls aren't the reader's
-if (!PDFWIN) (function(){
+if (!DETACHED) (function(){
   const hud = document.getElementById("hud");
   if (!hud) return;
   const measure = () => document.body.style.setProperty("--hud-h", hud.offsetHeight + "px");
@@ -267,23 +267,6 @@ async function moveToCurate(key){
 }
 addEventListener("click", hideCtxMenu);          // any left-click dismisses the menu
 addEventListener("scroll", hideCtxMenu, true);   // scrolling the board dismisses it too
-
-// ── focus channel (serve-only) ───────────────────────────────────────────────────────────
-// A shared "aim the PDF here" wire the agent (via `lit focus`) and the card window's quote-clicks
-// both drive: the server holds one {citekey, quote, loc, seq}, and the PDF *window* polls it (see
-// the PDFWIN block below) and re-mounts on a change. `seq` is the change-detector — unchanged →
-// do nothing, so an idle session never repaints. A null loc is the graceful floor: open the paper
-// at its top, no highlight. One wire, one PDF window: whoever aims it, everyone sees the same page.
-//
-// The card window (DRIVE) driving the wire: POST the slice's weld to /focus so the PDF window's
-// poll re-aims it — the same code path `lit focus` uses, so clicks and the agent stay in one truth.
-async function focusFromClick(key, sid){
-  const s = (PAPERS[key] && PAPERS[key].slices || []).find(x => x.id === sid);
-  try {
-    await fetch("focus", {method: "POST",
-      body: JSON.stringify({citekey: key, quote: (s && s.quote) || ""})});
-  } catch { /* server gone — leave the PDF window as-is */ }
-}
 
 // A window shell: titlebar (key · page · pan/text tools · ×) + a scrollable body holding a sizer
 // (owns the scroll extent) and a stage (image + highlights + text layer, under one scale). Both

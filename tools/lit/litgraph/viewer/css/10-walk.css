@@ -166,9 +166,6 @@
   .rs-tag.un{color:var(--question);border:1px dashed rgba(227,134,61,.45)}
   .rs-tag.fl{color:var(--grounded);border:1px solid rgba(76,195,138,.40)}
   .rs-none{font-size:10px;color:var(--faint);font-style:italic;padding:8px 0 0}
-  /* the cockpit's card window carries ONE paper, so the library rail has nothing to list; drop
-     it and give the roster the whole (already narrow) window. Same for any narrow window. */
-  body.cardwin #walkRail{display:none}
   @media (max-width:820px){
     #walkRail{display:none}
     #walkStage{padding:14px 15px 80px}

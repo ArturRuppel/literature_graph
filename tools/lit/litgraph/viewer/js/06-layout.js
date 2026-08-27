@@ -143,9 +143,8 @@ function scrollToBroad(slug){
   flash(el);
 }
 // `seen` is the cycle guard the rest of this file carries for the same reason (see computeBroadTiers):
-// a hot-reloaded DRIVE window can hold YAML the build would have rejected, and a `leads_to` cycle
-// would otherwise recurse until the tab dies. Nesting stops at the repeat; the node keeps its card
-// wherever it was first reached.
+// nothing here re-validates a `leads_to` cycle, which would otherwise recurse until the tab dies.
+// Nesting stops at the repeat; the node keeps its card wherever it was first reached.
 function famNest(slug,root,depth,seen){
   const box=document.createElement("div");
   box.className="bnest";

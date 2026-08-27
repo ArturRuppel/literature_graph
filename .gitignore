@@ -25,5 +25,7 @@ venv/
 # Tooling
 .serena/
 
-# per-paper Claude Code curation sessions (cockpit; local scratch)
+# per-paper Claude Code curation session transcripts, from the retired curation cockpit
+# (curate_session.sh spawned one per paper). Local scratch, never committed; kept ignored so
+# the leftover transcripts already on disk don't show up as untracked.
 .sessions/

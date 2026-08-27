@@ -42,10 +42,11 @@ rather than buried in the slices.
   next pass. **In batch mode this loop collapses to its two ends** — target pass agreed at
   dispatch, whole proposition judged on the git diff — so what follows in this bullet describes
   interactive work.
-  **In the `lit serve` cockpit, the card *is* the explain step:** the human triggers a pass
-  ("launch pass 2"), the agent writes that pass's proposed slices straight into
-  `curated/<citekey>.yaml` as the proposition, and the two discuss over the reloaded card /
-  git diff rather than prose-first — see "Where the render must land" below.
+  **Curation runs from a conventional coding-agent session now, not the retired in-browser
+  cockpit** (CLAUDE.md records the move): there is no separate card window to trigger a pass
+  from, so the explain step happens in the session's own chat, same as any other pass. The
+  `active` worklist (`lit curate` / the viewer's right-click "Curate this paper") still exists,
+  but it is now a reading list the human keeps papers on, not a curation-session launcher.
 - **Render the proposition, don't just describe it — `lit preview`.** Prose is hard to judge.
   During the *explain* step, write the pass's proposed slices to a **scratch YAML** (the real
   `curated/` schema, held *outside* `curated/`) and run
@@ -58,16 +59,14 @@ rather than buried in the slices.
   proposition time if an anchor isn't verbatim in the `.md`. It's a rendering aid, not a
   shortcut past the reading and judgement — the discussion is still the work.
   - **Where the render must land depends on the human's review surface.** `lit preview
-    --scratch` writes a **standalone `dist/preview.html`** — a *separate* artifact, useful
-    when there's no live session. During a **`lit serve` curation session** the human has that
-    paper's **card window** open, showing the **live card rebuilt from `curated/<citekey>.yaml`**
-    (it hot-reloads itself when the YAML changes) and never `preview.html`, so this is the
-    session's **default** mode, not a fallback: on "launch pass N," write that whole pass's
-    proposed slices **directly into `curated/<citekey>.yaml`** — that edit *is* the proposition
-    — run `lit build` first to confirm it validates, then tell the human to look. They accept /
-    edit / reject via the git diff; revert whatever's rejected before the next pass. Reserve the
-    standalone `--scratch` preview for review outside a session, where there's no live card to
-    write into.
+    --scratch` writes a **standalone `dist/preview.html`** — reach for it when there's no `lit
+    serve` running, or to see a proposition rendered before it lands in `curated/` at all. When
+    `lit serve` **is** running against the data repo, the simpler path is to tokenize straight
+    into `curated/<citekey>.yaml` — that edit *is* the proposition — run `lit build` first to
+    confirm it validates, then tell the human to refresh the paper's card in the ordinary graph
+    viewer (a plain page reload; the card window that used to hot-reload itself on every edit
+    was cockpit machinery and is gone). Either way the human accepts / edits / rejects via the
+    git diff; revert whatever's rejected before the next pass.
 - **Propose, never flood** (CONCEPT §10). A handful of well-welded slices beats a wall of
   shallow ones. **Curation is a single staircase** — a paper climbs it one rung at a time, and
   the rung *is* both how far you read and how mature the card is: there is no second axis.

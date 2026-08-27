@@ -64,7 +64,7 @@ const SYNTH=1e6;         // synthesis band: the one column every broad node live
 // that slug, i.e. its altitude: 0 for a node only ever fed by papers (a plain head — nearest
 // the papers), 1+max(tier of everything that ladders into it) otherwise. It no longer picks a
 // column — it is what `broadKids` falls out of, and what orders a family's standing position.
-// Recomputed once per rebuild() (cheap — tens of nodes), so a DRIVE window's hot-reloaded BROAD
-// is picked up too.
+// Recomputed once per rebuild() (cheap — tens of nodes), so a freshly-rebuilt BROAD is always
+// picked up.
 let broadTier={};
 let broadKids={};        // slug -> the broad nodes that ladder INTO it (one rung below), set by

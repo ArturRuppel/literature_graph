@@ -49,7 +49,7 @@ function gotoTarget(spec){
 // would be indistinguishable from a handoff that worked and landed off-screen.
 function gotoLost(spec){
   console.warn(`litgraph: ?goto=${spec} names nothing in this build`);
-  if(!searchInput || !searchInput.isConnected) return;      // DRIVE/curation windows have no box
+  if(!searchInput || !searchInput.isConnected) return;      // defensive: nothing to report into
   searchResults.innerHTML = `<div class="sr-none">nothing in this build answers to `
     + `“${esc(spec)}” — the link may name a paper or claim this graph does not carry</div>`;
   openResults();

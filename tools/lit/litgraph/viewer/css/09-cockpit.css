@@ -1,6 +1,0 @@
-  /* ── the DRIVE card window ───────────────────────────────────────────────────────────────
-     preview.html?key=…&drive=1 in its own OS window: the paper's isolated subgraph, standing
-     alone rather than squeezed into a pane. Nothing to restyle — it IS the viewer — but the
-     window is narrow, so let the column breathe to the full width it's given. */
-  body.cardwin #stage{padding-left:16px;padding-right:16px}
-

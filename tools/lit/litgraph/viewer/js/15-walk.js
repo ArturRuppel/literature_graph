@@ -4,12 +4,10 @@
 // edge layer and nothing can cross. Everything you are NOT walking is a count badge that
 // pivots the walk when clicked.
 //
-// The PDF windows have no graph, so they get nothing. The DRIVE card window DOES get it, and is
-// the reason the roster exists: that window is where a paper is actually curated, and "did I
-// account for every slice I wrote" is the question being asked there. It carries one paper, so
-// the rail is dropped and the card's own paper is the standing focus.
-const CARDKEY = DRIVE ? new URLSearchParams(location.search).get("key") : null;
-const WALK = (!PDFWIN && !MOBILE_CURATE) ? (function(){
+// The detached PDF window has no graph, so it gets nothing. The roster (a paper's "contents" tab)
+// is the walk's answer to "did I account for every slice I wrote" — every claim, question and
+// method in one paper, including the unwired ones the board never draws an edge for.
+const WALK = !DETACHED ? (function(){
   const rail = document.getElementById("walkRail");
   const stage = document.getElementById("walkStage");
   const btn = document.getElementById("walkBtn");
@@ -454,12 +452,9 @@ const WALK = (!PDFWIN && !MOBILE_CURATE) ? (function(){
     if (cost) cost.innerHTML = `walk <b>${rows} rows · 0 edges</b> · board would draw
       <span class="${c.cards > 28 ? "bad" : ""}">${c.cards} cards · ${c.edges} edges</span>`;
   }
-  // The card window has no library to go back to — one paper is the whole graph — so its root
-  // crumb returns to that paper instead of the (unreachable, rail-less) landing splash.
   const crumbs = () => `<div id="walkCrumbs">` +
     TRAIL.filter(Boolean).slice(-5).map(x => `<a data-back="${esc(x)}">${esc(shortOf("·/" + x))}</a><span class="sep">›</span>`).join("") +
-    (CARDKEY && N[CARDKEY] ? `<a data-back="${esc(CARDKEY)}">${esc(CARDKEY)}</a>`
-                           : `<a data-back="">library</a>`) + `</div>`;
+    `<a data-back="">library</a></div>`;
 
   function setFocus(id, rel){
     if (!N[id]) return;
@@ -484,10 +479,8 @@ const WALK = (!PDFWIN && !MOBILE_CURATE) ? (function(){
   stage.addEventListener("click", e => {
     const aim = e.target.closest("[data-aim]");
     if (aim) {
-      // Same two paths a slice row on the board takes: the card window owns no dock, so it POSTs
-      // the weld to the focus wire and the cockpit's separate PDF window re-aims on its own poll.
-      if (DRIVE) focusFromClick(aim.dataset.aim, aim.dataset.sid);
-      else if (LIVE) { if (!pdfActive()) openDock(); aimDock(aim.dataset.aim, aim.dataset.sid); }
+      // Same path a slice row on the board takes: aim the docked PDF pane at this quote.
+      if (LIVE) { if (!pdfActive()) openDock(); aimDock(aim.dataset.aim, aim.dataset.sid); }
       return;
     }
     const tab = e.target.closest("[data-rel]");
@@ -537,7 +530,7 @@ const WALK = (!PDFWIN && !MOBILE_CURATE) ? (function(){
     if (on === isOpen()) return;
     document.body.classList.toggle("walk", on);
     btn.classList.toggle("on", on);
-    btn.textContent = on ? "← board" : (CARDKEY ? "contents" : "walk");
+    btn.textContent = on ? "← board" : "walk";
     if (on) {
       if (!KEYS.length) reindex();
       // arriving from the board with a paper open lands on that paper, not on the splash
@@ -549,10 +542,6 @@ const WALK = (!PDFWIN && !MOBILE_CURATE) ? (function(){
     } else redraw();     // the board was display:none; its edge overlay needs re-anchoring
   }
   btn.hidden = false;
-  if (CARDKEY) {                 // in the cockpit the useful half of this view is the roster,
-    btn.textContent = "contents";    // so the button says what it opens rather than what it is
-    btn.title = "every claim, question and method in this paper — including the unwired ones (w)";
-  }
   btn.addEventListener("click", () => show(!isOpen()));
   // One full-pane view at a time, in BOTH directions. The library owns its own button, so the
   // only way to be sure the walk yields to it is to step aside before its handler runs.
@@ -567,11 +556,7 @@ const WALK = (!PDFWIN && !MOBILE_CURATE) ? (function(){
   });
 
   reindex();
-  // The card window stands on its paper from the start: there is no rail to pick from, and the
-  // only paper in the subgraph is the one being curated.
-  const standOnCard = () => { if (CARDKEY && N[CARDKEY]) { FOCUS = CARDKEY; REL = "contents"; KF = null; } };
-  standOnCard();
-  return {reindex, show, paint, isOpen, standOnCard,
+  return {reindex, show, paint, isOpen,
           get focus(){return FOCUS}, get rel(){return REL}, get rows(){return rows},
           get nodes(){return N}, get ch(){return CH}, get rels(){return RELS},
           setFocus, boardCost, relCount, childrenOf, treeHtml, ledgerHtml, rosterHtml, unwired,

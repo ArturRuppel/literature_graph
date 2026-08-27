@@ -4,8 +4,9 @@
 // client-side, so a static `lit build` keeps it working offline. It indexes the WHOLE
 // bibliography, curated or not — since the landing column trimmed down to curated papers, this is
 // the only path to a stub, and gotoPaper mints its card on demand. Curated papers rank above stubs
-// (ORDER is already curated-first); in-progress (ACTIVE) papers live in their own curation
-// windows, not the browse column, so they're left out — there's no landing card to jump to.
+// (ORDER is already curated-first); papers on the reading list (ACTIVE) are held off the landing
+// column, not out of it entirely, so they're left out of THIS index — there's no landing card to
+// jump to until gotoPaper (or a WIP-panel row click) mints one for them on demand.
 const searchInput = document.getElementById("search");
 const searchResults = document.getElementById("searchResults");
 let searchIndex = null;
@@ -96,9 +97,9 @@ function gotoPaper(key){
   landedStuck.add(key);
   syncLanding();                             // mints a summoned stub's card, and refreshes every
   let el = document.getElementById(`card-0:${key}`);     // card's provenance + the column header
-  if(!el){                                   // an in-progress paper (ACTIVE) is held out of the
-    addPaper(0, key);                        // list because it has its own window — but naming it
-    el = document.getElementById(`card-0:${key}`);       // by hand outranks that, so mint the card
+  if(!el){                                   // a reading-list paper (ACTIVE) is held off the
+    addPaper(0, key);                        // landing column — but naming it by hand outranks
+    el = document.getElementById(`card-0:${key}`);       // that, so mint the card
     if(!el) return;                                      // (appended below the ranking)
   }
   redraw();                                              // the column may have grown; edges re-anchor
@@ -141,7 +142,7 @@ if(searchInput){
 // and a topic reaches papers through tags. Selecting a container therefore cannot match a stub,
 // and pretending otherwise would show an empty list with no explanation. The scope pill flips
 // itself and says so.
-if(!DRIVE && !PDFWIN && !MOBILE_CURATE) (function(){
+if(!DETACHED) (function(){
   const btn = document.getElementById("libBtn");
   const pane = document.getElementById("libraryPane");
   const facets = document.getElementById("libFacets");
@@ -425,7 +426,7 @@ if(!DRIVE && !PDFWIN && !MOBILE_CURATE) (function(){
     const row = e.target.closest(".lr");
     if(!row) return;
     const key = row.dataset.key;
-    if(e.target.closest(".lr-go") || !(LIVE && !DRIVE && PDFS && PDFS.has(key))){
+    if(e.target.closest(".lr-go") || !(LIVE && PDFS && PDFS.has(key))){
       closeLib();
       gotoPaper(key);
       return;
@@ -450,23 +451,17 @@ board.addEventListener("scroll",redraw);
 addEventListener("resize",redraw);
 addEventListener("resize",redraw);
 
-// ── the in-progress worklist: launch a paper's windows (serve only) ──────────────────────────
-// The papers the curator moved in (`[curation] active`). The pill opens a picker; selecting one
-// opens that paper's curation windows — real OS windows, not panes:
-//
-//   card      /preview.html?key=…&drive=1   the isolated subgraph; quote-clicks aim the wire
-//   paper     /index.html?focus=1           the PDF, polling the wire (`lit focus` steers it too)
-//   terminal  POST /term                    a native emulator running that paper's Claude session
-//                                           — DISABLED, see AUTO_AGENT below
-//
-// Why windows: the window manager already tiles, stacks, moves across monitors, and remembers
-// better than a CSS grid with drag handles ever did, and the terminal is a REAL terminal — full
-// keybindings, scrollback, Ctrl-C — instead of ttyd inside an iframe. The graph window stays the
-// graph: it launches and tracks, and you can close it without disturbing a session.
-//
-// A browser gesture can reliably authorize ONE new window, not two. The PDF is that one popup;
-// this graph window then navigates into the card. The POSTs settle before navigation so a failed
-// request is visible and cannot be cancelled by leaving the graph.
+// ── the reading list: `[curation] active`, surfaced as the WIP panel (serve only) ─────────
+// Curation moved outside the browser — a conventional coding agent works the paper against
+// `curated/<citekey>.yaml` directly, following CURATION.md, with the human reviewing the diff.
+// `[curation] active` survives that move as a plain reading list: papers you asked to keep in
+// view. The right-click "Curate this paper" on a card (10-pdf.js) and `lit curate` both add to
+// it; the "reading list" pill below reads it back and opens a picker. There used to be a third
+// door here — clicking a row opened three real OS windows (an isolated card, a PDF pane polling
+// a focus wire, a terminal running that paper's agent session) and POSTed to `/term` to spawn
+// it. All of that — the focus wire, the card/paper window split, `/term`, `lit focus` — was the
+// curation cockpit, and it went with the cockpit: a row click now just finds the paper on the
+// board, the same gesture a search result or a library row already makes (gotoPaper).
 // The programme index: a HUD pill listing everything in the programme layer, each row a link to
 // its own page at /preview.html?key=<slug> — the same isolated view `lit preview` writes, so the
 // served page and the written one cannot drift. Server-only (/aims.json is a `lit serve` route),
@@ -477,7 +472,7 @@ addEventListener("resize",redraw);
 // what was a convenience is now the way in. Proposals lead the list — a `~<grant>` row opens the
 // narrative WITH the aims under it, which is how a proposal is read — and the aims follow, each
 // still openable alone for the times you want one argument without its introduction.
-if (LIVE && !DRIVE && !PDFWIN && !MOBILE_CURATE) (function(){
+if (LIVE && !DETACHED) (function(){
   const pill = document.getElementById("aims");
   const panel = document.getElementById("aimPanel");
   if (!pill || !panel) return;
@@ -524,67 +519,26 @@ if (LIVE && !DRIVE && !PDFWIN && !MOBILE_CURATE) (function(){
 })();
 
 // LIVE-gated: a static `lit build` carries no active list, so the pill stays hidden.
-if (LIVE && !DRIVE && !PDFWIN && !MOBILE_CURATE) (function(){
+if (LIVE && !DETACHED) (function(){
   const pill = document.getElementById("wip");
   const inProg = (GRAPH.active || []).filter(k => PAPERS[k] && PAPERS[k].cur);
   if (!inProg.length) return;
-  pill.innerHTML = `in progress · <span class="n">${inProg.length}</span>`;
+  pill.innerHTML = `reading list · <span class="n">${inProg.length}</span>`;
   pill.hidden = false;
 
   const panel = document.getElementById("wipPanel");
-  // Auto-spawning an agent per worklist click is OFF: entering a paper opens its card and its PDF
-  // and stops there, so an agent you already have running keeps the paper instead of a second one
-  // appearing behind it. Attach one yourself (Switchboard, or a terminal already open on the data
-  // root). Flip to true to restore the original one-click card + PDF + agent launch.
-  const AUTO_AGENT = false;
   const STAGE = ["stub","ingested","skeleton","contextualized","full"];
   const stage = k => { const p = PAPERS[k].pass == null ? 0 : PAPERS[k].pass;
                        return `maturity ${p}/4 · ${STAGE[p] || ""}`; };
-  // build both URLs off THIS document's URL so they survive whatever path the viewer is mounted
-  // under (a hardcoded "index.html" resolves against the base and breaks under a prefix mount).
-  const winUrl = (file, params) => {
-    const u = new URL(file, location.href); u.hash = "";
-    for (const [k, v] of Object.entries(params)) u.searchParams.set(k, v);
-    return u.href;
-  };
-  // One PDF window shared across papers (the wire holds one focus, so a second would just mirror
-  // it). The current graph window becomes the card instead of opening a second browser popup.
-  async function enter(k){
+  // A row IS a paper you asked to keep in view — same gesture a search result or a library row
+  // already makes (gotoPaper): close the panel, find the paper on the board (minting its card if
+  // it isn't already sitting there), scroll to it, flash it. Nothing here opens a window or spawns
+  // anything; reading the paper from there is the same hover/click the board always offers.
+  function enter(k){
     panel.hidden = true;
-    if (PHONE_LAUNCH) {
-      if (AUTO_AGENT) {
-        if (!COCKPIT) { alert("Switchboard's agent spawn is unavailable"); return; }
-        try {
-          const r = await fetch("term", {method: "POST",
-            body: JSON.stringify({citekey: k, attach: false})});
-          if (!r.ok) throw new Error((await r.text()).trim() || `HTTP ${r.status}`);
-        } catch (e) { alert(`could not spawn the agent for ${k}: ${e.message}`); return; }
-      }
-      location.assign(winUrl("preview.html", {key: k, mobile: "1"}));
-      return;                                         // agent runs detached; no popup/terminal attachment
-    }
-    const pdf = window.open(winUrl("index.html", {focus: "1"}), "litpdf_focus",
-                            "popup,width=900,height=1040,left=780,top=40");
-    if (!pdf) { alert("the browser blocked the paper window"); return; }
-    const cardUrl = winUrl("preview.html", {key: k, drive: "1"});
-    const focusRequest = fetch("focus", {method: "POST", body: JSON.stringify({citekey: k})})
-      .catch(() => {});                              // PDF stays at its last aim if the wire is down
-    let termRequest = Promise.resolve();
-    if (AUTO_AGENT) {
-      if (COCKPIT && COCKPIT.terminal) termRequest = fetch("term", {method: "POST", body: JSON.stringify({citekey: k})})
-        .then(async r => {
-          if (r.ok) return;
-          const detail = (await r.text()).trim() || `HTTP ${r.status}`;
-          throw new Error(detail);
-        });
-      else alert("Switchboard's agent spawn is unavailable — restart lit serve after checking Switchboard");
-    }
-    const [, termResult] = await Promise.allSettled([focusRequest, termRequest]);
-    if (termResult.status === "rejected") alert(`could not open the terminal for ${k}: ${termResult.reason.message}\n\n`
-      + `If lit serve was already running when this feature changed, restart it once.`);
-    location.assign(cardUrl);                       // reuse the graph window as the curation card
+    gotoPaper(k);
   }
-  async function returnToGraph(k){                 // finish: remove from the worklist, rejoin graph
+  async function returnToGraph(k){                 // done: remove from the reading list, rejoin the board
     try {
       const r = await fetch("active", {method: "POST",
         body: JSON.stringify({citekey: k, active: false})}).then(r => r.ok ? r.json() : null);
@@ -593,16 +547,13 @@ if (LIVE && !DRIVE && !PDFWIN && !MOBILE_CURATE) (function(){
     } catch { alert("server unreachable — is lit serve running?"); }
   }
 
-  panel.innerHTML = `<div class="wp-hd">curation in progress</div>` + inProg.map(k =>
-    `<div class="wp-row" data-k="${k}" title="open ${k}'s card and paper windows">`
+  panel.innerHTML = `<div class="wp-hd">reading list</div>` + inProg.map(k =>
+    `<div class="wp-row" data-k="${k}" title="show ${k} on the board">`
     + `${passCircle(PAPERS[k].pass || 0)}<span class="ckey">${k}</span>`
     + `<span class="stage">${stage(k)}</span>`
-    + `<button class="wp-done" data-done="${k}" title="finish: return ${k} to the graph">✓</button>`
+    + `<button class="wp-done" data-done="${k}" title="done: return ${k} to the graph">✓</button>`
     + `</div>`).join("")
-    + `<div class="wp-note">one click → this window becomes the card · opens PDF`
-    + `${AUTO_AGENT ? (COCKPIT ? ` · opens ${COCKPIT.agent}${COCKPIT.terminal ? ` in ${COCKPIT.terminal}` : ``}`
-                              : ` · no Switchboard agent available`)
-                    : ` · no agent is spawned — attach your own`}</div>`;
+    + `<div class="wp-note">click a row to find it on the board</div>`;
 
   pill.addEventListener("click", () => {
     const aimPanel = document.getElementById("aimPanel");

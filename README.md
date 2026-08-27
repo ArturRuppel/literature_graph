@@ -103,13 +103,12 @@ Everything runs through the `lit` CLI.
   proposition before it is committed: the curation loop's "show it as it will
   look" step, which also flags any non-verbatim quote.
 
-Smaller commands round out the loop: `lit focus` aims a running `lit serve` PDF
-pane at a quote, `lit enrich` and `lit abstracts` backfill stub metadata and
-abstracts onto papers ingested before those fields existed, `lit tag` edits a
-paper's tags, `lit topics` reports the topic axis (including `--orphans` for
-dead keywords and unfiled tags), `lit programme` reports the programme graph's
-emergent state, and `lit curate` moves a paper in or out of the in-progress
-worklist. Every one of them has `--help`.
+Smaller commands round out the loop: `lit enrich` and `lit abstracts` backfill
+stub metadata and abstracts onto papers ingested before those fields existed,
+`lit tag` edits a paper's tags, `lit topics` reports the topic axis (including
+`--orphans` for dead keywords and unfiled tags), `lit programme` reports the
+programme graph's emergent state, and `lit curate` moves a paper in or out of
+the reading list (`[curation] active`). Every one of them has `--help`.
 
 ## Install the viewer on a phone
 

@@ -98,10 +98,10 @@ function localDag(p){
 // Is a card's slice graph unfolded from the start? On the BOARD, no: a card is opened to read the
 // paper, and its subgraph is a second question — three open cards used to put ~80 rows of prose and
 // a hundred arcs on screen at once, burying the bibliographic heads they hang off. On a page that
-// IS one card — the curation card window, `lit preview`'s isolated render, the mobile curation view
-// — the slices are the entire reason the page exists, so making you click for them is a papercut on
-// every step of the loop. Read at render time, never at parse time: DRIVE is declared later.
-const sliceDefaultOpen = () => DRIVE || MOBILE_CURATE || ORDER.length === 1;
+// IS one card — `lit preview`'s isolated render, an aim or proposal page — the slices are the
+// entire reason the page exists, so making you click for them is a papercut on every step of the
+// loop. ORDER.length === 1 is exactly that case (isolate() emits a single-container payload).
+const sliceDefaultOpen = () => ORDER.length === 1;
 
 function renderGraph(id, key, p, box){
   const {rows, cols, links} = localDag(p);

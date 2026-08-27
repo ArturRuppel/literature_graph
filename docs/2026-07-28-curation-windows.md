@@ -5,6 +5,10 @@
 transport of [the cockpit design](2026-07-09-curation-cockpit-design.md) §5 · companion to
 [CURATION.md](../CURATION.md)
 
+> **Retired (2026-08-27):** the whole curation cockpit this doc describes — the card, paper and
+> terminal windows, `/term`, the focus wire — is gone. Curation now happens with conventional
+> coding agents against the reading list. See [CURATION.md](../CURATION.md).
+
 The cockpit put card, PDF and terminal in one browser window, split three ways by a CSS grid with
 drag handles. **This drops the split.** Entering a paper now opens **three real OS windows** and
 lets the window manager do what it is for.

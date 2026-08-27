@@ -85,12 +85,11 @@ manual. Viewer behaviour is specified in [docs/](docs/) — see the design index
   YAML it renders **a proposition before it is tokenized** — the curation loop's "show it
   as it'll look" step — and flags non-verbatim quotes at proposition time. Also renders an
   **aim** (`lit preview '@<slug>'`), so the same loop works on proposed work.
-- **`lit curate <citekey>`** / **`--done`** — move a paper on/off the in-progress worklist
-  (`[curation] active` in config.toml). Same state the viewer's right-click and "in
-  progress" pill drive.
-- **`lit focus <citekey> [--quote "…"]`** — aim a running `lit serve` session's paper
-  window at a quote. The card window's quote-clicks drive the same wire, so agent and
-  human stay on one truth.
+- **`lit curate <citekey>`** / **`--done`** — move a paper on/off the reading list
+  (`[curation] active` in config.toml). Same state the viewer's right-click and the
+  "reading list" pill drive; there's no cockpit behind it any more (curation itself runs
+  as a conventional coding-agent session — CURATION.md), so this is now how a human flags
+  a paper to come back to, not a session launcher.
 - **`lit locate`** — resolve every curated quote's place in its PDF (full-coverage
   word-geometry match) and store it as `quote_loc`. Derived, never hand-authored; additive,
   never affects graph structure. `--force` re-resolves, `--dry-run` reports.
@@ -117,11 +116,14 @@ manual. Viewer behaviour is specified in [docs/](docs/) — see the design index
   properties (SCHEMA §7), emits a self-contained `dist/index.html` + `graph.json`. **The
   build is the validator** — a dangling ref or a curated/stub citekey collision fails it
   (SCHEMA §6). Client-side search, so it works offline.
-- **`lit serve`** — the same viewer over loopback for a curation session: the graph rebuilds
-  from the YAML on every refresh, and a broken edit returns the validation error without
-  killing the server. Adds what a static file cannot — the docked PDF viewer, the curation
-  session (card + paper + terminal windows), the aims pill, live stub abstracts. Anything
-  serve-only stays hidden in `lit build`.
+- **`lit serve`** — the same viewer over loopback: the graph rebuilds from the YAML on every
+  refresh, so a curator's edit shows up on reload, and a broken edit returns the validation
+  error without killing the server. Adds what a static file cannot — the docked PDF viewer,
+  the reading-list pill, the aims pill, live stub abstracts. Anything serve-only stays hidden
+  in `lit build`. The in-browser curation cockpit (a card + paper + terminal window per paper,
+  driven by a focus wire and `POST /term`) was retired 2026-08-27: curation now runs as a
+  conventional coding-agent session against the data repo, following CURATION.md, with the
+  human reviewing the diff — `lit serve` is back to being purely the graph viewer.
 
 ### Design index — where viewer behaviour is actually specified
 
@@ -134,7 +136,7 @@ reversal each one records.
 | [2026-08-19-card-folds.md](docs/2026-08-19-card-folds.md) | what an OPEN card shows: the paper's identity, plus three folds asked for one click at a time — abstract, slice graph, and cited cards that arrive collapsed. Records the reversal of "open each source on the exact cited finding" |
 | [2026-08-03-topics-and-claim-altitudes.md](docs/2026-08-03-topics-and-claim-altitudes.md) | the synthesis band as **containment**, one box per ladder root. §6 and §6.1 record two reversals — hiding-until-clicked, and altitude columns. **Length is not the defect; unstructured length is.** |
 | [2026-08-03-the-walk-design.md](docs/2026-08-03-the-walk-design.md) | the walk: one focus, one relation, no drawn edges. `contains` is a **roster**, the only complete view, and it flags `unwired` slices |
-| [2026-07-09-cockpit-redesign-in-progress-zone.md](docs/2026-07-09-cockpit-redesign-in-progress-zone.md) + [2026-07-28-curation-windows.md](docs/2026-07-28-curation-windows.md) | the two surfaces: browse view with the docked/detachable PDF, and the one-click curation session |
+| [2026-07-09-cockpit-redesign-in-progress-zone.md](docs/2026-07-09-cockpit-redesign-in-progress-zone.md) §2 | the browse view's collapsible/detachable docked PDF pane — still current. (§§3–4 of the same doc, and [2026-07-28-curation-windows.md](docs/2026-07-28-curation-windows.md) entirely, specify the curation cockpit, retired 2026-08-27 — see CURATION.md) |
 | [2026-08-02-programme-graph-design.md](docs/2026-08-02-programme-graph-design.md) | the programme graph and its narrative layer |
 | [2026-08-25-claim-map-design.md](docs/2026-08-25-claim-map-design.md) | the claim map (`prototypes/claim-map/`): the 44 broad claims on one page, x = median year of their papers, y = ladder altitude. §1 records the rejected similarity-embedding proposal, §3 the measurement that rules out a topic band as an axis |
 | [2026-08-05-additive-graph-views.md](docs/2026-08-05-additive-graph-views.md) · [2026-07-19-tags-and-search-design.md](docs/2026-07-19-tags-and-search-design.md) · [2026-06-25-visualization-design.md](docs/2026-06-25-visualization-design.md) | view composition, tags/search, and the original (still unbuilt) recursive container view |

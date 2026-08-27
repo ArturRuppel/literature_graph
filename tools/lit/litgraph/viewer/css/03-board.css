@@ -85,7 +85,7 @@
   .cauth .anum{color:var(--faint);opacity:.7;font-style:italic}
   /* the abstract: inline in the open card, everywhere. It used to be touch-only, on the theory
      that desktop read it in the hover tip — but that tip shows a curated paper's PDF thumbnail
-     and only ever carried an abstract for an uncurated stub (cockpit.showTip), so on desktop
+     and only ever carried an abstract for an uncurated stub (showTip, 09-live.js), so on desktop
      the text was written to the DOM and reachable by nothing.
      Behind its own fold since: the open card shows the WORD (.cabsx), the paragraph follows on a
      click. The caret is CSS rather than markup because the toggle flips a class on every card of
