@@ -3,6 +3,7 @@ compute emergent properties (SCHEMA §7). No output/serialization here."""
 
 from __future__ import annotations
 
+import copy
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -59,6 +60,42 @@ def _unquoted_sharpened_ref_hint(path: Path, text: str) -> str | None:
     return f"{path}: {detail}"
 
 
+# ── the parse cache ──────────────────────────────────────────────────────────────────────
+# `lit serve` rebuilds the payload from YAML on every request that outlives the server's
+# payload cache — that is what makes edit-and-refresh work, and it must stay that way. What it
+# should NOT do is re-parse all 274 files because ONE of them moved, or because something that
+# is not YAML at all moved: toggling a paper on the reading list writes `config.toml`, which is
+# part of `serve._source_version`, so a rebuild that touches no YAML whatsoever still paid for
+# every file in the repo. Measured on the live library, that was the whole 16 s a reading-list
+# click used to sit behind (serve.py's `_payload`), and ~3 s of it survived even after
+# ruamel.yaml.clib went back into the dependencies.
+#
+# One entry per path, replaced when the file changes, so the cache is bounded by the size of the
+# repo rather than by the number of edits made to it.
+#
+# No lock, deliberately, and unlike `yamlio` this needs none: each thread parses with its own
+# parser into its own object and publishes it with a single dict store, so two threads racing
+# on the same file duplicate work and agree on the answer. There is no torn state to protect —
+# the thing yamlio's thread-local exists to prevent is two threads sharing one *parser*.
+#
+# What the cache hands back is SHARED, not copied — 274 deep copies would cost more than the
+# parse it is avoiding. Every consumer already copies what it keeps (`_slice_from`, the
+# `list(...)` calls through `paper_from_raw` / `aim_from_raw` / `narrative_from_raw`); the one
+# field that used to be held by reference, `quote_loc`, is copied at `_slice_from` for exactly
+# this reason. A new consumer that retains part of a raw mapping must copy it too.
+_YAML_CACHE: dict[Path, tuple[tuple[int, int], dict]] = {}
+
+
+def _fingerprint(path: Path) -> tuple[int, int] | None:
+    """(mtime_ns, size), or None when the file cannot be stat'd — an unfingerprintable file is
+    simply never cached, so the caller's own read raises the real error."""
+    try:
+        st = path.stat()
+    except OSError:
+        return None
+    return (st.st_mtime_ns, st.st_size)
+
+
 def load_yaml(path: Path) -> dict:
     """Parse one YAML file, or fail with a BuildError that says *which* file.
 
@@ -78,15 +115,28 @@ def load_yaml(path: Path) -> dict:
     rejects it" stopped being a reliable trigger: ruamel >= 0.19 accepts the unquoted form and
     ruamel < 0.19 does not, so which environment you are in decides whether the file is legal.
     Checking first makes the answer the same everywhere — the stricter one — instead of letting
-    a file curated under a new ruamel abort the build under an old one."""
+    a file curated under a new ruamel abort the build under an old one.
+
+    Memoized per file on (mtime_ns, size) — see `_YAML_CACHE`. Both the read and the scan are
+    pure functions of the bytes on disk, so a hit skips all three."""
+    fp = _fingerprint(path)
+    hit = _YAML_CACHE.get(path)
+    if hit is not None and hit[0] == fp:
+        return hit[1]
     text = path.read_text()
     hint = _unquoted_sharpened_ref_hint(path, text)
     if hint:
         raise BuildError(hint)
     try:
-        return safe_yaml().load(text) or {}
+        doc = safe_yaml().load(text) or {}
     except YAMLError as e:
         raise BuildError(f"{path}: {e}") from e
+    # Store under the fingerprint taken BEFORE the read: a write landing mid-read would otherwise
+    # be stamped with the new stat and never re-parsed. Stamped with the old one it looks stale on
+    # the next call and is re-read, which is the safe direction to be wrong in.
+    if fp is not None:
+        _YAML_CACHE[path] = (fp, doc)
+    return doc
 
 
 _LOCAL = re.compile(r"^(?:oq|[bcqmtk])\d+$")    # c claim · b borrowed claim · q question ·
@@ -227,7 +277,11 @@ def _slice_from(raw: dict, kind: str) -> Slice:
         enabled_by=list(raw.get("enabled_by", []) or []),
         floor_flag=bool(raw.get("floor", False)),
         quote=raw.get("quote"),
-        quote_loc=raw.get("quote_loc"),
+        # The only field here not already rebuilt from scratch: a nested {page, rects} mapping.
+        # `load_yaml` memoizes parsed files and hands the same object to every caller, so holding
+        # this by reference would let anything that edits a Slice's anchor write back into the
+        # cache — copy it, the way every list on this call already is (see `_YAML_CACHE`).
+        quote_loc=copy.deepcopy(raw.get("quote_loc")),
     )
 
 

@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 
 from litgraph.graph import classify_ref
@@ -414,3 +415,59 @@ def test_stub_loads_authors_and_journal(tmp_path):
     assert s.journal == "Biochim. Biophys. Acta"
     # stub authors carry as (name, "", False) — byline names, no position/corresponding
     assert s.authors == [("Ulrich S. Schwarz", "", False), ("Jérôme R. D. Soiné", "", False)]
+
+
+# --- the per-file parse cache (graph._YAML_CACHE) -------------------------------------
+
+
+def test_load_yaml_reuses_the_parse_until_the_file_changes(tmp_path):
+    """`load_yaml` memoizes on (mtime_ns, size), so an unchanged file is parsed once.
+
+    This is what keeps a `lit serve` rebuild from re-parsing all 274 files because one of
+    them moved -- or because something that is not YAML at all moved. Toggling a paper on
+    the reading list writes config.toml, which `serve._source_version` watches, so before
+    the cache a rebuild that touched no YAML whatsoever still paid for every file."""
+    from litgraph import graph
+
+    f = tmp_path / "one.yaml"
+    f.write_text("title: first\n")
+    graph._YAML_CACHE.pop(f, None)
+
+    first = graph.load_yaml(f)
+    assert first == {"title": "first"}
+    assert graph.load_yaml(f) is first          # the hit is the same object, not a re-parse
+
+    # a real edit invalidates: same path, new fingerprint
+    os.utime(f, ns=(0, 0))                      # pin an mtime the rewrite is sure to beat
+    f.write_text("title: second\n")
+    assert graph.load_yaml(f) == {"title": "second"}
+    # one entry per path, REPLACED on change -- the cache is bounded by the size of the repo,
+    # not by the number of edits made to it (the module-level dict is shared across tests, so
+    # count only this file's entries)
+    assert [k for k in graph._YAML_CACHE if k == f] == [f]
+
+
+def test_load_yaml_cache_is_not_poisoned_by_a_slice_edit(tmp_path):
+    """The cache hands back a SHARED mapping, so every consumer must copy what it retains.
+
+    `quote_loc` is the one field that used to be held by reference; writing through a
+    built Slice must not reach the parsed document behind it."""
+    from litgraph import graph
+
+    f = tmp_path / "Key2020Journal.yaml"
+    f.write_text(
+        "title: a paper\n"
+        "claims:\n"
+        "  - id: c1\n"
+        "    text: something\n"
+        "    quote: a quote\n"
+        "    quote_loc: {page: 2, rects: [[0.1, 0.1, 0.2, 0.2]]}\n"
+    )
+    graph._YAML_CACHE.pop(f, None)
+
+    paper = graph.paper_from_raw("Key2020Journal", graph.load_yaml(f))
+    paper.slices[0].quote_loc["page"] = 99
+    paper.slices[0].quote_loc["rects"][0][0] = 9.9
+
+    again = graph.paper_from_raw("Key2020Journal", graph.load_yaml(f))
+    assert again.slices[0].quote_loc == {"page": 2, "rects": [[0.1, 0.1, 0.2, 0.2]]}

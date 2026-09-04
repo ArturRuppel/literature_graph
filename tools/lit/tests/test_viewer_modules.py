@@ -54,6 +54,21 @@ def test_graph_slot_survives_the_split():
     assert page.index("/*__GRAPH_JSON__*/") < page.index("/*__END__*/")
 
 
+def test_search_indexes_papers_on_the_reading_list():
+    """The reading list changes landing placement, not discoverability.
+
+    Active papers are absent from the initial board and `gotoPaper` knows how to mint their
+    cards on demand. Filtering them out while building the search index makes that path
+    unreachable by title, author, or citekey.
+    """
+    search = (_VIEWER / "js" / "14-search.js").read_text(encoding="utf-8")
+    index_body = search.split("function buildSearchIndex(){", 1)[1].split(
+        "function openResults(){", 1
+    )[0]
+    assert "ACTIVE.has(key)" not in index_body
+    assert "rows.push({key" in index_body
+
+
 def test_missing_modules_fail_loudly(tmp_path, monkeypatch):
     """An incomplete install must not emit a viewer with no styles — silently shipping a
     blank page is worse than not building."""

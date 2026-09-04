@@ -4,16 +4,14 @@
 // client-side, so a static `lit build` keeps it working offline. It indexes the WHOLE
 // bibliography, curated or not — since the landing column trimmed down to curated papers, this is
 // the only path to a stub, and gotoPaper mints its card on demand. Curated papers rank above stubs
-// (ORDER is already curated-first); papers on the reading list (ACTIVE) are held off the landing
-// column, not out of it entirely, so they're left out of THIS index — there's no landing card to
-// jump to until gotoPaper (or a WIP-panel row click) mints one for them on demand.
+// (ORDER is already curated-first). Papers on the reading list (ACTIVE) are held off the landing
+// column, but remain searchable: naming one is what asks gotoPaper to mint its card on demand.
 const searchInput = document.getElementById("search");
 const searchResults = document.getElementById("searchResults");
 let searchIndex = null;
 function buildSearchIndex(){
   const rows = [];
   for(const key of ORDER){
-    if(ACTIVE.has(key)) continue;
     const cur = !!(PAPERS[key] && PAPERS[key].cur);
     const p = PAPERS[key] || STUBS[key] || {};
     const authors = (p.authors || []).map(a => a[0]);
@@ -95,13 +93,22 @@ function gotoPaper(key){
     return;
   }
   landedStuck.add(key);
+  // A card that was ALREADY standing keeps its place: the column does not re-sort itself under the
+  // reader (syncLanding), and a curated paper you searched for is where the ranking put it. A card
+  // minted FOR this request is different — it was summoned by name, the ranking has nothing to say
+  // about it, and appending it left the one paper you asked for at the very bottom of a column of
+  // thousands, which is also the one place scrollIntoView cannot centre. So it is hoisted to the
+  // top instead. Both mint sites are covered: syncLanding below for a summoned stub, and the
+  // addPaper for a reading-list paper, which is held off the column until named.
+  const minted = !document.getElementById(`card-0:${key}`);
   syncLanding();                             // mints a summoned stub's card, and refreshes every
   let el = document.getElementById(`card-0:${key}`);     // card's provenance + the column header
   if(!el){                                   // a reading-list paper (ACTIVE) is held off the
     addPaper(0, key);                        // landing column — but naming it by hand outranks
     el = document.getElementById(`card-0:${key}`);       // that, so mint the card
-    if(!el) return;                                      // (appended below the ranking)
+    if(!el) return;
   }
+  if(minted) hoistAll([el]);                             // summoned by name → top of the column
   redraw();                                              // the column may have grown; edges re-anchor
   el.scrollIntoView({behavior: "smooth", block: "center"});
   flash(el);
@@ -297,7 +304,8 @@ if(!DETACHED) (function(){
   }
 
   function recompute(){
-    if(!searchIndex) searchIndex = buildSearchIndex();
+    // `rows` is derived from the index, so it must die with it whenever the index is invalidated.
+    if(!searchIndex){ searchIndex = buildSearchIndex(); rows = []; }
     if(!rows.length) rows = searchIndex.map(prepare);  // ORDER's ranking, curated-first
     const terms = filterEl.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
     const inTopic = topic ? new Set(TOPICS[topic].papers) : null;
@@ -538,13 +546,41 @@ if (LIVE && !DETACHED) (function(){
     panel.hidden = true;
     gotoPaper(k);
   }
-  async function returnToGraph(k){                 // done: remove from the reading list, rejoin the board
+  // ── done: off the reading list, back onto the board ──────────────────────────────────
+  // Settled IN PLACE, with no reload. This direction is purely additive — the paper's card joins
+  // the curated column and nothing already drawn stops being true — so there is nothing for a
+  // reload to settle. The other direction, `moveToCurate` in 10-pdf.js, SUBTRACTS a paper the
+  // board may already hold arrows into, and still reloads; see the note there.
+  //
+  // It reloaded here too, once, and that alone read as a stuck button. `/` builds the graph
+  // payload inline (serve.py's do_GET), writing config.toml invalidates the server's payload
+  // cache, and a navigation is not committed until the first response byte — so the browser sat
+  // on the OLD page, panel open, row still there, ✓ still live, for the whole rebuild. Sixteen
+  // seconds of it on the real library, before ruamel.yaml.clib and graph.py's parse cache.
+  // Clicking the ✓ again then POSTed again, which invalidated the rebuild already in flight and
+  // started the wait over — so the one gesture that looked like it might help was the one that
+  // hurt. `btn.disabled` shuts that door; not reloading removes the wait it was a door to.
+  function dropRow(k){
+    const row = panel.querySelector(`.wp-row[data-k="${k}"]`);    // citekeys are [A-Za-z0-9]+
+    if (row) row.remove();
+    const n = panel.querySelectorAll(".wp-row").length;
+    if (!n) { panel.hidden = true; pill.hidden = true; return; }  // an empty list has no pill, as at boot
+    pill.innerHTML = `reading list · <span class="n">${n}</span>`;
+  }
+  async function returnToGraph(k, btn){
+    if (btn) btn.disabled = true;
     try {
       const r = await fetch("active", {method: "POST",
         body: JSON.stringify({citekey: k, active: false})}).then(r => r.ok ? r.json() : null);
-      if (r && r.ok) location.reload();
-      else alert(`could not return ${k} to the graph`);
-    } catch { alert("server unreachable — is lit serve running?"); }
+      if (!r || !r.ok) { if (btn) btn.disabled = false; alert(`could not return ${k} to the graph`); return; }
+      ACTIVE.delete(k);
+      dropRow(k);
+      // Appends below the ranking rather than landing in ORDER position — the same place
+      // gotoPaper mints a summoned card, and consistent with a column whose stated contract is
+      // that a card stays where the hoists left it. A later reload seats it by rank.
+      syncLanding();
+      redraw();                                    // the column grew — edges re-anchor
+    } catch { if (btn) btn.disabled = false; alert("server unreachable — is lit serve running?"); }
   }
 
   panel.innerHTML = `<div class="wp-hd">reading list</div>` + inProg.map(k =>
@@ -562,7 +598,7 @@ if (LIVE && !DETACHED) (function(){
   });
   panel.addEventListener("click", e => {
     const done = e.target.closest(".wp-done");
-    if (done) { e.stopPropagation(); return returnToGraph(done.dataset.done); }
+    if (done) { e.stopPropagation(); return returnToGraph(done.dataset.done, done); }
     const r = e.target.closest(".wp-row"); if (r) enter(r.dataset.k);
   });
   addEventListener("keydown", e => { if (e.key === "Escape") panel.hidden = true; });

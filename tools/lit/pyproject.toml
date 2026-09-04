@@ -10,6 +10,11 @@ requires-python = ">=3.10"
 dependencies = [
     "pymupdf4llm>=0.0.20",   # PDF -> deterministic Markdown (pulls pymupdf/fitz)
     "ruamel.yaml>=0.17",     # round-trip YAML (preserves stubs.yaml comments)
+    # The C scanner behind `YAML(typ="safe")`. Nominally optional — ruamel falls back to a
+    # pure-Python parser without it, silently, and the only symptom is that everything gets
+    # ~12x slower: a `lit serve` payload rebuild went from ~1.3s to 16s once a venv came up
+    # without it. Depend on it outright so that fallback can never be reached by accident.
+    "ruamel.yaml.clib>=0.2.8",
     "tomlkit>=0.12",         # round-trip TOML (preserves config.toml comments on `active` writes)
     "iso4>=0.0.2",           # ISO-4 journal abbreviation (needs nltk wordnet)
     "requests>=2.28",        # OpenAlex / Crossref HTTP

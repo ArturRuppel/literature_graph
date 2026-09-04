@@ -257,13 +257,28 @@ function showCurateMenu(e, key){
     if (b.dataset.act === "curate") moveToCurate(key);
   };
 }
+// This direction still reloads, unlike its opposite (`returnToGraph` in 14-search.js, which
+// settles in place). Adding a paper to the reading list SUBTRACTS it from the board: its card
+// must leave the landing column, and every arrow drawn into or out of it stops being true. The
+// reload settles all of that at once, and a card can be reached from more places than the column
+// (a drilled column, a source wall, the walk) than an in-place teardown could honestly chase.
+//
+// What the reload costs is now bounded. It was 16 s on the real library — `/` builds the graph
+// payload inline, and writing config.toml invalidates the server's payload cache — which is why
+// this had to be re-entrancy-guarded rather than merely left alone: a second click POSTs again,
+// invalidates the rebuild already in flight, and starts the wait over. ruamel.yaml.clib plus
+// graph.py's per-file parse cache took the rebuild to ~1.5 s; `moving` keeps the second click
+// from undoing even that.
+let moving = false;
 async function moveToCurate(key){
+  if (moving) return;                          // one move per reload — a second POST would
+  moving = true;                               // invalidate the rebuild this one is waiting on
   try {
     const r = await fetch("active", {method: "POST",
       body: JSON.stringify({citekey: key, active: true})}).then(r => r.ok ? r.json() : null);
     if (r && r.ok) location.reload();          // the paper leaves the graph; reload settles the view
-    else alert(`could not move ${key} into curation`);
-  } catch { alert("server unreachable — is lit serve running?"); }
+    else { moving = false; alert(`could not move ${key} into curation`); }
+  } catch { moving = false; alert("server unreachable — is lit serve running?"); }
 }
 addEventListener("click", hideCtxMenu);          // any left-click dismisses the menu
 addEventListener("scroll", hideCtxMenu, true);   // scrolling the board dismisses it too
